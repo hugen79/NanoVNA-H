@@ -466,7 +466,7 @@ void sweep(void)
   for (i = 0; i < sweep_points; i++) {
 #ifdef FRE900
 	  if (i == 0) {
-    	if (frequencies[i] >= 300000000) {
+    	if (frequencies[i] > 300000000) {
     		tlv320aic3204_set_gain(40,40);
 		}
     	else{
@@ -474,7 +474,7 @@ void sweep(void)
     	}
 
 	}
-    else if(frequencies[i] >= 300000000 && frequencies[i-1] < 300000000 ){
+    else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
     	tlv320aic3204_set_gain(40,40);
     }
 #warning frequency900
@@ -822,13 +822,13 @@ eterm_calc_es(void)
     float s11aor = (1 - z*z) / sq;
     float s11aoi = 2*z / sq;
 
-    // S11mo’= S11mo - Ed
-    // S11ms’= S11ms - Ed
+    // S11mo鈥�= S11mo - Ed
+    // S11ms鈥�= S11ms - Ed
     float s11or = cal_data[CAL_OPEN][i][0] - cal_data[ETERM_ED][i][0];
     float s11oi = cal_data[CAL_OPEN][i][1] - cal_data[ETERM_ED][i][1];
     float s11sr = cal_data[CAL_SHORT][i][0] - cal_data[ETERM_ED][i][0];
     float s11si = cal_data[CAL_SHORT][i][1] - cal_data[ETERM_ED][i][1];
-    // Es = (S11mo'/s11ao + S11ms’)/(S11mo' - S11ms’)
+    // Es = (S11mo'/s11ao + S11ms鈥�)/(S11mo' - S11ms鈥�)
     float numr = s11sr + s11or * s11aor - s11oi * s11aoi;
     float numi = s11si + s11oi * s11aor + s11or * s11aoi;
     float denomr = s11or - s11sr;
