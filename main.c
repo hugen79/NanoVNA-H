@@ -1697,6 +1697,7 @@ static DACConfig dac1cfg1 = {
 };
 
 int main(void)
+
 {
     halInit();
     chSysInit();
@@ -1707,6 +1708,20 @@ int main(void)
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     i2cStart(&I2CD1, &i2ccfg);
     si5351_init();
+
+    /*
+      * SPI LCD Initialize
+      */
+     ili9341_init();
+
+     /*
+      * Initialize graph plotting
+      */
+
+     ili9341_fill(0, 0, 320, 240, 0);
+     plot_init();
+     draw_frequencies();
+     draw_cal_status();
 
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
@@ -1726,15 +1741,8 @@ int main(void)
     usbStart(serusbcfg.usbp, &usbcfg);
     usbConnectBus(serusbcfg.usbp);
 
-  /*
-   * SPI LCD Initialize
-   */
-  ili9341_init();
 
-  /*
-   * Initialize graph plotting
-   */
-  plot_init();
+
 
   /* restore config */
   config_recall();
@@ -1753,7 +1761,7 @@ int main(void)
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
 
-  redraw_frame();
+//  redraw_frame();
 
   /*
    * I2S Initialize

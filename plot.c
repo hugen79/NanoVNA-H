@@ -1431,5 +1431,11 @@ redraw_all(void)
 void
 plot_init(void)
 {
-  force_set_markmap();
+	char buf[24];
+	force_set_markmap();
+
+  strcpy(buf, "NanoVNA ");
+   ili9341_drawstring_5x7(buf, 140, 90, 0xffff, 0x0000);
+   strcpy(buf, "gen111.taobao.com ");
+   ili9341_drawstring_5x7(buf, 120, 100, 0xffff, 0x0000);
 }
