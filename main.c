@@ -389,6 +389,8 @@ properties_t current_props = {
   /* frequency0 */     50000, // start = 50kHz
 #ifdef FRE900
   /* frequency1 */ 900000000, // end = 900MHz
+#elif FRE1300
+  /* frequency1 */ 1300000000, // end = 1300MHz
 #else
   /* frequency1 */ 300000000, // end = 300MHz
 #endif
@@ -478,6 +480,25 @@ void sweep(void)
     	tlv320aic3204_set_gain(40,40);
     }
 #warning frequency900
+#elif FRE1300
+	  if (i == 0) {
+    	if (frequencies[i] > 900000000) {
+    		tlv320aic3204_set_gain(70,70);
+		}else if(frequencies[i] > 300000000){
+    		tlv320aic3204_set_gain(40,40);
+    	}
+    	else{
+    		tlv320aic3204_set_gain(5,5);
+    	}
+
+	}
+    else if(frequencies[i] > 900000000 && frequencies[i-1] <= 900000000 ){
+    	tlv320aic3204_set_gain(70,70);
+    }
+    else if(frequencies[i] <= 900000000 && frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
+       	tlv320aic3204_set_gain(40,40);
+       }
+#warning frequency1300
 #endif
 
     set_frequency(frequencies[i]);
@@ -608,6 +629,8 @@ freq_mode_centerspan(void)
 #define START_MIN 50000
 #ifdef FRE900
 #define STOP_MAX 900000000
+#elif FRE1300
+#define STOP_MAX 1300000000
 #else
 #define STOP_MAX 300000000
 #endif
@@ -1719,6 +1742,8 @@ int main(void)
       */
 
      ili9341_fill(0, 0, 320, 240, 0);
+     ili9341_drawstring_5x7("NanoVNA ", 140, 110, 0xffff, 0x0000);
+     ili9341_drawstring_5x7( "GEN111.TAOBAO.COM ", 120, 122, 0xffff, 0x0000);
      plot_init();
      draw_frequencies();
      draw_cal_status();

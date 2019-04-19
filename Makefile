@@ -16,6 +16,12 @@ ifeq ($(FRE),900)
   BUILDDIR = build_900
 endif
 
+# .
+ifeq ($(FRE),1300)
+  USE_OPT += -DFRE1300
+  BUILDDIR = build_1300
+endif
+
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
   USE_COPT =
