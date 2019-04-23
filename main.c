@@ -1745,7 +1745,6 @@ int main(void)
      ili9341_drawstring_5x7("NanoVNA ", 140, 110, 0xffff, 0x0000);
      ili9341_drawstring_5x7( "GEN111.TAOBAO.COM ", 120, 122, 0xffff, 0x0000);
      plot_init();
-     draw_frequencies();
 
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
@@ -1770,7 +1769,6 @@ int main(void)
 
   /* restore config */
   config_recall();
-  draw_cal_status();
 
   dac1cfg1.init = config.dac_value;
   /*
@@ -1786,8 +1784,8 @@ int main(void)
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
 
-//  redraw_frame();
-  draw_cal_status();
+
+
 
   /*
    * I2S Initialize
@@ -1804,6 +1802,11 @@ int main(void)
    * Shell manager initialization.
    */
     shellInit();
+
+
+    // redraw_frame();
+     draw_frequencies();
+     draw_cal_status();
 
     chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
