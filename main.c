@@ -387,9 +387,9 @@ config_t config = {
 properties_t current_props = {
   /* magic */   CONFIG_MAGIC,
   /* frequency0 */     50000, // start = 50kHz
-#ifdef FRE900
+#if  defined(FRE900)
   /* frequency1 */ 900000000, // end = 900MHz
-#elif FRE1300
+#elif  defined(FRE1300)
   /* frequency1 */ 1300000000, // end = 1300MHz
 #else
   /* frequency1 */ 300000000, // end = 300MHz
@@ -466,7 +466,7 @@ void sweep(void)
   delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
-#ifdef FRE900
+#if defined(FRE900)
 	  if (i == 0) {
     	if (frequencies[i] > 300000000) {
     		tlv320aic3204_set_gain(40,40);
@@ -480,7 +480,7 @@ void sweep(void)
     	tlv320aic3204_set_gain(40,40);
     }
 #warning frequency900
-#elif FRE1300
+#elif  defined(FRE1300)
 	  if (i == 0) {
     	if (frequencies[i] > 900000000) {
     		tlv320aic3204_set_gain(70,70);
@@ -627,9 +627,9 @@ freq_mode_centerspan(void)
 
 
 #define START_MIN 50000
-#ifdef FRE900
+#if defined(FRE900)
 #define STOP_MAX 900000000
-#elif FRE1300
+#elif  defined(FRE1300)
 #define STOP_MAX 1300000000
 #else
 #define STOP_MAX 300000000
@@ -1746,7 +1746,6 @@ int main(void)
      ili9341_drawstring_5x7( "GEN111.TAOBAO.COM ", 120, 122, 0xffff, 0x0000);
      plot_init();
      draw_frequencies();
-     draw_cal_status();
 
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
@@ -1771,6 +1770,7 @@ int main(void)
 
   /* restore config */
   config_recall();
+  draw_cal_status();
 
   dac1cfg1.init = config.dac_value;
   /*
@@ -1787,6 +1787,7 @@ int main(void)
     caldata_recall(config.default_loadcal);
 
 //  redraw_frame();
+  draw_cal_status();
 
   /*
    * I2S Initialize
