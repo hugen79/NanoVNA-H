@@ -156,6 +156,7 @@ static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
     chMtxUnlock(&mutex);
 }
 
+#if !defined(FRE900) && !defined(FRE1300)
 static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
 {
     if (argc != 1) {
@@ -165,6 +166,7 @@ static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
     drive_strength = atoi(argv[0]);
     set_frequency(frequency);
 }
+#endif
 
 static void cmd_time(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -1595,6 +1597,7 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[])
   }
 }
 
+#if !defined(FRE900) && !defined(FRE1300)
 static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
 {
   int rvalue;
@@ -1608,6 +1611,7 @@ static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
     lvalue = atoi(argv[1]);
   tlv320aic3204_set_gain(lvalue, rvalue);
 }
+#endif
 
 static void cmd_port(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -1682,8 +1686,10 @@ static const ShellCommand commands[] =
     { "frequencies", cmd_frequencies },
     { "port", cmd_port },
     { "stat", cmd_stat },
+#if !defined(FRE900) && !defined(FRE1300)
     { "gain", cmd_gain },
     { "power", cmd_power },
+#endif
     //{ "gamma", cmd_gamma },
     //{ "scan", cmd_scan },
     { "sweep", cmd_sweep },
