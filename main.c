@@ -476,7 +476,6 @@ void sweep(void)
     	else{
     		tlv320aic3204_set_gain(5,5);
     	}
-
 	}
     else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
     	tlv320aic3204_set_gain(40,40);
@@ -498,8 +497,7 @@ void sweep(void)
     	tlv320aic3204_set_gain(70,70);
     }
     else if(frequencies[i] <= 900000000 && frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
-       	tlv320aic3204_set_gain(40,40);
-       }
+       	tlv320aic3204_set_gain(40,40);       }
 #warning frequency1300
 #endif
 

@@ -573,10 +573,10 @@ gamma2imp(char *buf, int len, const float coeff[2], uint32_t frequency)
   float d = z0 / ((1-coeff[0])*(1-coeff[0])+coeff[1]*coeff[1]);
   float zr = (1-coeff[0]*coeff[0] - coeff[1]*coeff[1]) * d;
   float zi = 2*coeff[1] * d;
-  float z = sqrtf(zr*zr + zi*zi);
+//  float z = sqrtf(zr*zr + zi*zi);
   int n;
 
-  n = string_value_with_prefix(buf, len, z, S_OHM[0]);
+  n = string_value_with_prefix(buf, len, zr, S_OHM[0]);
   buf[n++] = ' ';
 
   if (zi < 0) {
