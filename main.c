@@ -468,37 +468,19 @@ void sweep(void)
   delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
-#if defined(FRE900)
+#if defined(FRE900) || defined(FRE1300)
 	  if (i == 0) {
     	if (frequencies[i] > 300000000) {
-    		tlv320aic3204_set_gain(40,40);
-		}
+    		tlv320aic3204_set_gain(30,30);
+    	}
     	else{
     		tlv320aic3204_set_gain(5,5);
     	}
 	}
     else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
-    	tlv320aic3204_set_gain(40,40);
+    	tlv320aic3204_set_gain(30,30);
     }
-#warning frequency900
-#elif  defined(FRE1300)
-	  if (i == 0) {
-    	if (frequencies[i] > 900000000) {
-    		tlv320aic3204_set_gain(70,70);
-		}else if(frequencies[i] > 300000000){
-    		tlv320aic3204_set_gain(40,40);
-    	}
-    	else{
-    		tlv320aic3204_set_gain(5,5);
-    	}
 
-	}
-    else if(frequencies[i] > 900000000 && frequencies[i-1] <= 900000000 ){
-    	tlv320aic3204_set_gain(70,70);
-    }
-    else if(frequencies[i] <= 900000000 && frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
-       	tlv320aic3204_set_gain(40,40);       }
-#warning frequency1300
 #endif
 
     set_frequency(frequencies[i]);
@@ -629,8 +611,10 @@ freq_mode_centerspan(void)
 #define START_MIN 50000
 #if defined(FRE900)
 #define STOP_MAX 900000000
+#warning frequency900
 #elif  defined(FRE1300)
 #define STOP_MAX 1300000000
+#warning frequency1300
 #else
 #define STOP_MAX 300000000
 #endif

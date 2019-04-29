@@ -295,6 +295,7 @@ void tlv320aic3204_set_gain(int lgain, int rgain)
     I2CWrite(AIC3204_ADDR, 0x00, 0x00); /* Select Page 0 */
 }
 
+
 void tlv320aic3204_set_digital_gain(int gain)
 {
     if (gain < -24)
