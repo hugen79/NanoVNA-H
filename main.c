@@ -884,15 +884,18 @@ eterm_calc_et(void)
   int i;
   for (i = 0; i < sweep_points; i++) {
     // Et = 1/(S21mt - Ex)(1 - Es)
-    float esr = 1 - cal_data[ETERM_ES][i][0];
-    float esi = -cal_data[ETERM_ES][i][1];
+   // float esr = 1 - cal_data[ETERM_ES][i][0];
+    //float esi = -cal_data[ETERM_ES][i][1];
     float s21mr = cal_data[CAL_THRU][i][0] - cal_data[CAL_ISOLN][i][0];
     float s21mi = cal_data[CAL_THRU][i][1] - cal_data[CAL_ISOLN][i][1];
-    float etr = esr * s21mr - esi * s21mi;
-    float eti = esr * s21mi + esi * s21mr;
-    float sq = etr*etr + eti*eti;
-    float invr = etr / sq;
-    float invi = -eti / sq;
+//    float etr = esr * s21mr - esi * s21mi;
+//    float eti = esr * s21mi + esi * s21mr;
+//    float sq = etr*etr + eti*eti;
+//    float invr = etr / sq;
+//    float invi = -eti / sq;
+    float sq = s21mr*s21mr + s21mi*s21mi;
+    float invr = s21mr / sq;
+    float invi = -s21mi / sq;
     cal_data[ETERM_ET][i][0] = invr;
     cal_data[ETERM_ET][i][1] = invi;
   }
@@ -1002,12 +1005,12 @@ cal_collect(int type)
 
   case CAL_THRU:
     cal_status |= CALSTAT_THRU;
-    memcpy(cal_data[CAL_THRU], measured[1], sizeof measured[0]);
+    memcpy(cal_data[CAL_THRU], measured[1], sizeof measured[1]);
     break;
 
   case CAL_ISOLN:
     cal_status |= CALSTAT_ISOLN;
-    memcpy(cal_data[CAL_ISOLN], measured[1], sizeof measured[0]);
+    memcpy(cal_data[CAL_ISOLN], measured[1], sizeof measured[1]);
     break;
   }
   chMtxUnlock(&mutex);
@@ -1120,14 +1123,19 @@ static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
   char *cmd = argv[0];
   if (strcmp(cmd, "load") == 0) {
     cal_collect(CAL_LOAD);
+    return;
   } else if (strcmp(cmd, "open") == 0) {
     cal_collect(CAL_OPEN);
+    return;
   } else if (strcmp(cmd, "short") == 0) {
     cal_collect(CAL_SHORT);
+    return;
   } else if (strcmp(cmd, "thru") == 0) {
     cal_collect(CAL_THRU);
+    return;
   } else if (strcmp(cmd, "isoln") == 0) {
     cal_collect(CAL_ISOLN);
+    return;
   } else if (strcmp(cmd, "done") == 0) {
     cal_done();
     draw_cal_status();
@@ -1196,7 +1204,8 @@ static void cmd_recall(BaseSequentialStream *chp, int argc, char *argv[])
   chMtxLock(&mutex);
   if (caldata_recall(id) == 0) {
     // success
-    update_frequencies();
+    //update_frequencies();
+    update_grid();
     draw_cal_status();
   }
   chMtxUnlock(&mutex);
