@@ -11,6 +11,12 @@ ifeq ($(USE_OPT),)
 endif
 
 # .
+ifeq ($(FRE),800)
+  USE_OPT += -DFRE800
+  BUILDDIR = build_800
+endif
+
+# .
 ifeq ($(FRE),900)
   USE_OPT += -DFRE900
   BUILDDIR = build_900

@@ -315,11 +315,26 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
   } else if (freq < 150000000) {
     band = 1;
   }
-  else if (freq <= 300000000) {
-    band = 2;
-  }
+
 #if defined(FRE900)
+  else if (freq <= 300000000) {
+     band = 2;
+   }
   else  if (freq <= 600000000){
+    band = 3;
+    freq /= 3;
+    ofreq /= 5;
+  }else
+  {
+	  band = 4;
+	  freq /= 3;
+    ofreq /= 5;
+  }
+#elif defined(FRE800)
+  else if (freq <= 270000000) {
+     band = 2;
+   }
+  else  if (freq <= 530000000){
     band = 3;
     freq /= 3;
     ofreq /= 5;
@@ -330,6 +345,9 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
     ofreq /= 5;
   }
 #elif  defined(FRE1300)
+  else if (freq <= 300000000) {
+     band = 2;
+   }
   else  if (freq <= 600000000){
      band = 3;
      freq /= 3;
@@ -344,6 +362,11 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
  	  band = 5;
  	  freq /= 5;
      ofreq /= 7;
+   }
+
+#else
+  else if (freq <= 300000000) {
+     band = 2;
    }
 
 #endif
@@ -413,7 +436,7 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 
     break;
 
-#if defined(FRE900)
+#if defined(FRE900) || defined(FRE800)
      case 3:
     	 if (current_band != 3) {
     		    si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 8,

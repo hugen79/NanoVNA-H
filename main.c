@@ -156,7 +156,7 @@ static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
     chMtxUnlock(&mutex);
 }
 
-#if !defined(FRE900) && !defined(FRE1300)
+#if !defined(FRE900) && !defined(FRE1300)&& !defined(FRE800)
 static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
 {
     if (argc != 1) {
@@ -391,6 +391,8 @@ properties_t current_props = {
   /* frequency0 */     50000, // start = 50kHz
 #if  defined(FRE900)
   /* frequency1 */ 900000000, // end = 900MHz
+#elif  defined(FRE800)
+  /* frequency1 */ 800000000, // end = 800MHz
 #elif  defined(FRE1300)
   /* frequency1 */ 1300000000, // end = 1300MHz
 #else
@@ -478,6 +480,19 @@ void sweep(void)
     	}
 	}
     else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
+    	tlv320aic3204_set_gain(30,30);
+    }
+
+#elif defined(FRE800)
+	  if (i == 0) {
+    	if (frequencies[i] > 270000000) {
+    		tlv320aic3204_set_gain(30,30);
+    	}
+    	else{
+    		tlv320aic3204_set_gain(5,5);
+    	}
+	}
+    else if(frequencies[i] > 270000000 && frequencies[i-1] <= 270000000 ){
     	tlv320aic3204_set_gain(30,30);
     }
 
@@ -612,6 +627,9 @@ freq_mode_centerspan(void)
 #if defined(FRE900)
 #define STOP_MAX 900000000
 #warning frequency900
+#elif  defined(FRE800)
+#define STOP_MAX 800000000
+#warning frequency800
 #elif  defined(FRE1300)
 #define STOP_MAX 1300000000
 #warning frequency1300
@@ -1588,7 +1606,7 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[])
   }
 }
 
-#if !defined(FRE900) && !defined(FRE1300)
+#if !defined(FRE900) && !defined(FRE1300) && !defined(FRE800)
 static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
 {
   int rvalue;
@@ -1677,7 +1695,7 @@ static const ShellCommand commands[] =
     { "frequencies", cmd_frequencies },
     { "port", cmd_port },
     { "stat", cmd_stat },
-#if !defined(FRE900) && !defined(FRE1300)
+#if !defined(FRE900) && !defined(FRE1300)&& !defined(FRE800)
     { "gain", cmd_gain },
     { "power", cmd_power },
 #endif
