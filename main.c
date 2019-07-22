@@ -470,35 +470,36 @@ void sweep(void)
   delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
+
 #if defined(FRE900) || defined(FRE1300)
 	  if (i == 0) {
     	if (frequencies[i] > 300000000) {
-    		tlv320aic3204_set_gain(30,30);
+    		tlv320aic3204_set_gain(40,38);
     	}
     	else{
     		tlv320aic3204_set_gain(5,5);
     	}
 	}
     else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
-    	tlv320aic3204_set_gain(30,30);
+    	tlv320aic3204_set_gain(40,38);
     }
 
 #elif defined(FRE800)
 	  if (i == 0) {
     	if (frequencies[i] > 270000000) {
-    		tlv320aic3204_set_gain(30,30);
+    		tlv320aic3204_set_gain(40,38);
     	}
     	else{
     		tlv320aic3204_set_gain(5,5);
     	}
 	}
     else if(frequencies[i] > 270000000 && frequencies[i-1] <= 270000000 ){
-    	tlv320aic3204_set_gain(30,30);
+    	tlv320aic3204_set_gain(40,38);
     }
 
 #endif
 
-    set_frequency(frequencies[i]);
+	 set_frequency(frequencies[i]);
     tlv320aic3204_select_in3(); // CH0:REFLECT
     wait_dsp(delay);
 

@@ -440,9 +440,10 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
      case 3:
     	 if (current_band != 3) {
     		    si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 8,
-    		                                  SI5351_CLK_DRIVE_STRENGTH_8MA);
-    		 si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, SI5351_CLK_DRIVE_STRENGTH_8MA);
+    		                                  SI5351_CLK_DRIVE_STRENGTH_2MA);
+    		 si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, SI5351_CLK_DRIVE_STRENGTH_2MA);
     	    }
+
 
     // div by 6 mode. CLK1,  div by 8 mode. CLK0
     	 si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 8,
@@ -494,6 +495,7 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 #if 1
     si5351_enable_output();
 #endif
+    chThdSleepMilliseconds(6);
     delay += 0;
   }
 
