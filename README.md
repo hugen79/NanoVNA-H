@@ -32,8 +32,14 @@ $ make FRE=900
 ```
 
 
+**注意：代码中有部分包含扩展到1300MHz的内容，那是为新硬件做的尝试，当前硬件不能很好的支持，如果网络上出现扩展到更高频率而未更好混频器或者滤波电路的请不要相信！**
+**Note: There is a part of the code that contains content that extends to 1300MHz, which is an attempt to make new hardware, the current hardware is not very good support, if the network appears to extend to a higher frequency and not better mixer or filter circuit please do not believe!**
+
+
 以下为原项目自述
+==========================================================
 The following is the original project readme
+==========================================================
 # About
 
 NanoVNA is very tiny handheld Vector Network Analyzer (VNA). It is
