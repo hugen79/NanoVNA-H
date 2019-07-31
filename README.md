@@ -16,6 +16,9 @@ How to distinguish between clones.
 ## 编译
 ## Build firmware
 
+You can compile with gcc-arm-none-eabi 4 or 5 under linux or macos.
+Before compilation you need to copy the chibios directory from the original project of edy555.
+
   300MHz
 ```
 $ make
@@ -108,7 +111,7 @@ Show usage.
 
     $ ./nanovna.py -h
 
-To use NanoVNA from Jupyter notebook, see [this page](/python/NanoVNA-example.ipynb).
+To use NanoVNA from Jupyter notebook, see [this page](https://github.com/ttrftech/NanoVNA/blob/master/python/NanoVNA-example.ipynb).
 
 ## Reference
 
