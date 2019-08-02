@@ -1456,6 +1456,7 @@ keypad_click(int key)
       return KP_CANCEL;
     }
     --kp_index;
+    ili9341_fill(64, 208+4, 216, 24, 0xffff);
   }
   kp_buf[kp_index] = '\0';
   draw_numeric_input(kp_buf);

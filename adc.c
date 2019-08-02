@@ -33,6 +33,8 @@ void adc_init(void)
 
   /* Calibration procedure.*/
   ADC->CCR = 0;
+  while (ADC1->CR & ADC_CR_ADEN)
+      ;
   ADC1->CR |= ADC_CR_ADCAL;
   while (ADC1->CR & ADC_CR_ADCAL)
     ;
