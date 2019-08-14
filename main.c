@@ -42,7 +42,7 @@ static MUTEX_DECL(mutex);
 
 int32_t frequency_offset = 5000;
 int32_t frequency = 10000000;
-uint8_t drive_strength = SI5351_CLK_DRIVE_STRENGTH_2MA;
+int8_t drive_strength = DRIVE_STRENGTH_AUTO;
 int8_t frequency_updated = FALSE;
 int8_t sweep_enabled = TRUE;
 int8_t cal_auto_interpolate = TRUE;
@@ -125,10 +125,25 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 int set_frequency(int freq)
 {
     int delay = 0;
-    if (frequency != freq) {
-      delay = si5351_set_frequency_with_offset(freq, frequency_offset, drive_strength);
-      frequency = freq;
-    }
+    if (frequency == freq)
+          return delay;
+
+        if (freq > FREQ_HARMONICS && frequency <= FREQ_HARMONICS) {
+          tlv320aic3204_set_gain(40, 38);
+          delay += 3;
+        }
+        if (freq <= FREQ_HARMONICS && frequency > FREQ_HARMONICS) {
+          tlv320aic3204_set_gain(5, 5);
+          delay += 3;
+        }
+
+        int8_t ds = drive_strength;
+        if (ds == DRIVE_STRENGTH_AUTO) {
+          ds = freq > FREQ_HARMONICS ? SI5351_CLK_DRIVE_STRENGTH_8MA : SI5351_CLK_DRIVE_STRENGTH_2MA;
+        }
+        delay += si5351_set_frequency_with_offset(freq, frequency_offset, ds);
+
+        frequency = freq;
     return delay;
 }
 
@@ -156,17 +171,15 @@ static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
     chMtxUnlock(&mutex);
 }
 
-#if !defined(FRE900) && !defined(FRE1300)&& !defined(FRE800)
 static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
 {
     if (argc != 1) {
-        chprintf(chp, "usage: power {0-3}\r\n");
+    	chprintf(chp, "usage: power {0-3|-1}\r\n");
         return;
     }
     drive_strength = atoi(argv[0]);
     set_frequency(frequency);
 }
-#endif
 
 static void cmd_time(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -389,14 +402,13 @@ config_t config = {
 properties_t current_props = {
   /* magic */   CONFIG_MAGIC,
   /* frequency0 */     50000, // start = 50kHz
-#if  defined(FRE900)
-  /* frequency1 */ 900000000, // end = 900MHz
-#elif  defined(FRE800)
+
+#if  defined(FRE800)
   /* frequency1 */ 800000000, // end = 800MHz
 #elif  defined(FRE1300)
   /* frequency1 */ 1300000000, // end = 1300MHz
 #else
-  /* frequency1 */ 300000000, // end = 300MHz
+  /* frequency1 */ 900000000, // end = 300MHz
 #endif
   /* sweep_points */     101,
   /* cal_status */         0,
@@ -467,39 +479,15 @@ void sweep(void)
 
  rewind:
   frequency_updated = FALSE;
-  delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
 
-#if defined(FRE900) || defined(FRE1300)
-	  if (i == 0) {
-    	if (frequencies[i] > 300000000) {
-    		tlv320aic3204_set_gain(40,38);
-    	}
-    	else{
-    		tlv320aic3204_set_gain(5,5);
-    	}
-	}
-    else if(frequencies[i] > 300000000 && frequencies[i-1] <= 300000000 ){
-    	tlv320aic3204_set_gain(40,38);
-    }
-
-#elif defined(FRE800)
-	  if (i == 0) {
-    	if (frequencies[i] > 270000000) {
-    		tlv320aic3204_set_gain(40,38);
-    	}
-    	else{
-    		tlv320aic3204_set_gain(5,5);
-    	}
-	}
-    else if(frequencies[i] > 270000000 && frequencies[i-1] <= 270000000 ){
-    	tlv320aic3204_set_gain(40,38);
-    }
-
+#ifdef FILTER_ON
+	delay = set_frequency(frequencies[i]) +4;  //因为开启了AIC3204的滤波器即使不需要频率稳定的延迟时间也还是需要等待通道切换后滤波器的延迟时间
+#else
+	delay = set_frequency(frequencies[i]) ;  //因为开启了AIC3204的滤波器即使不需要频率稳定的延迟时间也还是需要等待通道切换后滤波器的延迟时间
 #endif
 
-	 set_frequency(frequencies[i]);
     tlv320aic3204_select_in3(); // CH0:REFLECT
     wait_dsp(delay);
 
@@ -510,7 +498,7 @@ void sweep(void)
     calculate_gamma(measured[0][i]);
 
     tlv320aic3204_select_in1(); // CH1:TRANSMISSION
-    wait_dsp(delay);
+    wait_dsp(delay); //这时频率已经稳定，不需要再等待频率稳定的时间
 
     /* calculate transmission coeficient */
     calculate_gamma(measured[1][i]);
@@ -532,7 +520,7 @@ void sweep(void)
     if (frequency_updated)
       goto rewind;
   }
-  set_frequency(frequencies[0]);
+ // set_frequency(frequencies[0]);
 
   //if (cal_status & CALSTAT_APPLY)
   //  apply_error_term();
@@ -589,7 +577,7 @@ update_frequencies(void)
     frequencies[i] = start + span * i / (sweep_points - 1) * 100;
 
   if (cal_auto_interpolate)
-    cal_interpolate(0);
+    cal_interpolate(lastsaveid);
 
   update_marker_index();
   
@@ -625,17 +613,15 @@ freq_mode_centerspan(void)
 
 
 #define START_MIN 50000
-#if defined(FRE900)
-#define STOP_MAX 900000000
-#warning frequency900
-#elif  defined(FRE800)
+#if  defined(FRE800)
 #define STOP_MAX 800000000
 #warning frequency800
 #elif  defined(FRE1300)
 #define STOP_MAX 1300000000
 #warning frequency1300
 #else
-#define STOP_MAX 300000000
+#define STOP_MAX 900000000
+#warning frequency900
 #endif
 
 void
@@ -1607,7 +1593,6 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[])
   }
 }
 
-#if !defined(FRE900) && !defined(FRE1300) && !defined(FRE800)
 static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
 {
   int rvalue;
@@ -1621,7 +1606,6 @@ static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
     lvalue = atoi(argv[1]);
   tlv320aic3204_set_gain(lvalue, rvalue);
 }
-#endif
 
 static void cmd_port(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -1696,10 +1680,8 @@ static const ShellCommand commands[] =
     { "frequencies", cmd_frequencies },
     { "port", cmd_port },
     { "stat", cmd_stat },
-#if !defined(FRE900) && !defined(FRE1300)&& !defined(FRE800)
     { "gain", cmd_gain },
     { "power", cmd_power },
-#endif
     //{ "gamma", cmd_gamma },
     //{ "scan", cmd_scan },
     { "sweep", cmd_sweep },
