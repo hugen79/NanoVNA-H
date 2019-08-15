@@ -19,11 +19,6 @@ How to distinguish between clones.
 You can compile with gcc-arm-none-eabi 4 or 5 under linux or macos.
 Before compilation you need to copy the chibios directory from the original project of edy555.
 
-  300MHz
-```
-$ make
-```
-
 800MHz
 ```
 $ make FRE=800
@@ -31,7 +26,7 @@ $ make FRE=800
 
 900MHz
 ```
-$ make FRE=900
+$ make
 ```
 
 
