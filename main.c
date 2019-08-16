@@ -1749,14 +1749,11 @@ int main(void)
 #endif
      ili9341_drawstring_5x7( "GEN111.TAOBAO.COM ", 123, 82, 0xffff, 0x0000);
      ili9341_drawstring_5x7( "https://github.com/hugen79/NanoVNA-H ", 80, 94, 0xffff, 0x0000);
-     //2016-2019 Copyright @edy555, licensed under GPL. https://github.com/ttrftech/NanoVNA
      ili9341_drawstring_5x7( "Based on edy555 design ", 110, 106, 0xffff, 0x0000);
      ili9341_drawstring_5x7( "2016-2019 Copyright @edy555, licensed under GPL. ", 50, 118, 0xffff, 0x0000);
      ili9341_drawstring_5x7( "https://github.com/ttrftech/NanoVNA", 80, 130, 0xffff, 0x0000);
-     // chprintf(chp, "Build time:   %s%s%s"SHELL_NEWLINE_STR, __DATE__, " - ", __TIME__);
      ili9341_drawstring_5x7( "Build date:", 110, 142, 0xffff, 0x0000);
      ili9341_drawstring_5x7( __DATE__, 170, 142, 0xffff, 0x0000);
-     while(1);
      plot_init();
 
     // MCO on PA8
