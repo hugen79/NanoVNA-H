@@ -25,7 +25,7 @@
  * Board identifier.
  */
 #define BOARD_NANOVNA_STM32_F072
-#define BOARD_NAME              "NanoVNA"
+#define BOARD_NAME              "NanoVNA-H"
 
 /*
  * Board frequencies.
