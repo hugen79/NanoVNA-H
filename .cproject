@@ -555,13 +555,13 @@
             		
         </configuration>
         		
-        <configuration configurationName="800MHz">
+        <configuration configurationName="800Mhz">
             			
             <resource resourceType="PROJECT" workspacePath="/NanoVNA-H"/>
             		
         </configuration>
         		
-        <configuration configurationName="800Mhz">
+        <configuration configurationName="800MHz">
             			
             <resource resourceType="PROJECT" workspacePath="/NanoVNA-H"/>
             		
