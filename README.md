@@ -52,7 +52,7 @@ $ make
 
 
 ### Windows
-Follow [these instructions]([https://gnu-mcu-eclipse.github.io/install/](https://gnu-mcu-eclipse.github.io/install/)) to install gnu-mcu-eclipse.
+Follow [these instructions](https://gnu-mcu-eclipse.github.io/install/)to install gnu-mcu-eclipse.
 
 Existing Code as Makefile Projiect.
 Project > Properties > C/C++ Build > Tool Chain Editor:
