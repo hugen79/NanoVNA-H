@@ -22,6 +22,7 @@
 /*
  * main.c
  */
+
 extern float measured[2][101][2];
 
 #define CAL_LOAD 0
@@ -49,6 +50,18 @@ extern float measured[2][101][2];
 #define ETERM_ET 3 /* error term transmission tracking */
 #define ETERM_EX 4 /* error term isolation */
 
+#define DOMAIN_MODE (1<<0)
+#define DOMAIN_FREQ (0<<0)
+#define DOMAIN_TIME (1<<0)
+#define TD_FUNC (0b11<<1)
+#define TD_FUNC_BANDPASS (0b00<<1)
+#define TD_FUNC_LOWPASS_IMPULSE (0b01<<1)
+#define TD_FUNC_LOWPASS_STEP    (0b10<<1)
+#define TD_WINDOW (0b11<<3)
+#define TD_WINDOW_NORMAL (0b00<<3)
+#define TD_WINDOW_MINIMUM (0b01<<3)
+#define TD_WINDOW_MAXIMUM (0b10<<3)
+
 void cal_collect(int type);
 void cal_done(void);
 
@@ -62,6 +75,8 @@ uint32_t get_sweep_frequency(int type);
 float my_atof(const char *p);
 
 void toggle_sweep(void);
+
+extern int8_t sweep_enabled;
 
 /*
  * ui.c
@@ -80,22 +95,17 @@ extern int16_t rx_buffer[];
 #define STATE_LEN 32
 #define SAMPLE_LEN 48
 
-extern int16_t ref_state[];
 extern int16_t ref_buf[];
 extern int16_t samp_buf[];
-
-//extern int16_t refq_buf[];
-extern int16_t refiq_buf[];
 
 void dsp_process(int16_t *src, size_t len);
 void reset_dsp_accumerator(void);
 void calculate_gamma(float *gamma);
+void fetch_amplitude(float *gamma);
+void fetch_amplitude_ref(float *gamma);
 
 int si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength);
 
-void apply_edelay_at(int i);
-void touch_position(int *x, int *y);
-void draw_frequencies(void);
 
 /*
  * tlv320aic3204.c
@@ -118,7 +128,6 @@ extern void tlv320aic3204_select_in1(void);
 extern void tlv320aic3204_select_in3(void);
 extern void tlv320aic3204_adc_filter_enable(int enable);
 
-extern int chsnprintf(char *str, size_t size, const char *fmt, ...) ;
 
 /*
  * plot.c
@@ -145,6 +154,7 @@ extern const uint32_t numfont20x24[][24];
 #define S_MICRO "\035"
 #define S_OHM   "\036"
 #define S_DEGREE "\037"
+#define S_LARROW "\032"
 #define S_RARROW "\033"
 
 // trace 
@@ -152,10 +162,8 @@ extern const uint32_t numfont20x24[][24];
 #define TRACES_MAX 4
 
 enum {
-  TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_OFF
+  TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_OFF
 };
-
-extern const char *trc_type_name[];
 
 // LOGMAG: SCALE, REFPOS, REFVAL
 // PHASE: SCALE, REFPOS, REFVAL
@@ -198,6 +206,8 @@ void set_trace_scale(int t, float scale);
 void set_trace_refpos(int t, float refpos);
 float get_trace_scale(int t);
 float get_trace_refpos(int t);
+const char *get_trace_typename(int t);
+void draw_battery_status(void);
 
 void set_electrical_delay(float picoseconds);
 float get_electrical_delay(void);
@@ -234,6 +244,7 @@ void marker_position(int m, int t, int *x, int *y);
 int search_nearest_index(int x, int y, int t);
 
 extern int8_t redraw_requested;
+extern int16_t vbat;
 
 /*
  * ili9341.c
@@ -258,8 +269,13 @@ void ili9341_bulk(int x, int y, int w, int h);
 void ili9341_fill(int x, int y, int w, int h, int color);
 void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg);
+void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
+void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg);
-
+void ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t* out);
+void ili9341_read_memory_continue(int len, uint16_t* out);
+void show_version(void);
+void show_logo(void);
 
 /*
  * flash.c
@@ -280,6 +296,8 @@ typedef struct {
   trace_t _trace[TRACES_MAX];
   marker_t _markers[4];
   int _active_marker;
+  uint8_t _domain_mode; /* 0bxxxxxffm : where ff: TD_FUNC m: DOMAIN_MODE */
+  uint8_t _velocity_factor; // %
 
   int32_t checksum;
 } properties_t;
@@ -290,7 +308,7 @@ extern int16_t lastsaveid;
 extern properties_t *active_props;
 extern properties_t current_props;
 
-extern int previous_marker;
+extern int8_t previous_marker;
 
 #define frequency0 current_props._frequency0
 #define frequency1 current_props._frequency1
@@ -303,6 +321,8 @@ extern int previous_marker;
 #define trace current_props._trace
 #define markers current_props._markers
 #define active_marker current_props._active_marker
+#define domain_mode current_props._domain_mode
+#define velocity_factor current_props._velocity_factor
 
 int caldata_save(int id);
 int caldata_recall(int id);
@@ -321,7 +341,8 @@ typedef struct {
   int8_t digit; /* 0~5 */
   int8_t digit_mode;
   int8_t current_trace; /* 0..3 */
-  uint32_t value;
+  uint32_t value; // for editing at numeric input area
+  uint32_t previous_value;
 } uistat_t;
 
 extern uistat_t uistat;
@@ -338,6 +359,7 @@ void handle_touch_interrupt(void);
 
 void touch_cal_exec(void);
 void touch_draw_test(void);
+void enter_dfu(void);
 
 /*
  * adc.c
@@ -348,10 +370,21 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 void adc_stop(ADC_TypeDef *adc);
 void adc_interrupt(ADC_TypeDef *adc);
+int16_t adc_vbat_read(ADC_TypeDef *adc);
 
 /*
  * misclinous
  */
 #define PULSE do { palClearPad(GPIOC, GPIOC_LED); palSetPad(GPIOC, GPIOC_LED);} while(0)
+
+// convert vbat [mV] to battery indicator
+static inline uint8_t vbat2bati(int16_t vbat)
+{
+	if (vbat < 3200) return 0;
+	if (vbat < 3450) return 25;
+	if (vbat < 3700) return 50;
+	if (vbat < 4100) return 75;
+	return 100;
+}
 
 /*EOF*/

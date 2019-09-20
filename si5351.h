@@ -72,9 +72,6 @@
 
 #define SI5351_CRYSTAL_FREQ_25MHZ 	25000000
 
-#define DRIVE_STRENGTH_AUTO (-1)
-#define FREQ_HARMONICS 300000000
-
 void si5351_init(void);
 
 void si5351_setupPLL(uint8_t pll, /* SI5351_PLL_A or SI5351_PLL_B */

@@ -23,6 +23,7 @@
 #include "usbcfg.h"
 #include "si5351.h"
 #include "nanovna.h"
+#include "fft.h"
 
 #include <chprintf.h>
 #include <shell.h>
@@ -33,12 +34,22 @@
 
 #define ENABLED_DUMP
 
+static void apply_error_term(void);
 static void apply_error_term_at(int i);
 static void cal_interpolate(int s);
 
 void sweep(void);
 
 static MUTEX_DECL(mutex);
+
+#define DRIVE_STRENGTH_AUTO (-1)
+
+#if  defined(FRE800)
+#define FREQ_HARMONICS 270000000
+#else
+#define FREQ_HARMONICS 300000000
+#endif
+
 
 int32_t frequency_offset = 5000;
 int32_t frequency = 10000000;
@@ -47,14 +58,21 @@ int8_t frequency_updated = FALSE;
 int8_t sweep_enabled = TRUE;
 int8_t cal_auto_interpolate = TRUE;
 int8_t redraw_requested = FALSE;
+int8_t stop_the_world = FALSE;
+int16_t vbat = 0;
 
-static THD_WORKING_AREA(waThread1, 768);
+static THD_WORKING_AREA(waThread1, 640);
 static THD_FUNCTION(Thread1, arg)
 {
     (void)arg;
     chRegSetThreadName("sweep");
 
     while (1) {
+      if (stop_the_world) {
+          __WFI();
+          continue;
+      }
+
       if (sweep_enabled) {
         chMtxLock(&mutex);
         sweep();
@@ -62,6 +80,13 @@ static THD_FUNCTION(Thread1, arg)
       } else {
         __WFI();
         ui_process();
+      }
+
+      if (vbat != -1) {
+          adc_stop(ADC1);
+          vbat = adc_vbat_read(ADC1);
+          touch_start_watchdog();
+          draw_battery_status();
       }
 
       /* calculate trace coordinates */
@@ -89,6 +114,91 @@ toggle_sweep(void)
   sweep_enabled = !sweep_enabled;
 }
 
+float bessel0(float x) {
+	const float eps = 0.0001;
+
+	float ret = 0;
+	float term = 1;
+	float m = 0;
+
+	while (term  > eps * ret) {
+		ret += term;
+		++m;
+		term *= (x*x) / (4*m*m);
+	}
+
+	return ret;
+}
+
+float kaiser_window(float k, float n, float beta) {
+	if (beta == 0.0) return 1.0;
+	float r = (2 * k) / (n - 1) - 1;
+	return bessel0(beta * sqrt(1 - r * r)) / bessel0(beta);
+}
+
+static
+void
+transform_domain(void)
+{
+  if ((domain_mode & DOMAIN_MODE) != DOMAIN_TIME) return; // nothing to do for freq domain
+  // use spi_buffer as temporary buffer
+  // and calculate ifft for time domain
+  float* tmp = (float*)spi_buffer;
+
+  uint8_t window_size, offset;
+  switch (domain_mode & TD_FUNC) {
+      case TD_FUNC_BANDPASS:
+          offset = 0;
+          window_size = 101;
+          break;
+      case TD_FUNC_LOWPASS_IMPULSE:
+      case TD_FUNC_LOWPASS_STEP:
+          offset = 101;
+          window_size = 202;
+          break;
+  }
+
+  float beta = 0.0;
+  switch (domain_mode & TD_WINDOW) {
+      case TD_WINDOW_MINIMUM:
+          beta = 0.0; // this is rectangular
+          break;
+      case TD_WINDOW_NORMAL:
+          beta = 6.0;
+          break;
+      case TD_WINDOW_MAXIMUM:
+          beta = 13;
+          break;
+  }
+
+  for (int ch = 0; ch < 2; ch++) {
+      memcpy(tmp, measured[ch], sizeof(measured[0]));
+      if (beta != 0.0) {
+          for (int i = 0; i < 101; i++) {
+              float w = kaiser_window(i+offset, window_size, beta);
+              tmp[i*2+0] *= w;
+              tmp[i*2+1] *= w;
+          }
+      }
+      for (int i = 101; i < 128; i++) {
+          tmp[i*2+0] = 0.0;
+          tmp[i*2+1] = 0.0;
+      }
+      fft128_inverse((float(*)[2])tmp);
+      memcpy(measured[ch], tmp, sizeof(measured[0]));
+      for (int i = 0; i < 101; i++) {
+          measured[ch][i][0] /= 128.0;
+          measured[ch][i][1] /= 128.0;
+      }
+      if ( (domain_mode & TD_FUNC) == TD_FUNC_LOWPASS_STEP ) {
+          for (int i = 1; i < 101; i++) {
+              measured[ch][i][0] += measured[ch][i-1][0];
+              measured[ch][i][1] += measured[ch][i-1][1];
+          }
+      }
+  }
+}
+
 static void cmd_pause(BaseSequentialStream *chp, int argc, char *argv[])
 {
     (void)chp;
@@ -110,6 +220,14 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    if (argc == 1) {
+        if (strcmp(argv[0], "dfu") == 0) {
+            chprintf(chp, "Performing reset to DFU mode\r\n");
+            enter_dfu();
+            return;
+        }
+    }
+
     chprintf(chp, "Performing reset\r\n");
 
     rccEnableWWDG(FALSE);
@@ -121,29 +239,74 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
     while (1)
       ;
 }
-
 int set_frequency(int freq)
 {
     int delay = 0;
     if (frequency == freq)
           return delay;
+#if  defined(FRE800)
+    if (freq > 1200000000 && frequency <= 1200000000) {
+      tlv320aic3204_set_gain(95, 95);
+      delay += 10;
+    } else
+    if (freq > 1000000000 && frequency <= 1000000000) {
+      tlv320aic3204_set_gain(90, 90);
+      delay += 10;
+    } else
+    if (freq > 800000000 && frequency <= 800000000) {
+      tlv320aic3204_set_gain(80, 80);
+      delay += 10;
+    } else
+    if (freq > 540000000 && frequency <= 540000000) {
+      tlv320aic3204_set_gain(52, 50);
+      delay += 10;
+    } else
+    if (freq > FREQ_HARMONICS && frequency <= FREQ_HARMONICS) {
+      tlv320aic3204_set_gain(42, 40);
+      delay += 10;
+    } else
+    if (freq <= FREQ_HARMONICS && frequency > FREQ_HARMONICS) {
+      tlv320aic3204_set_gain(5, 5);
+      delay += 10;
+    }
+	
+#else	
+	
+    if (freq > 1400000000 && frequency <= 1400000000) {
+      tlv320aic3204_set_gain(95, 95);
+      delay += 10;
+    } else
+    if (freq > 1200000000 && frequency <= 1200000000) {
+      tlv320aic3204_set_gain(90, 90);
+      delay += 10;
+    } else
+    if (freq > 900000000 && frequency <= 900000000) {
+      tlv320aic3204_set_gain(80, 80);
+      delay += 10;
+    } else
+    if (freq > 540000000 && frequency <= 540000000) {
+      tlv320aic3204_set_gain(52, 50);
+      delay += 10;
+    } else
+    if (freq > FREQ_HARMONICS && frequency <= FREQ_HARMONICS) {
+      tlv320aic3204_set_gain(42, 40);
+      delay += 10;
+    } else
+    if (freq <= FREQ_HARMONICS && frequency > FREQ_HARMONICS) {
+      tlv320aic3204_set_gain(5, 5);
+      delay += 10;
+    }
 
-        if (freq > FREQ_HARMONICS && frequency <= FREQ_HARMONICS) {
-          tlv320aic3204_set_gain(40, 38);
-          delay += 3;
-        }
-        if (freq <= FREQ_HARMONICS && frequency > FREQ_HARMONICS) {
-          tlv320aic3204_set_gain(5, 5);
-          delay += 3;
-        }
+#endif
 
-        int8_t ds = drive_strength;
-        if (ds == DRIVE_STRENGTH_AUTO) {
-          ds = freq > FREQ_HARMONICS ? SI5351_CLK_DRIVE_STRENGTH_8MA : SI5351_CLK_DRIVE_STRENGTH_2MA;
-        }
-        delay += si5351_set_frequency_with_offset(freq, frequency_offset, ds);
 
-        frequency = freq;
+    int8_t ds = drive_strength;
+    if (ds == DRIVE_STRENGTH_AUTO) {
+      ds = freq > FREQ_HARMONICS ? SI5351_CLK_DRIVE_STRENGTH_8MA : SI5351_CLK_DRIVE_STRENGTH_2MA;
+    }
+    delay += si5351_set_frequency_with_offset(freq, frequency_offset, ds);
+
+    frequency = freq;
     return delay;
 }
 
@@ -174,7 +337,7 @@ static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
 static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
 {
     if (argc != 1) {
-    	chprintf(chp, "usage: power {0-3|-1}\r\n");
+        chprintf(chp, "usage: power {0-3|-1}\r\n");
         return;
     }
     drive_strength = atoi(argv[0]);
@@ -268,8 +431,6 @@ duplicate_buffer_to_dump(int16_t *p)
     p = samp_buf;
   else if (dump_selection == 2)
     p = ref_buf;
-  else if (dump_selection == 3)
-    p = refiq_buf;
   memcpy(dump_buffer, p, sizeof dump_buffer);
 }
 #endif
@@ -359,6 +520,42 @@ static void cmd_dump(BaseSequentialStream *chp, int argc, char *argv[])
 }
 #endif
 
+static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
+{
+// read pixel count at one time (PART*2 bytes required for read buffer)
+#define PART 320
+    (void)argc;
+    (void)argv;
+
+    // pause sweep
+    stop_the_world = TRUE;
+
+    chThdSleepMilliseconds(1000);
+
+    // use uint16_t spi_buffer[1024] (defined in ili9341) for read buffer
+    uint16_t *buf = &spi_buffer[0];
+    int len = 320 * 240;
+    int i;
+    ili9341_read_memory(0, 0, 320, 240, PART, buf);
+    for (i = 0; i < PART; i++) {
+        streamPut(chp, buf[i] >> 8);
+        streamPut(chp, buf[i] & 0xff);
+    }
+
+    len -= PART;
+    while (len > 0) {
+        ili9341_read_memory_continue(PART, buf);
+        for (i = 0; i < PART; i++) {
+            streamPut(chp, buf[i] >> 8);
+            streamPut(chp, buf[i] & 0xff);
+        }
+        len -= PART;
+    }
+    //*/
+
+    stop_the_world = FALSE;
+}
+
 #if 0
 static void cmd_gamma(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -376,9 +573,29 @@ static void cmd_gamma(BaseSequentialStream *chp, int argc, char *argv[])
 }
 #endif
 
+static void (*sample_func)(float *gamma) = calculate_gamma;
+
+static void cmd_sample(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  if (argc == 1) {
+    if (strcmp(argv[0], "ref") == 0) {
+      sample_func = fetch_amplitude_ref;
+      return;
+    } else if (strcmp(argv[0], "ampl") == 0) {
+      sample_func = fetch_amplitude;
+      return;
+    } else if (strcmp(argv[0], "gamma") == 0) {
+      sample_func = calculate_gamma;
+      return;
+    }
+  }
+  chprintf(chp, "usage: sample {gamma|ampl|ref}\r\n");
+}
+
+
 #if 0
 int32_t frequency0 = 1000000;
-int32_t frequency1 = 900000000;
+int32_t frequency1 = 300000000;
 int16_t sweep_points = 101;
 
 uint32_t frequencies[101];
@@ -394,7 +611,7 @@ config_t config = {
   /* menu_active_color */ 0x7777,
   /* trace_colors[4] */ { RGB565(0,255,255), RGB565(255,0,40), RGB565(0,0,255), RGB565(50,255,0) },
   ///* touch_cal[4] */ { 620, 600, 160, 190 },
-  /* touch_cal[4] */ { 480, 587, 145, 186 },
+  /* touch_cal[4] */ { 370, 540, 154, 191 },
   /* default_loadcal */    0,
   /* checksum */           0
 };
@@ -405,10 +622,8 @@ properties_t current_props = {
 
 #if  defined(FRE800)
   /* frequency1 */ 800000000, // end = 800MHz
-#elif  defined(FRE1300)
-  /* frequency1 */ 1300000000, // end = 1300MHz
 #else
-  /* frequency1 */ 900000000, // end = 300MHz
+  /* frequency1 */ 900000000, // end = 900MHz
 #endif
   /* sweep_points */     101,
   /* cal_status */         0,
@@ -426,6 +641,8 @@ properties_t current_props = {
     { 1, 30, 0 }, { 0, 40, 0 }, { 0, 60, 0 }, { 0, 80, 0 }
   },
   /* active_marker */      0,
+  /* domain_mode */        0,
+  /* velocity_factor */   70,
   /* checksum */           0
 };
 properties_t *active_props = &current_props;
@@ -479,15 +696,10 @@ void sweep(void)
 
  rewind:
   frequency_updated = FALSE;
+  //delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
-
-#ifdef FILTER_ON
-	delay = set_frequency(frequencies[i]) +4;  //因为开启了AIC3204的滤波器即使不需要频率稳定的延迟时间也还是需要等待通道切换后滤波器的延迟时间
-#else
-	delay = set_frequency(frequencies[i]) ;  //因为开启了AIC3204的滤波器即使不需要频率稳定的延迟时间也还是需要等待通道切换后滤波器的延迟时间
-#endif
-
+    delay = set_frequency(frequencies[i]);
     tlv320aic3204_select_in3(); // CH0:REFLECT
     wait_dsp(delay);
 
@@ -495,13 +707,13 @@ void sweep(void)
     palClearPad(GPIOC, GPIOC_LED);
 
     /* calculate reflection coeficient */
-    calculate_gamma(measured[0][i]);
+    (*sample_func)(measured[0][i]);
 
     tlv320aic3204_select_in1(); // CH1:TRANSMISSION
-    wait_dsp(delay); //这时频率已经稳定，不需要再等待频率稳定的时间
+    wait_dsp(delay);
 
     /* calculate transmission coeficient */
-    calculate_gamma(measured[1][i]);
+    (*sample_func)(measured[1][i]);
 
     // blink LED while scanning
     palSetPad(GPIOC, GPIOC_LED);
@@ -515,15 +727,13 @@ void sweep(void)
     redraw_requested = FALSE;
     ui_process();
     if (redraw_requested)
-      return; // return to redraw screen asap.
+      break; // return to redraw screen asap.
       
     if (frequency_updated)
       goto rewind;
   }
- // set_frequency(frequencies[0]);
 
-  //if (cal_status & CALSTAT_APPLY)
-  //  apply_error_term();
+  transform_domain();
 }
 
 static void
@@ -576,9 +786,6 @@ update_frequencies(void)
   for (i = 0; i < sweep_points; i++)
     frequencies[i] = start + span * i / (sweep_points - 1) * 100;
 
-  if (cal_auto_interpolate)
-    cal_interpolate(lastsaveid);
-
   update_marker_index();
   
   frequency_updated = TRUE;
@@ -614,13 +821,10 @@ freq_mode_centerspan(void)
 
 #define START_MIN 50000
 #if  defined(FRE800)
-#define STOP_MAX 800000000
-#warning frequency800
-#elif  defined(FRE1300)
 #define STOP_MAX 1300000000
-#warning frequency1300
+#warning frequency800
 #else
-#define STOP_MAX 900000000
+#define STOP_MAX 1500000000
 #warning frequency900
 #endif
 
@@ -628,6 +832,7 @@ void
 set_sweep_frequency(int type, float frequency)
 {
   int32_t freq = frequency;
+  bool cal_applied = cal_status & CALSTAT_APPLY;
   switch (type) {
   case ST_START:
     freq_mode_startstop();
@@ -706,6 +911,9 @@ set_sweep_frequency(int type, float frequency)
     }
     break;
   }
+
+  if (cal_auto_interpolate && cal_applied)
+    cal_interpolate(lastsaveid);
 }
 
 uint32_t
@@ -876,7 +1084,6 @@ eterm_calc_er(int sign)
     }
     cal_data[ETERM_ER][i][0] = err;
     cal_data[ETERM_ER][i][1] = eri;
-    //cal_data[ETERM_ES][i][1] = 0;
   }
   cal_status &= ~CALSTAT_SHORT;
   cal_status |= CALSTAT_ER;
@@ -908,7 +1115,7 @@ eterm_calc_et(void)
   cal_status |= CALSTAT_ET;
 }
 
-/*void apply_error_term(void)
+void apply_error_term(void)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
@@ -938,7 +1145,7 @@ eterm_calc_et(void)
     measured[1][i][0] = s21ar;
     measured[1][i][1] = s21ai;
   }
-}*/
+}
 
 void apply_error_term_at(int i)
 {
@@ -1010,12 +1217,12 @@ cal_collect(int type)
 
   case CAL_THRU:
     cal_status |= CALSTAT_THRU;
-    memcpy(cal_data[CAL_THRU], measured[1], sizeof measured[1]);
+    memcpy(cal_data[CAL_THRU], measured[1], sizeof measured[0]);
     break;
 
   case CAL_ISOLN:
     cal_status |= CALSTAT_ISOLN;
-    memcpy(cal_data[CAL_ISOLN], measured[1], sizeof measured[1]);
+    memcpy(cal_data[CAL_ISOLN], measured[1], sizeof measured[0]);
     break;
   }
   chMtxUnlock(&mutex);
@@ -1221,17 +1428,33 @@ static void cmd_recall(BaseSequentialStream *chp, int argc, char *argv[])
   chprintf(chp, "recall {id}\r\n");
 }
 
-
-const char *trc_type_name[] = {
-  "LOGMAG", "PHASE", "DELAY", "SMITH", "POLAR", "LINEAR", "SWR"
+const struct {
+  const char *name;
+  uint16_t refpos;
+  float scale_unit;
+} trace_info[] = {
+  { "LOGMAG", 7, 10 },
+  { "PHASE",  4, 90 },
+  { "DELAY",  4,  1 },
+  { "SMITH",  0,  1 },
+  { "POLAR",  0,  1 },
+  { "LINEAR", 0,  0.125 },
+  { "SWR",    0,  1 },
+  { "REAL",   4,  0.25 },
+  { "IMAG",   4,  0.25 },
+  { "R",      0, 100 },
+  { "X",      4, 100 }
 };
-const uint8_t default_refpos[] = {
-  7, 4, 4, 0, 0, 0, 0
-};
 
-const char *trc_channel_name[] = {
+const char * const trc_channel_name[] = {
   "CH0", "CH1"
 };
+
+const char *
+get_trace_typename(int t)
+{
+  return trace_info[trace[t].type].name;
+}
 
 void set_trace_type(int t, int type)
 {
@@ -1249,7 +1472,7 @@ void set_trace_type(int t, int type)
   }
   if (trace[t].type != type) {
     trace[t].type = type;
-    trace[t].refpos = default_refpos[type];
+    trace[t].refpos = trace_info[type].refpos;
     if (polar)
       force = TRUE;
   }    
@@ -1269,15 +1492,7 @@ void set_trace_channel(int t, int channel)
 
 void set_trace_scale(int t, float scale)
 {
-  switch (trace[t].type) {
-  case TRC_LOGMAG:
-    scale /= 10;
-    break;
-  case TRC_PHASE:
-    scale /= 90;
-    break;
-  }
-
+  scale /= trace_info[trace[t].type].scale_unit;
   if (trace[t].scale != scale) {
     trace[t].scale = scale;
     force_set_markmap();
@@ -1286,12 +1501,7 @@ void set_trace_scale(int t, float scale)
 
 float get_trace_scale(int t)
 {
-  float n = 1;
-  if (trace[t].type == TRC_LOGMAG)
-    n = 10;
-  else if (trace[t].type == TRC_PHASE)
-    n = 90;
-  return trace[t].scale * n;
+  return trace[t].scale * trace_info[trace[t].type].scale_unit;
 }
 
 void set_trace_refpos(int t, float refpos)
@@ -1350,10 +1560,10 @@ static void cmd_trace(BaseSequentialStream *chp, int argc, char *argv[])
   if (argc == 0) {
     for (t = 0; t < 4; t++) {
       if (trace[t].enabled) {
-        const char *type = trc_type_name[trace[t].type];
+        const char *type = trace_info[trace[t].type].name;
         const char *channel = trc_channel_name[trace[t].channel];
-        float scale = trace[t].scale;
-        float refpos = trace[t].refpos;
+        float scale = get_trace_scale(t);
+        float refpos = get_trace_refpos(t);
         chprintf(chp, "%d %s %s %f %f\r\n", t, type, channel, scale, refpos);
       }
     }
@@ -1373,7 +1583,7 @@ static void cmd_trace(BaseSequentialStream *chp, int argc, char *argv[])
   if (t < 0 || t >= 4)
     goto usage;
   if (argc == 1) {
-    const char *type = trc_type_name[trace[t].type];
+    const char *type = get_trace_typename(t);
     const char *channel = trc_channel_name[trace[t].channel];
     chprintf(chp, "%d %s %s\r\n", t, type, channel);
     return;
@@ -1393,6 +1603,16 @@ static void cmd_trace(BaseSequentialStream *chp, int argc, char *argv[])
       set_trace_type(t, TRC_LINEAR);
     } else if (strcmp(argv[1], "swr") == 0) {
       set_trace_type(t, TRC_SWR);
+    } else if (strcmp(argv[1], "real") == 0) {
+      set_trace_type(t, TRC_REAL);
+    } else if (strcmp(argv[1], "imag") == 0) {
+      set_trace_type(t, TRC_IMAG);
+    } else if (strcmp(argv[1], "r") == 0) {
+      set_trace_type(t, TRC_R);
+    } else if (strcmp(argv[1], "x") == 0) {
+      set_trace_type(t, TRC_X);
+    } else if (strcmp(argv[1], "linear") == 0) {
+      set_trace_type(t, TRC_LINEAR);
     } else if (strcmp(argv[1], "off") == 0) {
       set_trace_type(t, TRC_OFF);
     } else if (strcmp(argv[1], "scale") == 0 && argc >= 3) {
@@ -1403,7 +1623,9 @@ static void cmd_trace(BaseSequentialStream *chp, int argc, char *argv[])
       //trace[t].refpos = my_atof(argv[2]);
       set_trace_refpos(t, my_atof(argv[2]));
       goto exit;
-    } 
+    } else {
+      goto usage;
+    }
   }
   if (argc > 2) {
     int src = atoi(argv[2]);
@@ -1414,7 +1636,8 @@ static void cmd_trace(BaseSequentialStream *chp, int argc, char *argv[])
  exit:
   return;
  usage:
-  chprintf(chp, "trace {0|1|2|3|all} [logmag|phase|smith|linear|delay|swr|off] [src]\r\n");
+  chprintf(chp, "trace {0|1|2|3|all} [logmag|phase|smith|linear|delay|swr|real|imag|r|x|off] [src]\r\n");
+  chprintf(chp, "trace {0|1|2|3} {scale|refpos} {value}\r\n");
 }
 
 
@@ -1658,14 +1881,31 @@ static void cmd_stat(BaseSequentialStream *chp, int argc, char *argv[])
 }
 
 
+#ifndef VERSION
+#define VERSION "unknown"
+#endif
 
+const char NANOVNA_VERSION[] = VERSION;
 
+static void cmd_version(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  chprintf(chp, "%s\r\n", NANOVNA_VERSION);
+}
 
-#define SHELL_WA_SIZE THD_WORKING_AREA_SIZE(256)
-static THD_WORKING_AREA(waThread2, SHELL_WA_SIZE);
+static void cmd_vbat(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  chprintf(chp, "%d mV\r\n", vbat);
+}
+
+static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */442);
 
 static const ShellCommand commands[] =
 {
+    { "version", cmd_version },
     { "reset", cmd_reset },
     { "freq", cmd_freq },
     { "offset", cmd_offset },
@@ -1682,6 +1922,7 @@ static const ShellCommand commands[] =
     { "stat", cmd_stat },
     { "gain", cmd_gain },
     { "power", cmd_power },
+    { "sample", cmd_sample },
     //{ "gamma", cmd_gamma },
     //{ "scan", cmd_scan },
     { "sweep", cmd_sweep },
@@ -1696,6 +1937,8 @@ static const ShellCommand commands[] =
     { "trace", cmd_trace },
     { "marker", cmd_marker },
     { "edelay", cmd_edelay },
+    { "capture", cmd_capture },
+    { "vbat", cmd_vbat },
     { NULL, NULL }
 };
 
@@ -1739,21 +1982,7 @@ int main(void)
       * Initialize graph plotting
       */
 
-     ili9341_fill(0, 0, 320, 240, 0);
-#if  defined(FRE800)
-     ili9341_drawstring_5x7("NanoVNA-H 800MHz", 125, 70, 0xffff, 0x0000);
-#elif defined(FRE1300)
-     ili9341_drawstring_5x7("NanoVNA-H 1300MHz", 123, 70, 0xffff, 0x0000);
-#else
-     ili9341_drawstring_5x7("NanoVNA-H 900MHz", 125, 70, 0xffff, 0x0000);
-#endif
-     ili9341_drawstring_5x7( "GEN111.TAOBAO.COM ", 123, 82, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( "https://github.com/hugen79/NanoVNA-H ", 80, 94, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( "Based on edy555 design ", 110, 106, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( "2016-2019 Copyright @edy555, licensed under GPL. ", 50, 118, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( "https://github.com/ttrftech/NanoVNA", 80, 130, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( "Build date:", 110, 142, 0xffff, 0x0000);
-     ili9341_drawstring_5x7( __DATE__, 170, 142, 0xffff, 0x0000);
+     show_logo();
      plot_init();
 
     // MCO on PA8

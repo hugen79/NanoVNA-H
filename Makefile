@@ -3,30 +3,17 @@
 # NOTE: Can be overridden externally.
 #
 
-
-
 # Compiler options here.
 ifeq ($(USE_OPT),)
-  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16
-endif
-
-# .
-ifeq ($(FILTER),ON)
-  USE_OPT += -FILTER_ON
+  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage
 endif
 
 # .
 ifeq ($(FRE),800)
   USE_OPT += -DFRE800
-  BUILDDIR = build_800
+  BUILDDIR = build800
 endif
 
-
-# .
-ifeq ($(FRE),1300)
-  USE_OPT += -DFRE1300
-  BUILDDIR = build_1300
-endif
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
@@ -72,6 +59,10 @@ endif
 #
 # Build global options
 ##############################################################################
+
+ifeq ($(VERSION),)
+  VERSION="$(shell git describe --tags)"
+endif
 
 ##############################################################################
 # Architecture or project specific options
@@ -136,7 +127,7 @@ CSRC = $(STARTUPSRC) \
        $(STREAMSSRC) \
        $(SHELLSRC) \
        usbcfg.c \
-       main.c si5351.c si5351_low.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c
 
 #       $(TESTSRC) \
 
@@ -220,7 +211,7 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0
+UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0 -DVERSION=\"$(VERSION)\"
 
 # Define ASM defines here
 UADEFS =
@@ -240,6 +231,15 @@ ULIBS = -lm
 
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC
 include $(RULESPATH)/rules.mk
+
+flash: build/ch.bin
+	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
+	
+flash800: build800/ch.bin
+	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build800/ch.bin
+
+dfu:
+	printf "reset dfu\r" >/dev/cu.usbmodem401
 
 TAGS: Makefile
 	@etags *.[ch] NANOVNA_STM32_F072/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F0xx ChibiOS/os -name \*.\[ch\] -print) 
