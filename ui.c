@@ -408,7 +408,7 @@ show_logo(void)
   int x = 15, y = 50;
   ili9341_fill(0, 0, 320, 240, 0);
 
-  ili9341_drawstring_size(BOARD_NAME, x+60, y, 0xffff, 0x0000, 4);
+  ili9341_drawstring_size(BOARD_NAME, x+60, y, RGB565(255,0,40), 0x0000, 4);
   y += 25;
 
   ili9341_drawstring_5x7("GEN111.TAOBAO.COM", x, y += 10, 0xffff, 0x0000);
