@@ -25,6 +25,9 @@
 
 extern float measured[2][101][2];
 
+// Use ChibiOS ADC API or original way
+#define USE_CHIBIOS_ADC_API FALSE
+
 #define CAL_LOAD 0
 #define CAL_OPEN 1
 #define CAL_SHORT 2

@@ -4,6 +4,7 @@
 #include "hal.h"
 #include "chprintf.h"
 #include "nanovna.h"
+#include "fft.h"
 
 #define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
 

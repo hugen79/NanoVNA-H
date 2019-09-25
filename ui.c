@@ -24,6 +24,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+void touch_draw_test(void);
+void touch_position(int *x, int *y);
+extern void draw_frequencies(void);
+int chsnprintf(char *str, size_t size, const char *fmt, ...);
 
 uistat_t uistat = {
  digit: 6,
@@ -388,7 +392,9 @@ show_version(void)
 {
   int x = 5, y = 5;
   
+#if 0
   adc_stop(ADC1);
+#endif
   ili9341_fill(0, 0, 320, 240, 0);
 
   ili9341_drawstring_size(BOARD_NAME, x, y, 0xffff, 0x0000, 4);
@@ -418,6 +424,7 @@ show_version(void)
 void
 enter_dfu(void)
 {
+#ifndef NANOVNA_F303
   adc_stop(ADC1);
 
   int x = 5, y = 5;
@@ -430,6 +437,7 @@ enter_dfu(void)
   // see __early_init in ./NANOVNA_STM32_F072/board.c
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
   NVIC_SystemReset();
+#endif
 }
 
 

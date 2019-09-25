@@ -10,94 +10,34 @@ NanoVNA - Very tiny handheld Vector Network Analyzer
 <img src="/doc/nanovna.jpg" width="480px">
 </div>
 
+
 # About
 
-NanoVNA is very tiny handheld Vector Network Analyzer (VNA). It is
-standalone with lcd display, portable device with battery. This
-project aim to provide an RF gadget but useful instrument for
-enthusiast.
+This is my attemp to add the STM32F303CCT6 to this popular NanoVNA project.  The befit is larger SRAM 40KB from 16KB, and larger flash 256KB from 128KB.  For detail information, please refer to the original project page.
+https://github.com/ttrftech/NanoVNA
 
-This repository contains source of NanoVNA firmware.
+To compile for STM32F303CCT6, add TARGET=F303
+make TARGET=F303
 
-## Prepare ARM Cross Tools
+Since F303 doesn't support crystall-less DFU, a separate ST_Link is required to flash the firmware.  Users needs to solder the pins on the NanoVNA SWD port.
 
-**UPDATE**: Recent gcc version works to build NanoVNA, no need old version.
+To flash firmware at Linux, refer to
+https://github.com/texane/stlink
 
-### MacOSX
+The flash firmware command at Linux(Ubuntu) is
+st-flash write build/ch.bin 0x8000000
 
-Install cross tools and firmware updating tool.
+Rememebr to short the BOOT pin to VCC at NanoVNA board for firmware update.
 
-    $ brew tap px4/px4
-    $ brew install gcc-arm-none-eabi-80
-    $ brew install dfu-util
+At Ubuntu, the shell can be accessed via
+sudo screen /dev/ttyACM0 19200
 
-### Linux (ubuntu)
+Till now, the ADC porting is not done yet.  So the touch function doesn't work.  I will update the tree as soon as I finish the ADC porting.
 
-Download arm cross tools from [here](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads).
+Thanks hugen79 for providing the hardware for my porting work.  For hardware modinformation, please visit his page at
+https://github.com/hugen79/NanoVNA-H
 
-    $ wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/8-2018q4/gcc-arm-none-eabi-8-2018-q4-major-linux.tar.bz2
-    $ sudo tar xfj -C /usr/local gcc-arm-none-eabi-8-2018-q4-major-linux.tar.bz2
-    $ PATH=/usr/local/gcc-arm-none-eabi-8-2018-q4-major/bin:$PATH
-    $ sudo apt install -y dfu-util
-
-## Fetch source code
-
-Fetch source and submodule.
-
-    $ git clone https://github.com/ttrftech/NanoVNA.git
-    $ cd NanoVNA
-    $ git submodule update --init --recursive
-
-## Build
-
-Just make in the directory.
-
-    $ make
-
-### Build firmware using docker
-
-Using [this docker image](https://cloud.docker.com/u/edy555/repository/docker/edy555/arm-embedded) without installing arm toolchain.
-
-    $ cd NanoVNA
-    $ docker run -it --rm -v $(PWD):/work edy555/arm-embedded:8.2 make
-
-## Flash firmware
-
-First, make device enter DFU mode by one of following methods.
-
-* Jumper BOOT0 pin at powering device
-* Select menu Config->DFU (needs recent firmware)
-
-Then, flash firmware using dfu-util via USB.
-
-    $ dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
-
-Or simply use make.
-
-    $ make flash
-
-## Control from PC
-
-See [python directory](/python/README.md).
-
-
-## Note
-
-Hardware design material is disclosed to prevent bad quality clone. Please let me know if you would have your own unit.
-
-
-## Reference
-
-* [Schematics](/doc/nanovna-sch.pdf)
-* [PCB Photo](/doc/nanovna-pcb-photo.jpg)
-* [Block Diagram](/doc/nanovna-blockdiagram.png)
-* Kit available from https://ttrf.tk/kit/nanovna
-
-## Credit
-
-* [@edy555](https://github.com/edy555)
-
-### Contributors
-
-* [@hugen79](https://github.com/hugen79)
-* [@cho45](https://github.com/cho45)
+Hardware mod candidate list:
+- Add D2 Schottky diode to measure the battery.  Easy.
+- Replace STM32F072CBT6 to STM32F303CCT6.  Harder.
+- Add 8MHz chrstall to PCB.  Better with PCB revision.

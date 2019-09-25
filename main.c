@@ -18,6 +18,30 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#if 0
+#define DEBUG_ENABLE_SI5351 FALSE
+#define DEBUG_ENABLE_CODEC  TRUE
+#define DEBUG_ENABLE_ADC  FALSE
+#define DEBUG_ENABLE_LCD  TRUE
+#endif
+#if 0
+#define DEBUG_ENABLE_SI5351 TRUE
+#define DEBUG_ENABLE_CODEC  TRUE
+#define DEBUG_ENABLE_ADC  FALSE
+#endif
+#if 0
+#define DEBUG_ENABLE_SI5351 TRUE
+#define DEBUG_ENABLE_CODEC  FALSE
+#define DEBUG_ENABLE_ADC  FALSE
+#define DEBUG_ENABLE_LCD  TRUE
+#endif
+#if 1
+#define DEBUG_ENABLE_SI5351 FALSE
+#define DEBUG_ENABLE_CODEC  FALSE
+#define DEBUG_ENABLE_ADC  FALSE
+#define DEBUG_ENABLE_LCD  TRUE
+#endif
+
 #include "ch.h"
 #include "hal.h"
 #include "usbcfg.h"
@@ -37,6 +61,9 @@
 static void apply_error_term(void);
 static void apply_error_term_at(int i);
 static void cal_interpolate(int s);
+void touch_start_watchdog(void);
+void apply_edelay_at(int);
+void touch_position(int *, int *);
 
 void sweep(void);
 
@@ -76,13 +103,15 @@ static THD_FUNCTION(Thread1, arg)
         ui_process();
       }
 
+#if DEBUG_ENABLE_ADC
       if (vbat != -1) {
           adc_stop(ADC1);
           vbat = adc_vbat_read(ADC1);
           touch_start_watchdog();
           draw_battery_status();
       }
-
+#endif
+      
       /* calculate trace coordinates */
       plot_into_index(measured);
       /* plot trace as raster */
@@ -224,11 +253,13 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 
     chprintf(chp, "Performing reset\r\n");
 
-    rccEnableWWDG(FALSE);
+#if DEBUG_ENABLE_ADC
+   rccEnableWWDG(FALSE);
 
     WWDG->CFR = 0x60;
     WWDG->CR = 0xff;
-
+#endif
+    
     /* wait forever */
     while (1)
       ;
@@ -402,7 +433,8 @@ duplicate_buffer_to_dump(int16_t *p)
 
 void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
 {
-#if PORT_SUPPORTS_RT
+  // #if PORT_SUPPORTS_RT
+#if 0
   int32_t cnt_s = port_rt_get_counter_value();
   int32_t cnt_e;
 #endif
@@ -419,7 +451,8 @@ void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
     --wait_count;
   }
 
-#if PORT_SUPPORTS_RT
+//#if PORT_SUPPORTS_RT
+#if 0
   cnt_e = port_rt_get_counter_value();
   stat.interval_cycles = cnt_s - stat.last_counter_value;
   stat.busy_cycles = cnt_e - cnt_s;
@@ -492,6 +525,8 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    chMtxLock(&mutex);
+
     // pause sweep
     stop_the_world = TRUE;
 
@@ -519,6 +554,7 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
     //*/
 
     stop_the_world = FALSE;
+    chMtxUnlock(&mutex);
 }
 
 #if 0
@@ -1915,9 +1951,11 @@ int main(void)
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
+#if DEBUG_ENABLE_SI5351
     i2cStart(&I2CD1, &i2ccfg);
     si5351_init();
-
+#endif
+    
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
   /*
@@ -1936,11 +1974,13 @@ int main(void)
     usbStart(serusbcfg.usbp, &usbcfg);
     usbConnectBus(serusbcfg.usbp);
 
+#if DEBUG_ENABLE_LCD
   /*
    * SPI LCD Initialize
    */
   ili9341_init();
-
+  // show_version();
+  
   /*
    * Initialize graph plotting
    */
@@ -1955,27 +1995,32 @@ int main(void)
    * by the Reference Manual.
    */
   dacStart(&DACD2, &dac1cfg1);
-
+  
   /* initial frequencies */
   update_frequencies();
 
   /* restore frequencies and calibration properties from flash memory */
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
-
+  
   redraw_frame();
-
+#endif
+  
   /*
    * I2S Initialize
    */
+#if DEBUG_ENABLE_CODEC
   tlv320aic3204_init();
   i2sInit();
   i2sObjectInit(&I2SD2);
   i2sStart(&I2SD2, &i2sconfig);
   i2sStartExchange(&I2SD2);
-
+#endif
+  
+#if DEBUG_ENABLE_ADC
   ui_init();
-
+#endif
+  
   /*
    * Shell manager initialization.
    */

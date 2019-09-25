@@ -25,6 +25,9 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <arm_math.h>
+
+#define M_PI PI
 
 static uint8_t reverse_bits(uint8_t x, int n) {
 	uint8_t result = 0;
