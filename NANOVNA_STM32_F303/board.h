@@ -113,7 +113,7 @@
 /*
  * GPIOA setup:
  *
- * PA8  - MCO 						(alternate 0).
+ * PA8  - MCO 			    (alternate 0).
  * PA11 - USB_DM                    (alternate 14).
  * PA12 - USB_DP                    (alternate 14).
  * PA13 - SWDIO                     (alternate 0).
@@ -216,14 +216,14 @@
  *
  * PB0  - XN                        analog
  * PB1  - YN                        analog
- * PB3  - SPI1_SCLK                 (alternate 0).
- * PB4  - SPI1_MISO                 (alternate 0).
- * PB5  - SPI1_MOSI                 (alternate 0).
- * PB8  - I2C1_SCL                  (alternate 1).
- * PB9  - I2C1_SDA                  (alternate 1).
- * PB12 - I2S2_WCLK                 (alternate 0).
- * PB13 - I2S2_BCLK                 (alternate 0).
- * PB15 - I2S2_MOSI                 (alternate 0).
+ * PB3  - SPI1_SCLK                 (alternate 5).
+ * PB4  - SPI1_MISO                 (alternate 5).
+ * PB5  - SPI1_MOSI                 (alternate 5).
+ * PB8  - I2C1_SCL                  (alternate 4).
+ * PB9  - I2C1_SDA                  (alternate 4).
+ * PB12 - I2S2_WCLK                 (alternate 5).
+ * PB13 - I2S2_BCLK                 (alternate 5).
+ * PB15 - I2S2_MOSI                 (alternate 5).
  */
 #define VAL_GPIOB_MODER             (PIN_MODE_ANALOG(GPIOB_XN) |   \
                                      PIN_MODE_ANALOG(GPIOB_YN) |   \
@@ -308,19 +308,19 @@
 #define VAL_GPIOB_AFRL              (PIN_AFIO_AF(0, 0) |           \
                                      PIN_AFIO_AF(1, 0) |           \
                                      PIN_AFIO_AF(2, 0) |           \
-                                     PIN_AFIO_AF(GPIOB_SPI_SCLK, 6) | \
-                                     PIN_AFIO_AF(GPIOB_SPI_MOSI, 6) | \
-                                     PIN_AFIO_AF(GPIOB_SPI_MISO, 6) | \
+                                     PIN_AFIO_AF(GPIOB_SPI_SCLK, 5) | \
+                                     PIN_AFIO_AF(GPIOB_SPI_MOSI, 5) | \
+                                     PIN_AFIO_AF(GPIOB_SPI_MISO, 5) | \
                                      PIN_AFIO_AF(6, 0) |           \
                                      PIN_AFIO_AF(7, 0))
-#define VAL_GPIOB_AFRH              (PIN_AFIO_AF(GPIOB_I2C1_SCL, 1) | \
-                                     PIN_AFIO_AF(GPIOB_I2C1_SDA, 1) | \
+#define VAL_GPIOB_AFRH              (PIN_AFIO_AF(GPIOB_I2C1_SCL, 4) | \
+                                     PIN_AFIO_AF(GPIOB_I2C1_SDA, 4) | \
                                      PIN_AFIO_AF(10, 0) |          \
                                      PIN_AFIO_AF(11, 0) |          \
-                                     PIN_AFIO_AF(GPIOB_I2S2_WCLK, 0) | \
-                                     PIN_AFIO_AF(GPIOB_I2S2_BCLK, 0) | \
+                                     PIN_AFIO_AF(GPIOB_I2S2_WCLK, 5) | \
+                                     PIN_AFIO_AF(GPIOB_I2S2_BCLK, 5) | \
                                      PIN_AFIO_AF(14, 0) | \
-                                     PIN_AFIO_AF(GPIOB_I2S2_MOSI, 0))
+                                     PIN_AFIO_AF(GPIOB_I2S2_MOSI, 5))
 /*
  * GPIOC setup:
  *
