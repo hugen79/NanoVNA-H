@@ -18,30 +18,6 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#if 0
-#define DEBUG_ENABLE_SI5351 FALSE
-#define DEBUG_ENABLE_CODEC  TRUE
-#define DEBUG_ENABLE_ADC  FALSE
-#define DEBUG_ENABLE_LCD  TRUE
-#endif
-#if 0
-#define DEBUG_ENABLE_SI5351 TRUE
-#define DEBUG_ENABLE_CODEC  TRUE
-#define DEBUG_ENABLE_ADC  FALSE
-#endif
-#if 0
-#define DEBUG_ENABLE_SI5351 TRUE
-#define DEBUG_ENABLE_CODEC  FALSE
-#define DEBUG_ENABLE_ADC  FALSE
-#define DEBUG_ENABLE_LCD  TRUE
-#endif
-#if 1
-#define DEBUG_ENABLE_SI5351 FALSE
-#define DEBUG_ENABLE_CODEC  FALSE
-#define DEBUG_ENABLE_ADC  FALSE
-#define DEBUG_ENABLE_LCD  TRUE
-#endif
-
 #include "ch.h"
 #include "hal.h"
 #include "usbcfg.h"
@@ -103,7 +79,7 @@ static THD_FUNCTION(Thread1, arg)
         ui_process();
       }
 
-#if DEBUG_ENABLE_ADC
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
       if (vbat != -1) {
           adc_stop(ADC1);
           vbat = adc_vbat_read(ADC1);
@@ -253,7 +229,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 
     chprintf(chp, "Performing reset\r\n");
 
-#if DEBUG_ENABLE_ADC
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
    rccEnableWWDG(FALSE);
 
     WWDG->CFR = 0x60;
@@ -1951,7 +1927,7 @@ int main(void)
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
-#if DEBUG_ENABLE_SI5351
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_SI5351
     i2cStart(&I2CD1, &i2ccfg);
     si5351_init();
 #endif
@@ -1974,12 +1950,12 @@ int main(void)
     usbStart(serusbcfg.usbp, &usbcfg);
     usbConnectBus(serusbcfg.usbp);
 
-#if DEBUG_ENABLE_LCD
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_LCD
   /*
    * SPI LCD Initialize
    */
   ili9341_init();
-  // show_version();
+  show_version();
   
   /*
    * Initialize graph plotting
@@ -2009,7 +1985,7 @@ int main(void)
   /*
    * I2S Initialize
    */
-#if DEBUG_ENABLE_CODEC
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_CODEC
   tlv320aic3204_init();
   i2sInit();
   i2sObjectInit(&I2SD2);
@@ -2017,7 +1993,7 @@ int main(void)
   i2sStartExchange(&I2SD2);
 #endif
   
-#if DEBUG_ENABLE_ADC
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   ui_init();
 #endif
   

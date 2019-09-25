@@ -316,8 +316,10 @@ touch_cal_exec(void)
   int status;
   int x1, x2, y1, y2;
   
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_stop(ADC1);
-
+#endif
+  
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_line(0, 0, 0, 32, 0xffff);
   ili9341_line(0, 0, 32, 0, 0xffff);
@@ -356,8 +358,10 @@ touch_draw_test(void)
   int x0, y0;
   int x1, y1;
   
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_stop(ADC1);
-
+#endif
+  
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_drawstring_5x7("TOUCH TEST: DRAG PANEL", OFFSETX, 233, 0xffff, 0x0000);
 
@@ -392,7 +396,7 @@ show_version(void)
 {
   int x = 5, y = 5;
   
-#if 0
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_stop(ADC1);
 #endif
   ili9341_fill(0, 0, 320, 240, 0);
@@ -410,7 +414,13 @@ show_version(void)
   ili9341_drawstring_5x7("Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Port Info: " PORT_INFO, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Platform: " PLATFORM_NAME, x, y += 10, 0xffff, 0x0000);
-
+#ifdef NANOVNA_F303
+  ili9341_drawstring_5x7("MCU: STM32F303CCT6", x, y += 10, 0xffff, 0x0000 );
+#endif
+  
+#ifdef NANOVNA_F303
+  chThdSleepMilliseconds(1000);
+#else
   while (true) {
     if (touch_check() == EVT_TOUCH_PRESSED)
       break;
@@ -419,6 +429,7 @@ show_version(void)
   }
 
   touch_start_watchdog();
+#endif
 }
 
 void
@@ -1856,8 +1867,10 @@ void
 ui_process_keypad(void)
 {
   int status;
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_stop(ADC1);
-
+#endif
+  
   kp_index = 0;
   while (TRUE) {
     status = btn_check();
@@ -2000,8 +2013,10 @@ static
 void ui_process_touch(void)
 {
   awd_count++;
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_stop(ADC1);
-
+#endif
+  
   int status = touch_check();
   if (status == EVT_TOUCH_PRESSED || status == EVT_TOUCH_DOWN) {
     switch (ui_mode) {
@@ -2090,8 +2105,10 @@ static const GPTConfig gpt3cfg = {
 void
 test_touch(int *x, int *y)
 {
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC  
   adc_stop(ADC1);
-
+#endif
+  
   *x = touch_measure_x();
   *y = touch_measure_y();
 
@@ -2107,7 +2124,9 @@ handle_touch_interrupt(void)
 void
 ui_init()
 {
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_init();
+#endif
   
   /*
    * Activates the EXT driver 1.

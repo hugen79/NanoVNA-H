@@ -19,6 +19,13 @@
  */
 #include "ch.h"
 
+#ifdef NANOVNA_F303
+#define DEBUG_ENABLE_SI5351 TRUE
+#define DEBUG_ENABLE_CODEC  TRUE
+#define DEBUG_ENABLE_ADC  FALSE
+#define DEBUG_ENABLE_LCD  TRUE
+#endif
+
 /*
  * main.c
  */
