@@ -33,6 +33,8 @@
 #define STM32_LSECLK            32768
 #define STM32_HSECLK            8000000
 
+//#define STM32_HSE_BYPASS
+
 /*
  * MCU type, supported types are defined in ./os/hal/platforms/hal_lld.h.
  */
@@ -59,6 +61,7 @@
 #define GPIOA_XP				6
 #define GPIOA_YP				7
 #define GPIOA_MCO				8
+#define GPIOA_USB_DISC			10
 #define GPIOA_USB_DM            11
 #define GPIOA_USB_DP            12
 #define GPIOA_JTMS              13
@@ -129,6 +132,7 @@
                                      PIN_MODE_ANALOG(GPIOA_YP) |    \
                                      PIN_MODE_ALTERNATE(GPIOA_MCO) | \
                                      PIN_MODE_INPUT(9U) |           \
+                                     PIN_MODE_OUTPUT(GPIOA_USB_DISC) | \
                                      PIN_MODE_ALTERNATE(GPIOA_USB_DM) |  \
                                      PIN_MODE_ALTERNATE(GPIOA_USB_DP) |  \
                                      PIN_MODE_ALTERNATE(GPIOA_JTMS) |    \
@@ -144,6 +148,7 @@
                                      PIN_OTYPE_PUSHPULL(7U) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_MCO) |       \
                                      PIN_OTYPE_PUSHPULL(9U) |       \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_USB_DISC) | \
                                      PIN_OTYPE_PUSHPULL(GPIOA_USB_DM) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOA_USB_DP) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOA_JTMS) |      \
@@ -175,6 +180,7 @@
                                      PIN_PUPDR_FLOATING(7) |         \
                                      PIN_PUPDR_PULLUP(GPIOA_MCO) | \
                                      PIN_PUPDR_PULLUP(9) |         \
+                                     PIN_PUPDR_PULLUP(GPIOA_USB_DISC) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DM) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DP) | \
                                      PIN_PUPDR_PULLDOWN(GPIOA_JTMS) |   \
@@ -190,6 +196,7 @@
                                      PIN_ODR_HIGH(7) |             \
                                      PIN_ODR_HIGH(GPIOA_MCO) |     \
                                      PIN_ODR_HIGH(9) |             \
+                                     PIN_ODR_HIGH(GPIOA_USB_DISC) | \
                                      PIN_ODR_HIGH(GPIOA_USB_DM) |   \
                                      PIN_ODR_HIGH(GPIOA_USB_DP) |   \
                                      PIN_ODR_HIGH(GPIOA_JTMS) |     \
@@ -205,6 +212,7 @@
                                      PIN_AFIO_AF(7, 0))
 #define VAL_GPIOA_AFRH              (PIN_AFIO_AF(GPIOA_MCO, 0) |           \
                                      PIN_AFIO_AF(9, 0) |           \
+                                     PIN_AFIO_AF(GPIOA_USB_DISC, 0) |          \
                                      PIN_AFIO_AF(GPIOA_USB_DM, 14) |     \
                                      PIN_AFIO_AF(GPIOA_USB_DP, 14) |     \
                                      PIN_AFIO_AF(GPIOA_JTMS, 0) |          \
@@ -328,7 +336,6 @@
  * PC14 - USB DISC              (output pushpull maximum).
  */
 #define GPIOC_LED               13
-#define GPIOC_USB_DISC          14
 
 #define VAL_GPIOC_MODER             (PIN_MODE_INPUT(0) |           \
                                      PIN_MODE_INPUT(1) |           \
@@ -744,16 +751,19 @@
                                      PIN_AFIO_AF(13, 0) |          \
                                      PIN_AFIO_AF(14, 0) |          \
                                      PIN_AFIO_AF(15, 0))
-
+#ifdef NANOVNA_F303
 /*
  * USB bus activation macro, required by the USB driver.
  */
-#define usb_lld_connect_bus(usbp) palSetPad(GPIOC, GPIOC_USB_DISC)
+//#define usb_lld_connect_bus(usbp) palSetPad(GPIOC, GPIOC_USB_DISC)
+#define usb_lld_connect_bus(usbp) 
 
 /*
  * USB bus de-activation macro, required by the USB driver.
  */
-#define usb_lld_disconnect_bus(usbp) palClearPad(GPIOC, GPIOC_USB_DISC)
+//#define usb_lld_disconnect_bus(usbp) palClearPad(GPIOC, GPIOC_USB_DISC)
+#define usb_lld_disconnect_bus(usbp)
+#endif
 
 #if !defined(_FROM_ASM_)
 #ifdef __cplusplus
