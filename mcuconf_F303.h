@@ -56,7 +56,7 @@
 #define STM32_PPRE1                         STM32_PPRE1_DIV2
 #define STM32_PPRE2                         STM32_PPRE2_DIV1
 #define STM32_MCOSEL                        STM32_MCOSEL_PLLDIV2
-#define STM32_ADC12PRES                     STM32_ADC12PRES_DIV4
+#define STM32_ADC12PRES                     STM32_ADC12PRES_DIV1
 //#define STM32_ADC34PRES                     STM32_ADC34PRES_DIV1
 #define STM32_USART1SW                      STM32_USART1SW_PCLK
 //#define STM32_USART2SW                      STM32_USART2SW_PCLK
@@ -73,6 +73,7 @@
  * ADC driver system settings.
  */
 #define STM32_ADC_USE_ADC1                  TRUE
+#define STM32_ADC_USE_ADC2                  TRUE
 #define STM32_ADC_USE_ADC3                  FALSE
 #define STM32_ADC_ADC1_DMA_STREAM           STM32_DMA_STREAM_ID(1, 1)
 #define STM32_ADC_ADC2_DMA_STREAM           STM32_DMA_STREAM_ID(2, 1)
@@ -84,7 +85,7 @@
 //#define STM32_ADC_ADC34_IRQ_PRIORITY        5
 #define STM32_ADC_ADC12_DMA_IRQ_PRIORITY    5
 //#define STM32_ADC_ADC34_DMA_IRQ_PRIORITY    5
-#define STM32_ADC_ADC12_CLOCK_MODE          ADC_CCR_CKMODE_AHB_DIV4
+#define STM32_ADC_ADC12_CLOCK_MODE          ADC_CCR_CKMODE_AHB_DIV1
 //#define STM32_ADC_ADC34_CLOCK_MODE          ADC_CCR_CKMODE_AHB_DIV1
 #define STM32_ADC_DUAL_MODE                 FALSE
 

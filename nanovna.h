@@ -26,6 +26,12 @@
 #define DEBUG_ENABLE_LCD  TRUE
 #endif
 
+#ifdef NANOVNA_F303
+#define ADCx                    ADC2
+#else
+#define ADCx                    ADC1
+#endif
+
 /*
  * main.c
  */

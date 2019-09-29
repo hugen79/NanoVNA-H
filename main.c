@@ -81,8 +81,8 @@ static THD_FUNCTION(Thread1, arg)
 
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
       if (vbat != -1) {
-          adc_stop(ADC1);
-          vbat = adc_vbat_read(ADC1);
+          adc_stop(ADCx);
+          vbat = adc_vbat_read(ADCx);
           touch_start_watchdog();
           draw_battery_status();
       }
@@ -1993,9 +1993,7 @@ int main(void)
   i2sStartExchange(&I2SD2);
 #endif
   
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   ui_init();
-#endif
   
   /*
    * Shell manager initialization.

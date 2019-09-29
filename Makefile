@@ -98,7 +98,6 @@ PROJECT = ch
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
 ifeq ($(TARGET),F303)
-CHIBIOS = /home/kuohsing/Downloads/ChibiOS_18.2.2
 CHIBIOS = ChibiOS
 else
 CHIBIOS = ChibiOS
@@ -204,7 +203,7 @@ else
  MCU  = cortex-m0
 endif
 
-#TRGT = arm-elf-
+TRGT = arm-elf-
 TRGT = arm-none-eabi-
 CC   = $(TRGT)gcc
 CPPC = $(TRGT)g++

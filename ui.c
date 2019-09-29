@@ -217,9 +217,9 @@ touch_measure_y(void)
   palSetPad(GPIOA, 6);
 
   chThdSleepMilliseconds(2);
-  v = adc_single_read(ADC1, ADC_CHSELR_CHSEL7);
+  v = adc_single_read(ADCx, ADC_CHSELR_CHSEL7);
   //chThdSleepMilliseconds(2);
-  //v += adc_single_read(ADC1, ADC_CHSELR_CHSEL7);
+  //v += adc_single_read(ADCx, ADC_CHSELR_CHSEL7);
   return v;
 }
 
@@ -237,9 +237,9 @@ touch_measure_x(void)
   palClearPad(GPIOA, 7);
 
   chThdSleepMilliseconds(2);
-  v = adc_single_read(ADC1, ADC_CHSELR_CHSEL6);
+  v = adc_single_read(ADCx, ADC_CHSELR_CHSEL6);
   //chThdSleepMilliseconds(2);
-  //v += adc_single_read(ADC1, ADC_CHSELR_CHSEL6);
+  //v += adc_single_read(ADCx, ADC_CHSELR_CHSEL6);
   return v;
 }
 
@@ -260,14 +260,16 @@ void
 touch_start_watchdog(void)
 {
   touch_prepare_sense();
-  adc_start_analog_watchdogd(ADC1, ADC_CHSELR_CHSEL7);
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
+  adc_start_analog_watchdogd(ADCx, ADC_CHSELR_CHSEL7);
+#endif
 }
 
 int
 touch_status(void)
 {
   touch_prepare_sense();
-  return adc_single_read(ADC1, ADC_CHSELR_CHSEL7) > TOUCH_THRESHOLD;
+  return adc_single_read(ADCx, ADC_CHSELR_CHSEL7) > TOUCH_THRESHOLD;
 }
 
 int touch_check(void)
@@ -317,7 +319,7 @@ touch_cal_exec(void)
   int x1, x2, y1, y2;
   
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   
   ili9341_fill(0, 0, 320, 240, 0);
@@ -359,7 +361,7 @@ touch_draw_test(void)
   int x1, y1;
   
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   
   ili9341_fill(0, 0, 320, 240, 0);
@@ -397,7 +399,7 @@ show_version(void)
   int x = 5, y = 5;
   
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   ili9341_fill(0, 0, 320, 240, 0);
 
@@ -436,7 +438,7 @@ void
 enter_dfu(void)
 {
 #ifndef NANOVNA_F303
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 
   int x = 5, y = 5;
 
@@ -1868,7 +1870,7 @@ ui_process_keypad(void)
 {
   int status;
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   
   kp_index = 0;
@@ -2014,7 +2016,7 @@ void ui_process_touch(void)
 {
   awd_count++;
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   
   int status = touch_check();
@@ -2106,7 +2108,7 @@ void
 test_touch(int *x, int *y)
 {
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC  
-  adc_stop(ADC1);
+  adc_stop(ADCx);
 #endif
   
   *x = touch_measure_x();
@@ -2140,5 +2142,7 @@ ui_init()
   gptStartContinuous(&GPTD3, 10);
 #endif
 
+#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   touch_start_watchdog();
+#endif
 }

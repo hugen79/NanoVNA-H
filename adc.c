@@ -137,51 +137,53 @@ void adc_init(void)
   adcInit();
 #else
  #ifdef NANOVNA_F303
+  rccEnableADC12(FALSE);
+
   /* Ensure flag states */
-  ADC1->IER = 0;
+  ADCx->IER = 0;
 
   /* Calibration procedure.*/
-  if (ADC1->CR & ADC_CR_ADEN) {
-      ADC1->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
+  if (ADCx->CR & ADC_CR_ADEN) {
+      ADCx->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
   }
-  while (ADC1->CR & ADC_CR_ADEN)
+  while (ADCx->CR & ADC_CR_ADEN)
     ;
-  ADC1->CFGR &= ~ADC_CFGR_DMAEN;
-  ADC1->CR |= ADC_CR_ADCAL;
-  while (ADC1->CR & ADC_CR_ADCAL)
+  ADCx->CFGR &= ~ADC_CFGR_DMAEN;
+  ADCx->CR |= ADC_CR_ADCAL;
+  while (ADCx->CR & ADC_CR_ADCAL)
     ;
 
-  if (ADC1->ISR & ADC_ISR_ADRD) {
-      ADC1->ISR |= ADC_ISR_ADRD; /* clear ADRDY */
+  if (ADCx->ISR & ADC_ISR_ADRD) {
+      ADCx->ISR |= ADC_ISR_ADRD; /* clear ADRDY */
   }
   /* Enable ADC */
-  ADC1->CR |= ADC_CR_ADEN;
-  while (!(ADC1->ISR & ADC_ISR_ADRD))
+  ADCx->CR |= ADC_CR_ADEN;
+  while (!(ADCx->ISR & ADC_ISR_ADRD))
     ;
  #else
   rccEnableADC1(FALSE);
 
   /* Ensure flag states */
-  ADC1->IER = 0;
+  ADCx->IER = 0;
 
   /* Calibration procedure.*/
   ADC->CCR = 0;
-  if (ADC1->CR & ADC_CR_ADEN) {
-      ADC1->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
+  if (ADCx->CR & ADC_CR_ADEN) {
+      ADCx->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
   }
-  while (ADC1->CR & ADC_CR_ADEN)
+  while (ADCx->CR & ADC_CR_ADEN)
     ;
-  ADC1->CFGR1 &= ~ADC_CFGR1_DMAEN;
-  ADC1->CR |= ADC_CR_ADCAL;
-  while (ADC1->CR & ADC_CR_ADCAL)
+  ADCx->CFGR1 &= ~ADC_CFGR1_DMAEN;
+  ADCx->CR |= ADC_CR_ADCAL;
+  while (ADCx->CR & ADC_CR_ADCAL)
     ;
 
-  if (ADC1->ISR & ADC_ISR_ADRDY) {
-      ADC1->ISR |= ADC_ISR_ADRDY; /* clear ADRDY */
+  if (ADCx->ISR & ADC_ISR_ADRDY) {
+      ADCx->ISR |= ADC_ISR_ADRDY; /* clear ADRDY */
   }
   /* Enable ADC */
-  ADC1->CR |= ADC_CR_ADEN;
-  while (!(ADC1->ISR & ADC_ISR_ADRDY))
+  ADCx->CR |= ADC_CR_ADEN;
+  while (!(ADCx->ISR & ADC_ISR_ADRDY))
     ;
  #endif
 #endif
@@ -193,7 +195,7 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
   /* ADC setup */
 #ifdef NANOVNA_F303
-  adcStart(&ADCD1, NULL);
+  adcStart(&ADCD2, NULL);
   memset(&adcgrpcfg, 0, sizeof(adcgrpcfg));
   adcgrpcfg.circular = false;
   adcgrpcfg.num_channels = 1;
@@ -202,7 +204,7 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
   //adcgrpcfg.cr2 = ADC_CR2_SWSTART;
   adcgrpcfg.cfgr = ADC_CFGR_RES_12BIT;
   adcgrpcfg.tr1 = ADC_TR(0, 0);
-  adcConvert(&ADCD1, &adcgrpcfg, samples, 1);
+  adcConvert(&ADCD2, &adcgrpcfg, samples, 1);
   chThdSleepMilliseconds(1000);
   return(samples[0]);
 #else
@@ -270,7 +272,7 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
   cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CR1_AWDEN
     | ADC_CFGR_EXTEN_0 // rising edge of external trigger
     | ADC_CFGR_EXTSEL_0 | ADC_CFGR_EXTSEL_1; // TRG3  , /* CFGR1 */
-  adcStart(&ADCD1, NULL);
+  adcStart(&ADCD2, NULL);
   memset(&adcgrpcfg, 0, sizeof(adcgrpcfg));
   adcgrpcfg.circular = false;
   adcgrpcfg.num_channels = 1;
@@ -279,7 +281,7 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
   //adcgrpcfg.cr2 = ADC_CR2_SWSTART;
   adcgrpcfg.cfgr = cfgr1;
   adcgrpcfg.tr1 = ADC_TR(0, 0);
-  adcConvert(&ADCD1, &adcgrpcfg, samples, 1);
+  adcConvert(&ADCD2, &adcgrpcfg, samples, 1);
   
 #else
   cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
@@ -306,7 +308,7 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 void adc_stop(ADC_TypeDef *adc)
 {
 #if USE_CHIBIOS_ADC_API
-  adcStop(&ADCD1);
+  adcStop(&ADCD2);
 #else
   if (adc->CR & ADC_CR_ADEN) {
     if (adc->CR & ADC_CR_ADSTART) {
@@ -356,11 +358,11 @@ void adc_interrupt(ADC_TypeDef *adc)
 
  #ifdef NANOVNA_F303
  #else
-OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
+OSAL_IRQ_HANDLER(STM32_ADCx_HANDLER)
 {
   OSAL_IRQ_PROLOGUE();
 
-  adc_interrupt(ADC1);
+  adc_interrupt(ADCx);
 
   OSAL_IRQ_EPILOGUE();
 }
