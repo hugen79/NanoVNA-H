@@ -1925,6 +1925,33 @@ int main(void)
 
     chMtxObjectInit(&mutex);
 
+    /*
+    * Initializes a serial-over-USB CDC driver.
+    */
+    sduObjectInit(&SDU1);
+    sduStart(&SDU1, &serusbcfg);
+
+    /*
+    * Activates the USB driver and then the USB bus pull-up on D+.
+    * Note, a delay is inserted in order to not have to disconnect the cable
+    * after a reset.
+    */
+#if !defined(NANOVNA_F303)
+    /* 
+    * This F303 test board has a 1.5K resistor pull up USB_DP to VDD.
+    * The USB cannot be disconnected by usbDisconnectBus().  So the USB
+    * driver should be started as soon as possible.  If later the USB_DP 
+    * is connected to USB_DISC pin via a 1.5K resistor, the following USB 
+    * disconnect command can then be used.
+    */
+    usbDisconnectBus(serusbcfg.usbp);
+    chThdSleepMilliseconds(100);
+#endif
+    usbStart(serusbcfg.usbp, &usbcfg);
+#if !defined(NANOVNA_F303) 
+    usbConnectBus(serusbcfg.usbp);
+#endif
+
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_SI5351
@@ -1934,22 +1961,6 @@ int main(void)
     
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
-  /*
-   * Initializes a serial-over-USB CDC driver.
-   */
-    sduObjectInit(&SDU1);
-    sduStart(&SDU1, &serusbcfg);
-
-  /*
-   * Activates the USB driver and then the USB bus pull-up on D+.
-   * Note, a delay is inserted in order to not have to disconnect the cable
-   * after a reset.
-   */
-    usbDisconnectBus(serusbcfg.usbp);
-    chThdSleepMilliseconds(100);
-    usbStart(serusbcfg.usbp, &usbcfg);
-    usbConnectBus(serusbcfg.usbp);
-
 #if !defined(NANOVNA_F303) || DEBUG_ENABLE_LCD
   /*
    * SPI LCD Initialize

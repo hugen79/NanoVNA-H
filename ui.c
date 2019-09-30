@@ -418,6 +418,7 @@ show_version(void)
   ili9341_drawstring_5x7("Platform: " PLATFORM_NAME, x, y += 10, 0xffff, 0x0000);
 #ifdef NANOVNA_F303
   ili9341_drawstring_5x7("MCU: STM32F303CCT6", x, y += 10, 0xffff, 0x0000 );
+  ili9341_drawstring_5x7("Source code: https://github.com/AA6KL/NanoVNA", x, y += 10, 0xffff, 0x0000 );
 #endif
   
 #ifdef NANOVNA_F303

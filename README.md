@@ -9,7 +9,7 @@ NanoVNA - Very tiny handheld Vector Network Analyzer
 
 # About
 
-This is my attemp to add the STM32F303CCT6 to this popular NanoVNA project.  The befit is larger SRAM 40KB from 16KB, and larger flash 256KB from 128KB.  For detail information, please refer to the original project page by edy555.
+This is my attemp to add the STM32F303CCT6 to this popular NanoVNA project.  The benefits are larger SRAM 40KB from 16KB, larger flash 256KB from 128KB, faster CPU clock 72MHz from 48MHz, and floating point accelerator.  For detail information, please refer to the original project page by edy555.
 
 https://github.com/ttrftech/NanoVNA
 
@@ -17,9 +17,11 @@ https://github.com/ttrftech/NanoVNA
 
 Please refer to original NanoVNA page for detail preparation information.
 
-Because edy555's ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c is not updated with ADCv3 protocol, I modified and put atit as hal_adc_lld.c.fixed.  To put the file at the correct location, do the following.  I will find a nice way of handling it later.
+The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V).
 
-   $ cp hal_adc_lld.c.fixed ./ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c
+Because edy555's ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c is not updated with ADCv3 protocol, I modified and name it as hal_adc_lld.c.fixed.  To put the file at the correct location, do the following.  I will find a nicer way to handle it later.
+
+    $ cp hal_adc_lld.c.fixed ./ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c
 
 # Compile
 
@@ -27,7 +29,7 @@ To compile for STM32F303CCT6, add TARGET=F303
 
     $ make TARGET=F303
 
-Since F303 doesn't support crystall-less DFU, a separate ST_Link is required to flash the firmware.  Users needs to solder the pins on the NanoVNA SWD port.
+Since F303 doesn't support crystal-less DFU, a separate ST_Link is required to flash the firmware.  Users need to solder the pins on the NanoVNA SWD port.
 
 To flash firmware at Linux, refer to
 
@@ -41,15 +43,15 @@ At times, it is necessary to short the BOOT pin to VCC at NanoVNA board for firm
 
 At Ubuntu, the shell can be accessed via
 
-    $ sudo screen /dev/ttyACM0 19200
+    $ sudo screen /dev/ttyACM0 57600
 
 # Status
 
-Till now, the ADC porting is not done yet.  So the touch function doesn't work.  I will update the tree as soon as I finish the ADC porting.  The rest of functions are working.
+Till now, the ADC porting is not finished yet.  So the touch and battery monitor functions don't work.  I will update the code after I finish the ADC porting.  The rest of functions are working.
 
-# Hardware mod candidate list:
+# Hardware mod candidates:
 
-- Add D2 Schottky diode to measure the battery.  Easy.
+- Add D2 Schottky diode to measure the battery voltage.  Easy.
 - Replace STM32F072CBT6 to STM32F303CCT6.  Add 1.5K resistor between VDD and USB_DP.  Harder.
 - Add 8MHz chrystal to PCB.  Better with PCB revision.
 
