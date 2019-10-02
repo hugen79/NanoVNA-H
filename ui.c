@@ -405,14 +405,14 @@ show_version(void)
 void
 show_logo(void)
 {
-  int x = 15, y = 50;
+  int x = 15, y = 30;
   ili9341_fill(0, 0, 320, 240, 0);
 
   ili9341_drawstring_size(BOARD_NAME, x+60, y, RGB565(255,0,40), 0x0000, 4);
   y += 25;
 
-  ili9341_drawstring_5x7("GEN111.TAOBAO.COM", x, y += 10, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("https://github.com/hugen79/NanoVNA-H", x, y += 10, 0xffff, 0x0000);
+  ili9341_drawstring_size("NANOVNA.COM", x+100, y += 10, 0xffff, 0x0000, 2);
+  ili9341_drawstring_5x7("https://github.com/hugen79/NanoVNA-H", x, y += 20, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Based on edy555 design", x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("2016-2019 Copyright @edy555", x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += 10, 0xffff, 0x0000);
@@ -599,15 +599,17 @@ menu_trace_cb(int item)
   if (item < 0 || item >= 4)
     return;
   if (trace[item].enabled) {
-    trace[item].enabled = FALSE;
-    choose_active_trace();
+    if (item == uistat.current_trace) {
+      // disable if active trace is selected
+      trace[item].enabled = FALSE;
+      choose_active_trace();
+    } else {
+      // make active selected trace
+      uistat.current_trace = item;
+    }
   } else {
     trace[item].enabled = TRUE;
     uistat.current_trace = item;
-    //menu_move_back();
-    //request_to_redraw_grid();
-    //ui_mode_normal();
-    //redraw_all();
   }
   request_to_redraw_grid();
   draw_menu();
@@ -844,15 +846,38 @@ menu_marker_op_cb(int item)
   //redraw_all();
 }
 
+void 
+active_marker_select(int item)
+{
+  if (item == -1) {
+    active_marker = previous_marker;
+    previous_marker = -1;
+    if (active_marker == -1) {
+      choose_active_marker();
+    }
+  } else {
+    if (previous_marker != active_marker)
+      previous_marker = active_marker;
+    active_marker = item;
+  }
+}
+
 static void
 menu_marker_sel_cb(int item)
 {
   if (item >= 0 && item < 4) {
-    // enable specified marker
-    markers[item].enabled = TRUE;
-    if (previous_marker != active_marker)
-      previous_marker = active_marker;
-    active_marker = item;
+    if (markers[item].enabled) {
+      if (item == active_marker) {
+        // disable if active trace is selected
+        markers[item].enabled = FALSE;
+        active_marker_select(-1);
+      } else {
+        active_marker_select(item);
+      }
+    } else {
+      markers[item].enabled = TRUE;
+      active_marker_select(item);
+    }
   } else if (item == 4) { /* all off */
       markers[0].enabled = FALSE;
       markers[1].enabled = FALSE;
@@ -861,10 +886,8 @@ menu_marker_sel_cb(int item)
       previous_marker = -1;
       active_marker = -1;      
   }
-  if (active_marker >= 0)
-    redraw_marker(active_marker, TRUE);
+  redraw_marker(active_marker, TRUE);
   draw_menu();
-  //ui_mode_normal();
 }
 
 const menuitem_t menu_calop[] = {

@@ -305,9 +305,9 @@ int current_band = -1;
 int
 si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 {
-  int band = 2;
-  int delay = 3;
-  uint32_t ofreq = (freq + offset);
+	int band = 2;
+  int delay =3;
+  uint32_t ofreq = freq + offset;
   uint32_t rdiv = SI5351_R_DIV_1;
 
   if (freq <= 100000000) {
@@ -318,10 +318,10 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 
 
 #if  defined(FRE800)
-  else if (freq <= 270000000) 
+  else if (freq <= 270000000)
 #else
   else if (freq <= 300000000)
-#endif 
+#endif
   {
      band = 2;
    }
@@ -333,8 +333,8 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 #if  defined(FRE800)
 	else  if (freq <= 800000000)
 #else
-  	else if (freq <= 900000000) 
-#endif 
+  	else if (freq <= 900000000)
+#endif
    {
  	  band = 4;
  	  freq /= 3;
