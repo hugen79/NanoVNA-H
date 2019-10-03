@@ -334,6 +334,8 @@ ili9341_read_memory_continue(int len, uint16_t* out)
     ili9341_read_memory_raw(0x3E, len, out);
 }
 
+
+#if !defined(ANTENNA_ANALYZER)
 void
 ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
@@ -387,6 +389,63 @@ ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg,
     str++;
   }
 }
+
+#else
+ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
+{
+  uint16_t *buf = spi_buffer;
+  uint16_t bits;
+  int c, r;
+  for(c = 0; c < 13; c++) {
+    bits = x7x13b_bits[(ch * 13) + c];
+    for (r = 0; r < 7; r++) {
+      *buf++ = (0x8000 & bits) ? fg : bg;
+      bits <<= 1;
+    }
+  }
+  ili9341_bulk(x, y, 7, 13);
+}
+
+void
+ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg)
+{
+  while (*str) {
+    ili9341_drawchar_7x13(*str, x, y, fg, bg);
+    x += 7;
+    str++;
+  }
+}
+
+
+void
+ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+{
+  uint16_t *buf = spi_buffer;
+  uint16_t bits;
+  int c, r;
+  for(c = 0; c < 13*size; c++) {
+    bits = x7x13b_bits[(ch * 13) + (c / size)];
+    for (r = 0; r < 7*size; r++) {
+      *buf++ = (0x8000 & bits) ? fg : bg;
+      if (r % size == (size-1)) {
+          bits <<= 1;
+      }
+    }
+  }
+  ili9341_bulk(x, y, 7*size, 13*size);
+}
+
+void
+ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+{
+  while (*str) {
+    ili9341_drawchar_size(*str, x, y, fg, bg, size);
+    x += 7 * size;
+    str++;
+  }
+}
+#endif
+
 
 #define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
 

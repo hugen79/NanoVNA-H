@@ -134,10 +134,18 @@ extern void tlv320aic3204_adc_filter_enable(int enable);
 /*
  * plot.c
  */
+
+#if !defined(ANTENNA_ANALYZER)
 #define OFFSETX 15
 #define OFFSETY 0
 #define WIDTH 291
 #define HEIGHT 233
+#else
+#define OFFSETX 18
+#define OFFSETY 0
+#define WIDTH 291
+#define HEIGHT 231
+#endif
 
 #define CELLOFFSETX 5
 #define AREA_WIDTH_NORMAL (WIDTH + CELLOFFSETX*2)
@@ -148,8 +156,11 @@ extern int area_height;
 #define GRIDY 29
 
 // font
-
+#if !defined(ANTENNA_ANALYZER)
 extern const uint16_t x5x7_bits [];
+#else
+extern const uint16_t x7x13b_bits [];
+#endif
 extern const uint32_t numfont20x24[][24];
 
 #define S_PI    "\034"
@@ -160,9 +171,11 @@ extern const uint32_t numfont20x24[][24];
 #define S_RARROW "\033"
 
 // trace 
-
+#if !defined(ANTENNA_ANALYZER)
 #define TRACES_MAX 4
-
+#else
+#define TRACES_MAX 2
+#endif
 enum {
   TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_OFF
 };
@@ -275,8 +288,13 @@ void ili9341_init(void);
 void ili9341_test(int mode);
 void ili9341_bulk(int x, int y, int w, int h);
 void ili9341_fill(int x, int y, int w, int h, int color);
+#if !defined(ANTENNA_ANALYZER)
 void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg);
+#else
+void ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
+void ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg);
+#endif
 void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg);
@@ -309,8 +327,19 @@ typedef struct {
 
   int32_t checksum;
 } properties_t;
-
-#define CONFIG_MAGIC 0x434f4e45 /* 'CONF' */
+#if !defined(ANTENNA_ANALYZER)
+#if  !defined(FRE800)
+#define CONFIG_MAGIC 0x434f4e45 /* 'CONF FRE900' */
+#else
+#define CONFIG_MAGIC 0x434f4e46 /* 'CONF FRE800' */
+#endif
+#else
+#if  !defined(FRE800)
+#define CONFIG_MAGIC 0x434f4e47 /* 'CONF AA_FRE900' */
+#else
+#define CONFIG_MAGIC 0x434f4e48 /* 'CONF AA_FRE800' */
+#endif
+#endif
 
 extern int16_t lastsaveid;
 extern properties_t *active_props;

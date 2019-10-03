@@ -317,7 +317,11 @@ touch_cal_exec(void)
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_line(0, 0, 0, 32, 0xffff);
   ili9341_line(0, 0, 32, 0, 0xffff);
+  #if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_5x7("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
+#else
+ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
+ #endif
 
   do {
     status = touch_check();
@@ -328,8 +332,11 @@ touch_cal_exec(void)
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_line(320-1, 240-1, 320-1, 240-32, 0xffff);
   ili9341_line(320-1, 240-1, 320-32, 240-1, 0xffff);
+   #if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_5x7("TOUCH LOWER RIGHT", 230, 220, 0xffff, 0x0000);
-
+  #else
+ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 196, 214, 0xffff, 0x0000);
+ #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_RELEASED);
@@ -355,8 +362,11 @@ touch_draw_test(void)
   adc_stop(ADC1);
 
   ili9341_fill(0, 0, 320, 240, 0);
+     #if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_5x7("TOUCH TEST: DRAG PANEL", OFFSETX, 233, 0xffff, 0x0000);
-
+ #else
+ili9341_drawstring_7x13("TOUCH TEST: DRAG PANEL", OFFSETX, 227, 0xffff, 0x0000);
+ #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_PRESSED);
@@ -407,7 +417,7 @@ show_logo(void)
 {
   int x = 15, y = 30;
   ili9341_fill(0, 0, 320, 240, 0);
-
+#if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_size(BOARD_NAME, x+60, y, RGB565(255,0,40), 0x0000, 4);
   y += 25;
 
@@ -424,6 +434,18 @@ show_logo(void)
   ili9341_drawstring_5x7("Port Info: " PORT_INFO, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Platform: " PLATFORM_NAME, x, y += 10, 0xffff, 0x0000);
 
+#else
+  ili9341_drawstring_size(BOARD_NAME, x+80, y, RGB565(255,0,40), 0x0000, 2);
+    y += 14;
+
+    ili9341_drawstring_7x13("NANOVNA.COM", x+100, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("https://github.com/hugen79/NanoVNA-H", x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("Based on edy555 design", x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("2016-2019 Copyright @edy555", x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("https://github.com/ttrftech/NanoVNA", x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("Version: " VERSION, x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("Build Time: " __DATE__ " - " __TIME__, x, y += 15, 0xffff, 0x0000);
+#endif
 }
 
 
@@ -436,8 +458,13 @@ enter_dfu(void)
 
   // leave a last message 
   ili9341_fill(0, 0, 320, 240, 0);
+#if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_5x7("DFU: Device Firmware Update Mode", x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("To exit DFU mode, please reset device yourself.", x, y += 10, 0xffff, 0x0000);
+#else
+  ili9341_drawstring_7x13("DFU: Device Firmware Update Mode", x, y += 15, 0xffff, 0x0000);
+   ili9341_drawstring_7x13("To exit DFU mode, please reset device yourself.", x, y += 15, 0xffff, 0x0000);
+#endif
 
   // see __early_init in ./NANOVNA_STM32_F072/board.c
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
@@ -586,7 +613,11 @@ choose_active_trace(void)
   if (trace[uistat.current_trace].enabled)
     // do nothing
     return;
+#if !defined(ANTENNA_ANALYZER)
   for (i = 0; i < 4; i++)
+#else
+	  for (i = 0; i < 2; i++)
+#endif
     if (trace[i].enabled) {
       uistat.current_trace = i;
       return;
@@ -596,7 +627,12 @@ choose_active_trace(void)
 static void
 menu_trace_cb(int item)
 {
+#if !defined(ANTENNA_ANALYZER)
   if (item < 0 || item >= 4)
+#else
+	  if (item < 0 || item >= 2)
+#endif
+
     return;
   if (trace[item].enabled) {
     if (item == uistat.current_trace) {
@@ -923,8 +959,10 @@ const menuitem_t menu_cal[] = {
 const menuitem_t menu_trace[] = {
   { MT_CALLBACK, "TRACE 0", menu_trace_cb },
   { MT_CALLBACK, "TRACE 1", menu_trace_cb },
+#if !defined(ANTENNA_ANALYZER)
   { MT_CALLBACK, "TRACE 2", menu_trace_cb },
   { MT_CALLBACK, "TRACE 3", menu_trace_cb },
+#endif
   { MT_CANCEL, S_LARROW" BACK", NULL },
   { MT_NONE, NULL, NULL } // sentinel
 };
@@ -1144,8 +1182,11 @@ void menu_invoke(int item)
     break;
   }
 }
-
+#if !defined(ANTENNA_ANALYZER)
 #define KP_X(x) (48*(x) + 2 + (320-64-192))
+#else
+#define KP_X(x) (48*(x) + 2 + (320-72-192))
+#endif
 #define KP_Y(y) (48*(y) + 2)
 
 #define KP_PERIOD 10
@@ -1260,7 +1301,11 @@ void
 draw_numeric_area_frame(void)
 {
   ili9341_fill(0, 208, 320, 32, 0xffff);
+#if !defined(ANTENNA_ANALYZER)
   ili9341_drawstring_5x7(keypad_mode_label[keypad_mode], 10, 220, 0x0000, 0xffff);
+#else
+  ili9341_drawstring_7x13(keypad_mode_label[keypad_mode], 10, 220, 0x0000, 0xffff);
+#endif
   ili9341_drawfont(KP_KEYPAD, &NF20x24, 300, 216, 0x0000, 0xffff);
 }
 
@@ -1324,7 +1369,11 @@ static void
 menu_item_modify_attribute(const menuitem_t *menu, int item,
                            uint16_t *fg, uint16_t *bg)
 {
+ #if !defined(ANTENNA_ANALYZER)
   if (menu == menu_trace && item < 4) {
+ #else
+   if (menu == menu_trace && item < 2) {
+   #endif
     if (trace[item].enabled)
       *bg = config.trace_color[item];
   } else if (menu == menu_marker_sel && item < 4) {
@@ -1388,6 +1437,8 @@ draw_menu_buttons(const menuitem_t *menu)
     // focus only in MENU mode but not in KEYPAD mode
     if (ui_mode == UI_MENU && i == selection)
       bg = config.menu_active_color;
+
+#if !defined(ANTENNA_ANALYZER)
     ili9341_fill(320-60, y, 60, 30, bg);
     
     menu_item_modify_attribute(menu, i, &fg, &bg);
@@ -1397,6 +1448,18 @@ draw_menu_buttons(const menuitem_t *menu)
     } else {
       ili9341_drawstring_5x7(menu[i].label, 320-54, y+12, fg, bg);
     }
+
+#else
+    ili9341_fill(320-72, y, 70, 30, bg);
+
+        menu_item_modify_attribute(menu, i, &fg, &bg);
+        if (menu_is_multiline(menu[i].label, &l1, &l2)) {
+          ili9341_drawstring_7x13(l1, 320-70, y+3, fg, bg);
+          ili9341_drawstring_7x13(l2, 320-70, y+16, fg, bg);
+        } else {
+          ili9341_drawstring_7x13(menu[i].label, 320-70, y+9, fg, bg);
+        }
+#endif
   }
 }
 
@@ -1424,8 +1487,13 @@ menu_apply_touch(void)
     if (menu[i].type == MT_BLANK) 
       continue;
     int y = 32*i;
+		#if !defined(ANTENNA_ANALYZER)
     if (y-2 < touch_y && touch_y < y+30+2
-        && 320-60 < touch_x) {
+ 		&& 320-60 < touch_x) {
+		#else
+	if (y-2 < touch_y && touch_y < y+30+2
+		&& 320-72 < touch_x) {
+#endif
       menu_select_touch(i);
       return;
     }
@@ -1445,7 +1513,12 @@ void
 erase_menu_buttons(void)
 {
   uint16_t bg = 0;
+  #if !defined(ANTENNA_ANALYZER)
   ili9341_fill(320-60, 0, 60, 32*7, bg);
+  #else
+   ili9341_fill(320-72, 0, 72, 32*7, bg);
+#endif
+
 }
 
 void
@@ -1561,7 +1634,11 @@ ui_mode_menu(void)
 
   ui_mode = UI_MENU;
   /* narrowen plotting area */
+  #if !defined(ANTENNA_ANALYZER)
   area_width = AREA_WIDTH_NORMAL - (64-8);
+  #else
+   area_width = AREA_WIDTH_NORMAL - 72;
+  #endif
   area_height = HEIGHT;
   ensure_selection();
   draw_menu();
@@ -1995,8 +2072,12 @@ touch_pickup_marker(void)
   for (m = 0; m < 4; m++) {
     if (!markers[m].enabled)
       continue;
-
-    for (t = 0; t < 4; t++) {
+#if !defined(ANTENNA_ANALYZER)
+    for (t = 0; t < 4; t++)
+#else
+    	 for (t = 0; t < 2; t++)
+#endif
+    {
       int x, y;
       if (!trace[t].enabled)
         continue;

@@ -9,9 +9,21 @@ ifeq ($(USE_OPT),)
 endif
 
 # .
+
+ifeq ($(ANTENNA_ANALYZER),YES)
+ 	USE_OPT += -DANTENNA_ANALYZER
+    BUILDDIR = buildAA
+ endif
+ 
+# .
+    
 ifeq ($(FRE),800)
   USE_OPT += -DFRE800
+ ifeq ($(ANTENNA_ANALYZER),YES)
+    BUILDDIR = buildAA_800
+  else
   BUILDDIR = build800
+  endif
 endif
 
 
@@ -115,8 +127,23 @@ include $(CHIBIOS)/os/various/shell/shell.mk
 #LDSCRIPT= $(STARTUPLD)/STM32F072xB.ld
 LDSCRIPT= STM32F072xB.ld
 
+
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
+
+ifeq ($(ANTENNA_ANALYZER),YES)
+CSRC = $(STARTUPSRC) \
+       $(KERNSRC) \
+       $(PORTSRC) \
+       $(OSALSRC) \
+       $(HALSRC) \
+       $(PLATFORMSRC) \
+       $(BOARDSRC) \
+       $(STREAMSSRC) \
+       $(SHELLSRC) \
+       usbcfg.c \
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font7x13b.c flash.c adc.c
+else
 CSRC = $(STARTUPSRC) \
        $(KERNSRC) \
        $(PORTSRC) \
@@ -128,6 +155,7 @@ CSRC = $(STARTUPSRC) \
        $(SHELLSRC) \
        usbcfg.c \
        main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c
+endif
 
 #       $(TESTSRC) \
 
