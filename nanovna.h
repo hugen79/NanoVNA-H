@@ -18,28 +18,18 @@
  * Boston, MA 02110-1301, USA.
  */
 #include "ch.h"
+#define M_PI 3.14159
 
 #ifdef NANOVNA_F303
-#define DEBUG_ENABLE_SI5351 TRUE
-#define DEBUG_ENABLE_CODEC  TRUE
-#define DEBUG_ENABLE_ADC  FALSE
-#define DEBUG_ENABLE_LCD  TRUE
+#define DEBUG_ENABLE_AWDG FALSE
 #endif
 
-#ifdef NANOVNA_F303
-#define ADCx                    ADC2
-#else
-#define ADCx                    ADC1
-#endif
 
 /*
  * main.c
  */
 
 extern float measured[2][101][2];
-
-// Use ChibiOS ADC API or original way
-#define USE_CHIBIOS_ADC_API FALSE
 
 #define CAL_LOAD 0
 #define CAL_OPEN 1
@@ -77,6 +67,8 @@ extern float measured[2][101][2];
 #define TD_WINDOW_NORMAL (0b00<<3)
 #define TD_WINDOW_MINIMUM (0b01<<3)
 #define TD_WINDOW_MAXIMUM (0b10<<3)
+
+#define FFT_SIZE 256
 
 void cal_collect(int type);
 void cal_done(void);
@@ -250,7 +242,7 @@ void redraw_marker(int marker, int update_info);
 void trace_get_info(int t, char *buf, int len);
 void plot_into_index(float measured[2][101][2]);
 void force_set_markmap(void);
-void draw_all_cells(void);
+void draw_all(bool flush);
 
 void draw_cal_status(void);
 
@@ -259,7 +251,13 @@ void markmap_all_markers(void);
 void marker_position(int m, int t, int *x, int *y);
 int search_nearest_index(int x, int y, int t);
 
-extern int8_t redraw_requested;
+extern uint16_t redraw_request;
+
+#define REDRAW_CELLS      (1<<0)
+#define REDRAW_FREQUENCY  (1<<1)
+#define REDRAW_CAL_STATUS (1<<2)
+#define REDRAW_MARKER     (1<<3)
+
 extern int16_t vbat;
 
 /*
@@ -386,6 +384,14 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 void adc_stop(ADC_TypeDef *adc);
 void adc_interrupt(ADC_TypeDef *adc);
 int16_t adc_vbat_read(ADC_TypeDef *adc);
+
+#ifdef NANOVNA_F303
+#define ADC_CHSELR_VREFINT      ADC_CHANNEL_IN18
+#define ADC_CHSELR_VBAT         ADC_CHANNEL_IN17
+#else
+#define ADC_CHSELR_VREFINT      ADC_CHSELR_CHSEL17
+#define ADC_CHSELR_VBAT         ADC_CHSELR_CHSEL18
+#endif
 
 /*
  * misclinous

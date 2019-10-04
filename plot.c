@@ -4,7 +4,6 @@
 #include "hal.h"
 #include "chprintf.h"
 #include "nanovna.h"
-#include "fft.h"
 
 #define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
 
@@ -90,7 +89,7 @@ void update_grid(void)
   grid_width = (WIDTH-1) * (fgrid / 100) / (fspan / 1000);
 
   force_set_markmap();
-  draw_frequencies();
+  redraw_request |= REDRAW_FREQUENCY;
 }
 
 int
@@ -703,12 +702,12 @@ trace_get_info(int t, char *buf, int len)
 }
 
 static float time_of_index(int idx) {
-   return 1.0 / (float)(frequencies[1] - frequencies[0]) / 128.0 * idx;
+   return 1.0 / (float)(frequencies[1] - frequencies[0]) / (float)FFT_SIZE * idx;
 }
 
 static float distance_of_index(int idx) {
 #define SPEED_OF_LIGHT 299792458
-   float distance = ((float)idx * (float)SPEED_OF_LIGHT) / ( (float)(frequencies[1] - frequencies[0]) * 128.0 * 2.0);
+   float distance = ((float)idx * (float)SPEED_OF_LIGHT) / ( (float)(frequencies[1] - frequencies[0]) * (float)FFT_SIZE * 2.0);
    return distance * (velocity_factor / 100.0);
 }
 
@@ -943,11 +942,15 @@ search_index_range_x(int x, uint32_t index[101], int *i0, int *i1)
     i = (head + tail) / 2;
     if (x == CELL_X0(index[i]))
       break;
-
-    if (x < CELL_X0(index[i]))
-      tail = i+1;
-    else
+    else if (x < CELL_X0(index[i])) {
+      if (tail == i+1)
+        break;
+      tail = i+1;      
+    } else {
+      if (head == i)
+        break;
       head = i;
+    }
   }
 
   if (x != CELL_X0(index[i]))
@@ -1249,22 +1252,33 @@ draw_cell(int m, int n)
 }
 
 void
-draw_all_cells(void)
+draw_all_cells(bool flush_markmap)
 {
   int m, n;
   for (m = 0; m < (area_width+CELLWIDTH-1) / CELLWIDTH; m++)
     for (n = 0; n < (area_height+CELLHEIGHT-1) / CELLHEIGHT; n++) {
       if (is_mapmarked(m, n))
         draw_cell(m, n);
-      //ui_process();
-      //if (operation_requested)
-      //  return;
     }
 
-  // keep current map for update
-  swap_markmap();
-  // clear map for next plotting
-  clear_markmap();
+  if (flush_markmap) {
+    // keep current map for update
+    swap_markmap();
+    // clear map for next plotting
+    clear_markmap();
+  }
+}
+
+void
+draw_all(bool flush)
+{
+  if (redraw_request & REDRAW_CELLS)
+    draw_all_cells(flush);
+  if (redraw_request & REDRAW_FREQUENCY)
+    draw_frequencies();
+  if (redraw_request & REDRAW_CAL_STATUS)
+    draw_cal_status();
+  redraw_request = 0;
 }
 
 void
@@ -1277,7 +1291,7 @@ redraw_marker(int marker, int update_info)
   if (update_info)
     markmap[current_mappage][0] = 0xffff;
 
-  draw_all_cells();
+  draw_all_cells(TRUE);
 }
 
 void
@@ -1287,7 +1301,7 @@ request_to_draw_cells_behind_menu(void)
   for (m = 7; m <= 9; m++)
     for (n = 0; n < 8; n++)
       mark_map(m, n);
-  redraw_requested = TRUE;
+  redraw_request |= REDRAW_CELLS;
 }
 
 void
@@ -1297,7 +1311,7 @@ request_to_draw_cells_behind_numeric_input(void)
   for (m = 0; m <= 9; m++)
     for (n = 6; n < 8; n++)
       mark_map(m, n);
-  redraw_requested = TRUE;
+  redraw_request |= REDRAW_CELLS;
 }
 
 
@@ -1585,7 +1599,7 @@ void
 request_to_redraw_grid(void)
 {
   force_set_markmap();
-  redraw_requested = TRUE;
+  redraw_request |= REDRAW_CELLS;
 }
 
 void
@@ -1595,14 +1609,6 @@ redraw_frame(void)
   draw_frequencies();
   draw_cal_status();
 }
-
-/*void
-redraw_all(void)
-{
-  redraw();
-  force_set_markmap();
-  draw_all_cells();
-  }*/
 
 void
 plot_init(void)

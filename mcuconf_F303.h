@@ -17,11 +17,6 @@
 #ifndef MCUCONF_H
 #define MCUCONF_H
 
-#define rccEnableWWDG(lp) rccEnableAPB1(RCC_APB1ENR_WWDGEN, lp)
-#define ADC_CHSELR_CHSEL6  ADC_SQR1_SQ1_N(ADC_CHANNEL_IN6)
-#define ADC_CHSELR_CHSEL7  ADC_SQR1_SQ2_N(ADC_CHANNEL_IN7)
-//#define ADCD1 ADCD3
-
 /*
  * STM32F3xx drivers configuration.
  * The following settings override the default settings present in
@@ -54,7 +49,7 @@
 #define STM32_PLLMUL_VALUE                  12
 #define STM32_HPRE                          STM32_HPRE_DIV1
 #define STM32_PPRE1                         STM32_PPRE1_DIV2
-#define STM32_PPRE2                         STM32_PPRE2_DIV1
+#define STM32_PPRE2                         STM32_PPRE2_DIV2
 #define STM32_MCOSEL                        STM32_MCOSEL_PLLDIV2
 #define STM32_ADC12PRES                     STM32_ADC12PRES_DIV1
 //#define STM32_ADC34PRES                     STM32_ADC34PRES_DIV1
@@ -124,11 +119,11 @@
 #define STM32_GPT_USE_TIM1                  FALSE
 #define STM32_GPT_USE_TIM2                  FALSE
 #define STM32_GPT_USE_TIM3                  TRUE
-#define STM32_GPT_USE_TIM14                 FALSE
+#define STM32_GPT_USE_TIM4                 FALSE
 #define STM32_GPT_TIM1_IRQ_PRIORITY         2
 #define STM32_GPT_TIM2_IRQ_PRIORITY         2
 #define STM32_GPT_TIM3_IRQ_PRIORITY         2
-#define STM32_GPT_TIM14_IRQ_PRIORITY        2
+#define STM32_GPT_TIM4_IRQ_PRIORITY         2
 
 /*
  * I2C driver system settings.

@@ -24,10 +24,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-void touch_draw_test(void);
-void touch_position(int *x, int *y);
-extern void draw_frequencies(void);
-int chsnprintf(char *str, size_t size, const char *fmt, ...);
+#ifdef NANOVNA_F303
+#include "adc_F303.h"
+#endif
 
 uistat_t uistat = {
  digit: 6,
@@ -217,9 +216,9 @@ touch_measure_y(void)
   palSetPad(GPIOA, 6);
 
   chThdSleepMilliseconds(2);
-  v = adc_single_read(ADCx, ADC_CHSELR_CHSEL7);
+  v = adc_single_read(ADC1, ADC_CHSELR_CHSEL7);
   //chThdSleepMilliseconds(2);
-  //v += adc_single_read(ADCx, ADC_CHSELR_CHSEL7);
+  //v += adc_single_read(ADC1, ADC_CHSELR_CHSEL7);
   return v;
 }
 
@@ -237,9 +236,9 @@ touch_measure_x(void)
   palClearPad(GPIOA, 7);
 
   chThdSleepMilliseconds(2);
-  v = adc_single_read(ADCx, ADC_CHSELR_CHSEL6);
+  v = adc_single_read(ADC1, ADC_CHSELR_CHSEL6);
   //chThdSleepMilliseconds(2);
-  //v += adc_single_read(ADCx, ADC_CHSELR_CHSEL6);
+  //v += adc_single_read(ADC1, ADC_CHSELR_CHSEL6);
   return v;
 }
 
@@ -260,16 +259,14 @@ void
 touch_start_watchdog(void)
 {
   touch_prepare_sense();
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_start_analog_watchdogd(ADCx, ADC_CHSELR_CHSEL7);
-#endif
+  adc_start_analog_watchdogd(ADC1, ADC_CHSELR_CHSEL7);
 }
 
 int
 touch_status(void)
 {
   touch_prepare_sense();
-  return adc_single_read(ADCx, ADC_CHSELR_CHSEL7) > TOUCH_THRESHOLD;
+  return adc_single_read(ADC1, ADC_CHSELR_CHSEL7) > TOUCH_THRESHOLD;
 }
 
 int touch_check(void)
@@ -318,10 +315,8 @@ touch_cal_exec(void)
   int status;
   int x1, x2, y1, y2;
   
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADCx);
-#endif
-  
+  adc_stop(ADC1);
+
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_line(0, 0, 0, 32, 0xffff);
   ili9341_line(0, 0, 32, 0, 0xffff);
@@ -360,10 +355,8 @@ touch_draw_test(void)
   int x0, y0;
   int x1, y1;
   
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADCx);
-#endif
-  
+  adc_stop(ADC1);
+
   ili9341_fill(0, 0, 320, 240, 0);
   ili9341_drawstring_5x7("TOUCH TEST: DRAG PANEL", OFFSETX, 233, 0xffff, 0x0000);
 
@@ -398,9 +391,7 @@ show_version(void)
 {
   int x = 5, y = 5;
   
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADCx);
-#endif
+  adc_stop(ADC1);
   ili9341_fill(0, 0, 320, 240, 0);
 
   ili9341_drawstring_size(BOARD_NAME, x, y, 0xffff, 0x0000, 4);
@@ -419,11 +410,8 @@ show_version(void)
 #ifdef NANOVNA_F303
   ili9341_drawstring_5x7("MCU: STM32F303CCT6", x, y += 10, 0xffff, 0x0000 );
   ili9341_drawstring_5x7("Source code: https://github.com/AA6KL/NanoVNA", x, y += 10, 0xffff, 0x0000 );
-#endif
-  
-#ifdef NANOVNA_F303
   chThdSleepMilliseconds(1000);
-#else
+#endif
   while (true) {
     if (touch_check() == EVT_TOUCH_PRESSED)
       break;
@@ -432,14 +420,13 @@ show_version(void)
   }
 
   touch_start_watchdog();
-#endif
 }
 
 void
 enter_dfu(void)
 {
 #ifndef NANOVNA_F303
-  adc_stop(ADCx);
+  adc_stop(ADC1);
 
   int x = 5, y = 5;
 
@@ -609,15 +596,17 @@ menu_trace_cb(int item)
   if (item < 0 || item >= 4)
     return;
   if (trace[item].enabled) {
-    trace[item].enabled = FALSE;
-    choose_active_trace();
+    if (item == uistat.current_trace) {
+      // disable if active trace is selected
+      trace[item].enabled = FALSE;
+      choose_active_trace();
+    } else {
+      // make active selected trace
+      uistat.current_trace = item;
+    }
   } else {
     trace[item].enabled = TRUE;
     uistat.current_trace = item;
-    //menu_move_back();
-    //request_to_redraw_grid();
-    //ui_mode_normal();
-    //redraw_all();
   }
   request_to_redraw_grid();
   draw_menu();
@@ -854,15 +843,38 @@ menu_marker_op_cb(int item)
   //redraw_all();
 }
 
+void 
+active_marker_select(int item)
+{
+  if (item == -1) {
+    active_marker = previous_marker;
+    previous_marker = -1;
+    if (active_marker == -1) {
+      choose_active_marker();
+    }
+  } else {
+    if (previous_marker != active_marker)
+      previous_marker = active_marker;
+    active_marker = item;
+  }
+}
+
 static void
 menu_marker_sel_cb(int item)
 {
   if (item >= 0 && item < 4) {
-    // enable specified marker
-    markers[item].enabled = TRUE;
-    if (previous_marker != active_marker)
-      previous_marker = active_marker;
-    active_marker = item;
+    if (markers[item].enabled) {
+      if (item == active_marker) {
+        // disable if active trace is selected
+        markers[item].enabled = FALSE;
+        active_marker_select(-1);
+      } else {
+        active_marker_select(item);
+      }
+    } else {
+      markers[item].enabled = TRUE;
+      active_marker_select(item);
+    }
   } else if (item == 4) { /* all off */
       markers[0].enabled = FALSE;
       markers[1].enabled = FALSE;
@@ -871,10 +883,8 @@ menu_marker_sel_cb(int item)
       previous_marker = -1;
       active_marker = -1;      
   }
-  if (active_marker >= 0)
-    redraw_marker(active_marker, TRUE);
+  redraw_marker(active_marker, TRUE);
   draw_menu();
-  //ui_mode_normal();
 }
 
 const menuitem_t menu_calop[] = {
@@ -1870,10 +1880,8 @@ void
 ui_process_keypad(void)
 {
   int status;
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADCx);
-#endif
-  
+  adc_stop(ADC1);
+
   kp_index = 0;
   while (TRUE) {
     status = btn_check();
@@ -2016,10 +2024,8 @@ static
 void ui_process_touch(void)
 {
   awd_count++;
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-  adc_stop(ADCx);
-#endif
-  
+  adc_stop(ADC1);
+
   int status = touch_check();
   if (status == EVT_TOUCH_PRESSED || status == EVT_TOUCH_DOWN) {
     switch (ui_mode) {
@@ -2108,10 +2114,8 @@ static const GPTConfig gpt3cfg = {
 void
 test_touch(int *x, int *y)
 {
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC  
-  adc_stop(ADCx);
-#endif
-  
+  adc_stop(ADC1);
+
   *x = touch_measure_x();
   *y = touch_measure_y();
 
@@ -2127,9 +2131,7 @@ handle_touch_interrupt(void)
 void
 ui_init()
 {
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   adc_init();
-#endif
   
   /*
    * Activates the EXT driver 1.
@@ -2143,7 +2145,5 @@ ui_init()
   gptStartContinuous(&GPTD3, 10);
 #endif
 
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
   touch_start_watchdog();
-#endif
 }

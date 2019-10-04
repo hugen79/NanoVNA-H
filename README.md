@@ -9,7 +9,7 @@ NanoVNA - Very tiny handheld Vector Network Analyzer
 
 # About
 
-This is my attemp to add the STM32F303CCT6 to this popular NanoVNA project.  The benefits are larger SRAM 40KB from 16KB, larger flash 256KB from 128KB, faster CPU clock 72MHz from 48MHz, and floating point accelerator.  For detail information, please refer to the original project page by edy555.
+This is my attemp to port the STM32F303CCT6 to this popular NanoVNA project.  The benefits are larger SRAM 40KB from 16KB, larger flash 256KB from 128KB, faster CPU clock 72MHz from 48MHz, and floating point accelerator.  For detail information, please refer to the original project page by edy555.
 
 https://github.com/ttrftech/NanoVNA
 
@@ -47,7 +47,7 @@ At Ubuntu, the shell can be accessed via
 
 # Status
 
-Till now, the ADC porting is not finished yet.  So the touch and battery monitor functions don't work.  I will update the code after I finish the ADC porting.  The rest of functions are working.
+At this moment, the ADC porting failed.  The rest of functions are working.  If you are familiar with the STM32F3 analog watch dog coding in ChibiOS, please help me.
 
 # Hardware mod candidates:
 

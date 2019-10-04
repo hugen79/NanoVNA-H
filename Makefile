@@ -219,7 +219,7 @@ OD   = $(TRGT)objdump
 SZ   = $(TRGT)size
 HEX  = $(CP) -O ihex
 BIN  = $(CP) -O binary
-#ELF  = $(CP) -O elf
+ELF  = $(CP) -O elf
 
 # ARM-specific options here
 AOPT =
@@ -271,7 +271,7 @@ flash: build/ch.bin
 	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
 
 dfu:
-	printf "reset dfu\r" >/dev/cu.usbmodem401
+	-@printf "reset dfu\r" >/dev/cu.usbmodem401
 
 TAGS: Makefile
 ifeq ($(TARGET),F303)

@@ -31,17 +31,16 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <arm_math.h>
+
 
 #define ENABLED_DUMP
 
 static void apply_error_term(void);
 static void apply_error_term_at(int i);
 static void cal_interpolate(int s);
-void touch_start_watchdog(void);
-void apply_edelay_at(int);
-void touch_position(int *, int *);
 
-void sweep(void);
+bool sweep(bool break_on_operation);
 
 static MUTEX_DECL(mutex);
 
@@ -51,12 +50,12 @@ static MUTEX_DECL(mutex);
 int32_t frequency_offset = 5000;
 int32_t frequency = 10000000;
 int8_t drive_strength = DRIVE_STRENGTH_AUTO;
-int8_t frequency_updated = FALSE;
 int8_t sweep_enabled = TRUE;
+int8_t sweep_once = FALSE;
 int8_t cal_auto_interpolate = TRUE;
-int8_t redraw_requested = FALSE;
-int8_t stop_the_world = FALSE;
+uint16_t redraw_request = 0; // contains REDRAW_XXX flags
 int16_t vbat = 0;
+
 
 static THD_WORKING_AREA(waThread1, 640);
 static THD_FUNCTION(Thread1, arg)
@@ -65,33 +64,37 @@ static THD_FUNCTION(Thread1, arg)
     chRegSetThreadName("sweep");
 
     while (1) {
-      if (stop_the_world) {
-          __WFI();
-          continue;
-      }
-
-      if (sweep_enabled) {
+      bool completed = false;
+      if (sweep_enabled || sweep_once) {
         chMtxLock(&mutex);
-        sweep();
+        completed = sweep(true);
+        sweep_once = FALSE;
         chMtxUnlock(&mutex);
       } else {
         __WFI();
-        ui_process();
       }
 
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-      if (vbat != -1) {
-          adc_stop(ADCx);
-          vbat = adc_vbat_read(ADCx);
+      chMtxLock(&mutex);
+      ui_process();
+
+      if (sweep_enabled) {
+        if (vbat != -1) {
+          adc_stop(ADC1);
+          vbat = adc_vbat_read(ADC1);
           touch_start_watchdog();
           draw_battery_status();
+        }
+
+        /* calculate trace coordinates and plot only if scan completed */
+        if (completed) {
+          plot_into_index(measured);
+          redraw_request |= REDRAW_CELLS;
+        }
       }
-#endif
-      
-      /* calculate trace coordinates */
-      plot_into_index(measured);
-      /* plot trace as raster */
-      draw_all_cells();
+
+      /* plot trace and other indications as raster */
+      draw_all(completed); // flush markmap only if scan completed to prevent remaining traces
+      chMtxUnlock(&mutex);
     }
 }
 
@@ -145,6 +148,7 @@ transform_domain(void)
   float* tmp = (float*)spi_buffer;
 
   uint8_t window_size, offset;
+  uint8_t is_lowpass = FALSE;
   switch (domain_mode & TD_FUNC) {
       case TD_FUNC_BANDPASS:
           offset = 0;
@@ -152,6 +156,7 @@ transform_domain(void)
           break;
       case TD_FUNC_LOWPASS_IMPULSE:
       case TD_FUNC_LOWPASS_STEP:
+          is_lowpass = TRUE;
           offset = 101;
           window_size = 202;
           break;
@@ -170,29 +175,38 @@ transform_domain(void)
           break;
   }
 
+
   for (int ch = 0; ch < 2; ch++) {
       memcpy(tmp, measured[ch], sizeof(measured[0]));
-      if (beta != 0.0) {
-          for (int i = 0; i < 101; i++) {
-              float w = kaiser_window(i+offset, window_size, beta);
-              tmp[i*2+0] *= w;
-              tmp[i*2+1] *= w;
-          }
+      for (int i = 0; i < 101; i++) {
+          float w = kaiser_window(i+offset, window_size, beta);
+          tmp[i*2+0] *= w;
+          tmp[i*2+1] *= w;
       }
-      for (int i = 101; i < 128; i++) {
+      for (int i = 101; i < FFT_SIZE; i++) {
           tmp[i*2+0] = 0.0;
           tmp[i*2+1] = 0.0;
       }
-      fft128_inverse((float(*)[2])tmp);
+      if (is_lowpass) {
+          for (int i = 1; i < 101; i++) {
+              tmp[(FFT_SIZE-i)*2+0] =  tmp[i*2+0];
+              tmp[(FFT_SIZE-i)*2+1] = -tmp[i*2+1];
+          }
+      }
+
+      fft256_inverse((float(*)[2])tmp);
       memcpy(measured[ch], tmp, sizeof(measured[0]));
       for (int i = 0; i < 101; i++) {
-          measured[ch][i][0] /= 128.0;
-          measured[ch][i][1] /= 128.0;
+          measured[ch][i][0] /= (float)FFT_SIZE;
+          if (is_lowpass) {
+              measured[ch][i][1] = 0.0;
+          } else {
+              measured[ch][i][1] /= (float)FFT_SIZE;
+          }
       }
       if ( (domain_mode & TD_FUNC) == TD_FUNC_LOWPASS_STEP ) {
           for (int i = 1; i < 101; i++) {
               measured[ch][i][0] += measured[ch][i-1][0];
-              measured[ch][i][1] += measured[ch][i-1][1];
           }
       }
   }
@@ -211,6 +225,12 @@ static void cmd_resume(BaseSequentialStream *chp, int argc, char *argv[])
     (void)chp;
     (void)argc;
     (void)argv;
+
+    // restore frequencies array and cal
+    update_frequencies();
+    if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))
+      cal_interpolate(lastsaveid);
+
     resume_sweep();
 }
 
@@ -229,13 +249,13 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 
     chprintf(chp, "Performing reset\r\n");
 
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_ADC
-   rccEnableWWDG(FALSE);
+#if !defined(NANOVNA_F303) 
+    rccEnableWWDG(FALSE);
+#endif
 
     WWDG->CFR = 0x60;
     WWDG->CR = 0xff;
-#endif
-    
+
     /* wait forever */
     while (1)
       ;
@@ -457,13 +477,15 @@ static void cmd_data(BaseSequentialStream *chp, int argc, char *argv[])
   if (sel == 0 || sel == 1) {
     chMtxLock(&mutex);
     for (i = 0; i < sweep_points; i++) {
-      chprintf(chp, "%f %f\r\n", measured[sel][i][0], measured[sel][i][1]);
+      if (frequencies[i] != 0)
+        chprintf(chp, "%f %f\r\n", measured[sel][i][0], measured[sel][i][1]);
     }
     chMtxUnlock(&mutex);
   } else if (sel >= 2 && sel < 7) {
     chMtxLock(&mutex);
     for (i = 0; i < sweep_points; i++) {
-      chprintf(chp, "%f %f\r\n", cal_data[sel-2][i][0], cal_data[sel-2][i][1]);
+      if (frequencies[i] != 0)
+        chprintf(chp, "%f %f\r\n", cal_data[sel-2][i][0], cal_data[sel-2][i][1]);
     }
     chMtxUnlock(&mutex);
   } else {
@@ -503,11 +525,6 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
 
     chMtxLock(&mutex);
 
-    // pause sweep
-    stop_the_world = TRUE;
-
-    chThdSleepMilliseconds(1000);
-
     // use uint16_t spi_buffer[1024] (defined in ili9341) for read buffer
     uint16_t *buf = &spi_buffer[0];
     int len = 320 * 240;
@@ -529,7 +546,6 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
     }
     //*/
 
-    stop_the_world = FALSE;
     chMtxUnlock(&mutex);
 }
 
@@ -631,47 +647,13 @@ ensure_edit_config(void)
   cal_status = 0;
 }
 
-#if 0
-static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
-{
-  float gamma[2];
-  int i;
-  int32_t freq, step;
-  int delay;
-  (void)argc;
-  (void)argv;
-
-  pause_sweep();
-  chMtxLock(&mutex);
-  freq = frequency0;
-  step = (frequency1 - frequency0) / (sweep_points-1);
-  set_frequency(freq);
-  delay = 4;
-  for (i = 0; i < sweep_points; i++) {
-    freq = freq + step;
-    wait_dsp(delay);
-    delay = set_frequency(freq);
-    palClearPad(GPIOC, GPIOC_LED);
-    calculate_gamma(gamma);
-    palSetPad(GPIOC, GPIOC_LED);
-    chprintf(chp, "%d %d\r\n", gamma[0], gamma[1]);
-  }
-  chMtxUnlock(&mutex);
-}
-#endif
-
 // main loop for measurement
-void sweep(void)
+bool sweep(bool break_on_operation)
 {
   int i;
-  int delay;
-
- rewind:
-  frequency_updated = FALSE;
-  //delay = 3;
 
   for (i = 0; i < sweep_points; i++) {
-    delay = set_frequency(frequencies[i]);
+    int delay = set_frequency(frequencies[i]);
     tlv320aic3204_select_in3(); // CH0:REFLECT
     wait_dsp(delay);
 
@@ -696,16 +678,51 @@ void sweep(void)
     if (electrical_delay != 0)
       apply_edelay_at(i);
 
-    redraw_requested = FALSE;
-    ui_process();
-    if (redraw_requested)
-      break; // return to redraw screen asap.
-      
-    if (frequency_updated)
-      goto rewind;
+    // back to toplevel to handle ui operation
+    if (operation_requested && break_on_operation)
+      return false;
   }
 
   transform_domain();
+  return true;
+}
+
+static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  int32_t start, stop;
+  int16_t points = sweep_points;
+
+  if (argc != 2 && argc != 3) {
+    chprintf(chp, "usage: sweep {start(Hz)} {stop(Hz)} [points]\r\n");
+    return;
+  }
+
+  start = atoi(argv[0]);
+  stop = atoi(argv[1]);
+  if (start == 0 || stop == 0 || start > stop) {
+      chprintf(chp, "frequency range is invalid\r\n");
+      return;
+  }
+  if (argc == 3) {
+    points = atoi(argv[2]);
+    if (points <= 0 || points > sweep_points) {
+      chprintf(chp, "sweep points exceeds range\r\n");
+      return;
+    }
+  }
+
+  pause_sweep();
+  chMtxLock(&mutex);
+  set_frequencies(start, stop, points);
+  if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))
+    cal_interpolate(lastsaveid);
+
+  sweep_once = TRUE;
+  chMtxUnlock(&mutex);
+
+  // wait finishing sweep
+  while (sweep_once)
+    chThdSleepMilliseconds(10);
 }
 
 static void
@@ -740,31 +757,39 @@ update_marker_index(void)
 }
 
 void
-update_frequencies(void)
+set_frequencies(uint32_t start, uint32_t stop, int16_t points)
 {
   int i;
-  int32_t span;
-  int32_t start;
+  float span = stop - start;
+  for (i = 0; i < points; i++) {
+    float offset = i * span / (float)(points - 1);
+    frequencies[i] = start + (uint32_t)offset;
+  }
+  // disable at out of sweep range
+  for (; i < sweep_points; i++)
+    frequencies[i] = 0;
+}
+
+void
+update_frequencies(void)
+{
+  uint32_t start, stop;
   if (frequency1 > 0) {
     start = frequency0;
-    span = (frequency1 - frequency0)/100;
+    stop = frequency1;
   } else {
-    int center = frequency0;
-    span = -frequency1;
+    int32_t center = frequency0;
+    int32_t span = -frequency1;
     start = center - span/2;
-    span /= 100;
+    stop = center + span/2;
   }
 
-  for (i = 0; i < sweep_points; i++)
-    frequencies[i] = start + span * i / (sweep_points - 1) * 100;
-
+  set_frequencies(start, stop, sweep_points);
   update_marker_index();
   
-  frequency_updated = TRUE;
   // set grid layout
   update_grid();
 }
-
 
 void
 freq_mode_startstop(void)
@@ -799,7 +824,7 @@ void
 set_sweep_frequency(int type, float frequency)
 {
   int32_t freq = frequency;
-  bool cal_applied = cal_status & CALSTAT_APPLY;
+  int cal_applied = cal_status & CALSTAT_APPLY;
   switch (type) {
   case ST_START:
     freq_mode_startstop();
@@ -913,8 +938,7 @@ static void cmd_sweep(BaseSequentialStream *chp, int argc, char *argv[])
     chprintf(chp, "%d %d %d\r\n", frequency0, frequency1, sweep_points);
     return;
   } else if (argc > 3) {
-    chprintf(chp, "usage: sweep {start(Hz)} [stop] [points]\r\n");
-    return;
+    goto usage;
   }
   if (argc >= 2) {
     if (strcmp(argv[0], "start") == 0) {
@@ -942,12 +966,18 @@ static void cmd_sweep(BaseSequentialStream *chp, int argc, char *argv[])
 
   if (argc >= 1) {
     int32_t value = atoi(argv[0]);
+    if (value == 0)
+      goto usage;
     set_sweep_frequency(ST_START, value);
   }
   if (argc >= 2) {
     int32_t value = atoi(argv[1]);
     set_sweep_frequency(ST_STOP, value);
   }
+  return;
+usage:
+  chprintf(chp, "usage: sweep {start(Hz)} [stop(Hz)]\r\n");
+  chprintf(chp, "\tsweep {start|stop|center|span|cw} {freq(Hz)}\r\n");
 }
 
 
@@ -1062,13 +1092,9 @@ eterm_calc_et(void)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
-    // Et = 1/(S21mt - Ex)(1 - Es)
-    float esr = 1 - cal_data[ETERM_ES][i][0];
-    float esi = -cal_data[ETERM_ES][i][1];
-    float s21mr = cal_data[CAL_THRU][i][0] - cal_data[CAL_ISOLN][i][0];
-    float s21mi = cal_data[CAL_THRU][i][1] - cal_data[CAL_ISOLN][i][1];
-    float etr = esr * s21mr - esi * s21mi;
-    float eti = esr * s21mi + esi * s21mr;
+    // Et = 1/(S21mt - Ex)
+    float etr = cal_data[CAL_THRU][i][0] - cal_data[CAL_ISOLN][i][0];
+    float eti = cal_data[CAL_THRU][i][1] - cal_data[CAL_ISOLN][i][1];
     float sq = etr*etr + eti*eti;
     float invr = etr / sq;
     float invi = -eti / sq;
@@ -1190,6 +1216,7 @@ cal_collect(int type)
     break;
   }
   chMtxUnlock(&mutex);
+  redraw_request |= REDRAW_CAL_STATUS;
 }
 
 void
@@ -1224,6 +1251,7 @@ cal_done(void)
   }
 
   cal_status |= CALSTAT_APPLY;
+  redraw_request |= REDRAW_CAL_STATUS;
 }
 
 void
@@ -1309,19 +1337,18 @@ static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
     cal_collect(CAL_ISOLN);
   } else if (strcmp(cmd, "done") == 0) {
     cal_done();
-    draw_cal_status();
     return;
   } else if (strcmp(cmd, "on") == 0) {
     cal_status |= CALSTAT_APPLY;
-    draw_cal_status();
+    redraw_request |= REDRAW_CAL_STATUS;
     return;
   } else if (strcmp(cmd, "off") == 0) {
     cal_status &= ~CALSTAT_APPLY;
-    draw_cal_status();
+    redraw_request |= REDRAW_CAL_STATUS;
     return;
   } else if (strcmp(cmd, "reset") == 0) {
     cal_status = 0;
-    draw_cal_status();
+    redraw_request |= REDRAW_CAL_STATUS;
     return;
   } else if (strcmp(cmd, "data") == 0) {
     chprintf(chp, "%f %f\r\n", cal_data[CAL_LOAD][0][0], cal_data[CAL_LOAD][0][1]);
@@ -1335,7 +1362,7 @@ static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
     if (argc > 1)
       s = atoi(argv[1]);
     cal_interpolate(s);
-    draw_cal_status();
+    redraw_request |= REDRAW_CAL_STATUS;
     return;
   } else {
     chprintf(chp, "usage: cal [load|open|short|thru|isoln|done|reset|on|off|in]\r\n");
@@ -1354,7 +1381,7 @@ static void cmd_save(BaseSequentialStream *chp, int argc, char *argv[])
   if (id < 0 || id >= SAVEAREA_MAX)
     goto usage;
   caldata_save(id);
-  draw_cal_status();
+  redraw_request |= REDRAW_CAL_STATUS;
   return;
 
  usage:
@@ -1376,7 +1403,7 @@ static void cmd_recall(BaseSequentialStream *chp, int argc, char *argv[])
   if (caldata_recall(id) == 0) {
     // success
     update_frequencies();
-    draw_cal_status();
+    redraw_request |= REDRAW_CAL_STATUS;
   }
   chMtxUnlock(&mutex);
   resume_sweep();
@@ -1639,6 +1666,7 @@ static void cmd_marker(BaseSequentialStream *chp, int argc, char *argv[])
     active_marker = -1;
     for (t = 0; t < 4; t++)
       markers[t].enabled = FALSE;
+    redraw_request |= REDRAW_MARKER;
     return;
   }
 
@@ -1648,7 +1676,9 @@ static void cmd_marker(BaseSequentialStream *chp, int argc, char *argv[])
   if (argc == 1) {
     chprintf(chp, "%d %d %d\r\n", t+1, markers[t].index, frequency);
     active_marker = t;
+    // select active marker
     markers[t].enabled = TRUE;
+    redraw_request |= REDRAW_MARKER;
     return;
   }
   if (argc > 1) {
@@ -1656,15 +1686,19 @@ static void cmd_marker(BaseSequentialStream *chp, int argc, char *argv[])
       markers[t].enabled = FALSE;
       if (active_marker == t)
         active_marker = -1;
+      redraw_request |= REDRAW_MARKER;
     } else if (strcmp(argv[1], "on") == 0) {
       markers[t].enabled = TRUE;
       active_marker = t;
+      redraw_request |= REDRAW_MARKER;
     } else {
+      // select active marker and move to index
       markers[t].enabled = TRUE;
       int index = atoi(argv[1]);
       markers[t].index = index;
       markers[t].frequency = frequencies[index];
       active_marker = t;
+      redraw_request |= REDRAW_MARKER;
     }
   }
   return;
@@ -1712,7 +1746,8 @@ static void cmd_frequencies(BaseSequentialStream *chp, int argc, char *argv[])
   (void)argc;
   (void)argv;
   for (i = 0; i < sweep_points; i++) {
-    chprintf(chp, "%d\r\n", frequencies[i]);
+    if (frequencies[i] != 0)
+      chprintf(chp, "%d\r\n", frequencies[i]);
   }
 }
 
@@ -1882,7 +1917,7 @@ static const ShellCommand commands[] =
     { "power", cmd_power },
     { "sample", cmd_sample },
     //{ "gamma", cmd_gamma },
-    //{ "scan", cmd_scan },
+    { "scan", cmd_scan },
     { "sweep", cmd_sweep },
     { "test", cmd_test },
     { "touchcal", cmd_touchcal },
@@ -1925,49 +1960,34 @@ int main(void)
 
     chMtxObjectInit(&mutex);
 
-    /*
-    * Initializes a serial-over-USB CDC driver.
-    */
+    //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
+    //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
+    i2cStart(&I2CD1, &i2ccfg);
+    si5351_init();
+
+    // MCO on PA8
+    //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
+  /*
+   * Initializes a serial-over-USB CDC driver.
+   */
     sduObjectInit(&SDU1);
     sduStart(&SDU1, &serusbcfg);
 
-    /*
-    * Activates the USB driver and then the USB bus pull-up on D+.
-    * Note, a delay is inserted in order to not have to disconnect the cable
-    * after a reset.
-    */
-#if !defined(NANOVNA_F303)
-    /* 
-    * This F303 test board has a 1.5K resistor pull up USB_DP to VDD.
-    * The USB cannot be disconnected by usbDisconnectBus().  So the USB
-    * driver should be started as soon as possible.  If later the USB_DP 
-    * is connected to USB_DISC pin via a 1.5K resistor, the following USB 
-    * disconnect command can then be used.
-    */
+  /*
+   * Activates the USB driver and then the USB bus pull-up on D+.
+   * Note, a delay is inserted in order to not have to disconnect the cable
+   * after a reset.
+   */
     usbDisconnectBus(serusbcfg.usbp);
     chThdSleepMilliseconds(100);
-#endif
     usbStart(serusbcfg.usbp, &usbcfg);
-#if !defined(NANOVNA_F303) 
     usbConnectBus(serusbcfg.usbp);
-#endif
 
-    //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
-    //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_SI5351
-    i2cStart(&I2CD1, &i2ccfg);
-    si5351_init();
-#endif
-    
-    // MCO on PA8
-    //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_LCD
   /*
    * SPI LCD Initialize
    */
   ili9341_init();
-  show_version();
-  
+
   /*
    * Initialize graph plotting
    */
@@ -1982,30 +2002,27 @@ int main(void)
    * by the Reference Manual.
    */
   dacStart(&DACD2, &dac1cfg1);
-  
+
   /* initial frequencies */
   update_frequencies();
 
   /* restore frequencies and calibration properties from flash memory */
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
-  
+
   redraw_frame();
-#endif
-  
+
   /*
    * I2S Initialize
    */
-#if !defined(NANOVNA_F303) || DEBUG_ENABLE_CODEC
   tlv320aic3204_init();
   i2sInit();
   i2sObjectInit(&I2SD2);
   i2sStart(&I2SD2, &i2sconfig);
   i2sStartExchange(&I2SD2);
-#endif
-  
+
   ui_init();
-  
+
   /*
    * Shell manager initialization.
    */
