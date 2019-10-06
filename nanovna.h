@@ -77,7 +77,7 @@ enum {
   ST_START, ST_STOP, ST_CENTER, ST_SPAN, ST_CW
 };
 
-void set_sweep_frequency(int type, float frequency);
+void set_sweep_frequency(int type, int32_t frequency);
 uint32_t get_sweep_frequency(int type);
 
 float my_atof(const char *p);
@@ -112,7 +112,7 @@ void calculate_gamma(float *gamma);
 void fetch_amplitude(float *gamma);
 void fetch_amplitude_ref(float *gamma);
 
-int si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength);
+int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_strength);
 
 
 /*
@@ -201,6 +201,7 @@ typedef struct {
   uint16_t trace_color[TRACES_MAX];
   int16_t touch_cal[4];
   int8_t default_loadcal;
+  uint32_t harmonic_freq_threshold;
   int32_t checksum;
 } config_t;
 
@@ -242,6 +243,7 @@ void redraw_marker(int marker, int update_info);
 void trace_get_info(int t, char *buf, int len);
 void plot_into_index(float measured[2][101][2]);
 void force_set_markmap(void);
+void draw_frequencies(void);
 void draw_all(bool flush);
 
 void draw_cal_status(void);
@@ -366,6 +368,8 @@ void ui_hide(void);
 
 extern uint8_t operation_requested;
 
+void touch_start_watchdog(void);
+void touch_position(int *x, int *y);
 void handle_touch_interrupt(void);
 
 #define TOUCH_THRESHOLD 2000
