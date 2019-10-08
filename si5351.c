@@ -18,6 +18,7 @@
  * Boston, MA 02110-1301, USA.
  */
 #include "hal.h"
+#include "nanovna.h"
 #include "si5351.h"
 
 #define SI5351_I2C_ADDR   	(0x60<<1)
@@ -303,52 +304,26 @@ int current_band = -1;
  */
 #define CLK2_FREQUENCY 8000000L
 int
-si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
+si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_strength)
 {
-	int band = 2;
-  int delay =3;
+  int band;
+  int delay = 3;
   uint32_t ofreq = freq + offset;
   uint32_t rdiv = SI5351_R_DIV_1;
-
+  if (freq >= config.harmonic_freq_threshold * 3) {
+    freq /= 5;
+    ofreq /= 7;
+  } else if (freq >= config.harmonic_freq_threshold) {
+    freq /= 3;
+    ofreq /= 5;
+  }
   if (freq <= 100000000) {
     band = 0;
   } else if (freq < 150000000) {
     band = 1;
+  } else {
+    band = 2;
   }
-
-
-#if  defined(FRE800)
-  else if (freq <= 270000000)
-#else
-  else if (freq <= 300000000)
-#endif
-  {
-     band = 2;
-   }
-  else  if (freq <= 540000000){
-     band = 3;
-     freq /= 3;
-     ofreq /= 5;
-	    }
-#if  defined(FRE800)
-	else  if (freq <= 800000000)
-#else
-  	else if (freq <= 900000000)
-#endif
-   {
- 	  band = 4;
- 	  freq /= 3;
-     ofreq /= 5;
-   }else
-   {
- 	  band = 2;
- 	  freq /= 5;
-     ofreq /= 7;
-   }
-
-  
-
-
   if (freq <= 500000) {
     rdiv = SI5351_R_DIV_64;
   } else if (freq <= 4000000) {
@@ -363,10 +338,10 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
   switch (band) {
   case 0:
     // fractional divider mode. only PLL A is used.
-    //if (current_band == 1 || current_band == 2)
+    if (current_band == 1 || current_band == 2)
       si5351_setupPLL(SI5351_PLL_A, 32, 0, 1);
     // Set PLL twice on changing from band 2
-   // if (current_band == 2) 
+    if (current_band == 2) 
       si5351_setupPLL(SI5351_PLL_A, 32, 0, 1);
 
     if (rdiv == SI5351_R_DIV_8) {
@@ -376,6 +351,7 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
       freq *= 64;
       ofreq *= 64;
     }
+
     si5351_set_frequency_fixedpll(0, SI5351_PLL_A, PLLFREQ, ofreq,
                                   rdiv, drive_strength);
     si5351_set_frequency_fixedpll(1, SI5351_PLL_A, PLLFREQ, freq,
@@ -387,13 +363,13 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 
   case 1:
     // Set PLL twice on changing from band 2
-    if (current_band !=0 && current_band !=1 ) {
+    if (current_band == 2) {
       si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 6, drive_strength);
       si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, drive_strength);
     }
 
     // div by 6 mode. both PLL A and B are dedicated for CLK0, CLK1
-    si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 6,drive_strength);
+    si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 6, drive_strength);
     si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, drive_strength);
     si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq * 6, CLK2_FREQUENCY,
                                   SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
@@ -401,39 +377,11 @@ si5351_set_frequency_with_offset(int freq, int offset, uint8_t drive_strength)
 
   case 2:
     // div by 4 mode. both PLL A and B are dedicated for CLK0, CLK1
-	  si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 4,
-			  drive_strength);
+    si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 4, drive_strength);
     si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 4, drive_strength);
     si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq * 4, CLK2_FREQUENCY,
                                   SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
-
     break;
-
-     case 3:
-    // div by 6 mode. CLK1,  div by 8 mode. CLK0
-    	 si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 8,
-    	     			 drive_strength);
-    	     si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, drive_strength);
-    	 si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 8,
-    			 drive_strength);
-    si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, drive_strength);
-    si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq * 6, CLK2_FREQUENCY,
-                                  SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
-
-    break;
-    case 4:
-
-    // div by 4 mode. CLK1,  div by 6 mode. CLK0
-        si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq , 6,
-        		drive_strength);
-    si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 4, drive_strength);
-    si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq* 4, CLK2_FREQUENCY,
-                                  SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
-
-    break;
-
-
-
   }
 
   if (current_band != band) {

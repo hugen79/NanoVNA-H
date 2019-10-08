@@ -20,6 +20,7 @@
 
 #include "ch.h"
 #include "hal.h"
+#include "chprintf.h"
 #include "nanovna.h"
 #include <stdlib.h>
 #include <string.h>
@@ -58,7 +59,6 @@ static uint32_t last_button_down_ticks;
 static uint32_t last_button_repeat_ticks;
 static int8_t inhibit_until_release = FALSE;
 
-enum { OP_NONE = 0, OP_LEVER, OP_TOUCH };
 uint8_t operation_requested = OP_NONE;
 
 int8_t previous_marker = -1;
@@ -942,7 +942,9 @@ const menuitem_t menu_save[] = {
   { MT_CALLBACK, "SAVE 1", menu_save_cb },
   { MT_CALLBACK, "SAVE 2", menu_save_cb },
   { MT_CALLBACK, "SAVE 3", menu_save_cb },
+#if !defined(ANTENNA_ANALYZER)
   { MT_CALLBACK, "SAVE 4", menu_save_cb },
+#endif
   { MT_CANCEL, S_LARROW" BACK", NULL },
   { MT_NONE, NULL, NULL } // sentinel
 };
@@ -1072,7 +1074,9 @@ const menuitem_t menu_recall[] = {
   { MT_CALLBACK, "RECALL 1", menu_recall_cb },
   { MT_CALLBACK, "RECALL 2", menu_recall_cb },
   { MT_CALLBACK, "RECALL 3", menu_recall_cb },
+#if !defined(ANTENNA_ANALYZER)
   { MT_CALLBACK, "RECALL 4", menu_recall_cb },
+#endif
   { MT_CANCEL, S_LARROW" BACK", NULL },
   { MT_NONE, NULL, NULL } // sentinel
 };

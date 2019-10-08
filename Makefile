@@ -14,17 +14,6 @@ ifeq ($(ANTENNA_ANALYZER),YES)
  	USE_OPT += -DANTENNA_ANALYZER
     BUILDDIR = buildAA
  endif
- 
-# .
-    
-ifeq ($(FRE),800)
-  USE_OPT += -DFRE800
- ifeq ($(ANTENNA_ANALYZER),YES)
-    BUILDDIR = buildAA_800
-  else
-  BUILDDIR = build800
-  endif
-endif
 
 
 # C specific options here (added to USE_OPT).
@@ -124,9 +113,13 @@ include $(CHIBIOS)/os/hal/lib/streams/streams.mk
 include $(CHIBIOS)/os/various/shell/shell.mk
 
 # Define linker script file here
-#LDSCRIPT= $(STARTUPLD)/STM32F072xB.ld
-LDSCRIPT= STM32F072xB.ld
 
+#LDSCRIPT= $(STARTUPLD)/STM32F072xB.ld
+ifeq ($(ANTENNA_ANALYZER),YES)
+LDSCRIPT= STM32F072xB_AA.ld
+else
+LDSCRIPT= STM32F072xB.ld
+endif
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

@@ -78,8 +78,12 @@ checksum(const void *start, size_t len)
 
 
 #define FLASH_PAGESIZE 0x800
-const uint32_t save_config_area = 0x08018000;
 
+#if !defined(ANTENNA_ANALYZER)
+const uint32_t save_config_area = 0x08018000;
+#else
+const uint32_t save_config_area = 0x08019800;
+#endif
 int
 config_save(void)
 {
@@ -120,11 +124,17 @@ config_recall(void)
   memcpy(dst, src, sizeof(config_t));
   return 0;
 }
-
+#if !defined(ANTENNA_ANALYZER)
 #define SAVEAREA_MAX 5
-
+#else
+#define SAVEAREA_MAX 4
+#endif
 const uint32_t saveareas[] =
-  { 0x08018800, 0x0801a000, 0x0801b800, 0x0801d000, 0x0801e800 };
+  {
+#if !defined(ANTENNA_ANALYZER)
+		  0x08018800,
+#endif
+		  0x0801a000, 0x0801b800, 0x0801d000, 0x0801e800 };
 
 int16_t lastsaveid = 0;
 
