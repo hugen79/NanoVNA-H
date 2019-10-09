@@ -39,14 +39,14 @@ $ sudo apt install -y dfu-util
 ```
 
 
-### 800MHz(1300MHz)
-```
-$ make FRE=800
-```
-
-### 900MHz(1500MHz)
+### Normal version
 ```
 $ make
+```
+
+### AA version
+```
+$ make ANTENNA_ANALYZER=YES
 ```
 
 
@@ -55,20 +55,23 @@ $ make
 Follow [these instructions](https://gnu-mcu-eclipse.github.io/install/)to install gnu-mcu-eclipse.
 
 Existing Code as Makefile Projiect.
+Project > Properties > C/C++ Build > Setting:
+Confirm that Toolchains is "GNU MCU Eclipse ARM Embedded GCC (arm-none-eabi-gcc)"
+
 Project > Properties > C/C++ Build > Tool Chain Editor:
 ```
 Current toolchain: ARM Cross GCC
 Current builder: Gnu Make Builder
 ```
 
-### 900MHz(1500MHz) 
+### Normal version
  just Build Project.
 
-### 800MHz(1300MHz)  
+### AA version
 Project > Properties > C/C++ Build >  Environment >Add:
 ```
-Name: FRE
-Value: 800
+Name: ANTENNA_ANALYZER
+Value: YES
 ```
 
 Build Project.
