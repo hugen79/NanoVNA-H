@@ -97,15 +97,7 @@ PROJECT = ch
 
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
-ifeq ($(TARGET),F303)
 CHIBIOS = ChibiOS
-else
-CHIBIOS = ChibiOS
-endif
-
-# Licensing files.
-#include $(CHIBIOS)/os/license/license.mk
-
 PROJ = .
 # Startup files.
 # HAL-OSAL files (optional).
@@ -153,7 +145,7 @@ CSRC = $(STARTUPSRC) \
        $(STREAMSSRC) \
        $(SHELLSRC) \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c 
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c
 
 #       $(TESTSRC) \
 
@@ -203,7 +195,7 @@ else
  MCU  = cortex-m0
 endif
 
-TRGT = arm-elf-
+#TRGT = arm-elf-
 TRGT = arm-none-eabi-
 CC   = $(TRGT)gcc
 CPPC = $(TRGT)g++
@@ -244,6 +236,7 @@ CPPWARN = -Wall -Wextra -Wundef
 # List all user C define here, like -D_DEBUG=1
 ifeq ($(TARGET),F303)
  UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM4 -DVERSION=\"$(VERSION)\" -DNANOVNA_F303 -D__FPU_PRESENT -D__FPU_USED
+#-DCH_DBG_STATISTICS 
 else
  UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0 -DVERSION=\"$(VERSION)\" 
 endif
@@ -280,7 +273,4 @@ else
 	@etags *.[ch] NANOVNA_STM32_F072/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F0xx ChibiOS/os -name \*.\[ch\] -print) 
 endif
 	@ls -l TAGS
-
-all:
-
 

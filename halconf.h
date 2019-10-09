@@ -29,7 +29,6 @@
 #define _HALCONF_H_
 
 #include "mcuconf.h"
-//#include "mcuconf_F303.h"
 
 /**
  * @brief   Enables the PAL subsystem.
@@ -42,7 +41,11 @@
  * @brief   Enables the ADC subsystem.
  */
 #if !defined(HAL_USE_ADC) || defined(__DOXYGEN__)
+#if defined(NANOVNA_F303) 
 #define HAL_USE_ADC                 TRUE
+#else
+#define HAL_USE_ADC                 FALSE
+#endif
 #endif
 
 /**
@@ -314,7 +317,7 @@
  *          buffers.
  */
 #if !defined(SERIAL_USB_BUFFERS_SIZE) || defined(__DOXYGEN__)
-#define SERIAL_USB_BUFFERS_SIZE     256
+#define SERIAL_USB_BUFFERS_SIZE     128
 #endif
 
 /**

@@ -21,13 +21,20 @@
 #define M_PI 3.14159
 
 #ifdef NANOVNA_F303
-#define DEBUG_ENABLE_AWDG FALSE
+#define DEBUG_ENABLE_AWDG TRUE
 #endif
 
 
 /*
  * main.c
  */
+
+#ifdef NANOVNA_F303
+void adc_init(void);
+void adc_stop(ADC_TypeDef *adc);
+uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
+void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
+#endif
 
 extern float measured[2][101][2];
 
@@ -69,6 +76,18 @@ extern float measured[2][101][2];
 #define TD_WINDOW_MAXIMUM (0b10<<3)
 
 #define FFT_SIZE 256
+
+#if defined(NANOVNA_F303) 
+#define ADC_ISR_ADRDY_Pos              (0U)                                    
+#define ADC_ISR_ADRDY_Msk              (0x1U << ADC_ISR_ADRDY_Pos)             /*!< 0x00000001 */
+#define ADC_ISR_ADRDY                  ADC_ISR_ADRDY_Msk                       /*!< ADC ready flag */
+#define ADC_IER_ADRDYIE_Pos            (0U)                                    
+#define ADC_IER_ADRDYIE_Msk            (0x1U << ADC_IER_ADRDYIE_Pos)           /*!< 0x00000001 */
+#define ADC_IER_ADRDYIE                ADC_IER_ADRDYIE_Msk                     /*!< ADC ready interrupt */
+#define ADC_IER_AWD1IE_Pos             (7U)                                    
+#define ADC_IER_AWD1IE_Msk             (0x1U << ADC_IER_AWD1IE_Pos)            /*!< 0x00000080 */
+#define ADC_IER_AWD1IE                 ADC_IER_AWD1IE_Msk                      /*!< ADC analog watchdog 1 interrupt */
+#endif
 
 void cal_collect(int type);
 void cal_done(void);

@@ -407,11 +407,7 @@ show_version(void)
   ili9341_drawstring_5x7("Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Port Info: " PORT_INFO, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Platform: " PLATFORM_NAME, x, y += 10, 0xffff, 0x0000);
-#ifdef NANOVNA_F303
-  ili9341_drawstring_5x7("MCU: STM32F303CCT6", x, y += 10, 0xffff, 0x0000 );
-  ili9341_drawstring_5x7("Source code: https://github.com/AA6KL/NanoVNA", x, y += 10, 0xffff, 0x0000 );
-  chThdSleepMilliseconds(1000);
-#endif
+
   while (true) {
     if (touch_check() == EVT_TOUCH_PRESSED)
       break;
@@ -425,7 +421,6 @@ show_version(void)
 void
 enter_dfu(void)
 {
-#ifndef NANOVNA_F303
   adc_stop(ADC1);
 
   int x = 5, y = 5;
@@ -438,7 +433,6 @@ enter_dfu(void)
   // see __early_init in ./NANOVNA_STM32_F072/board.c
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
   NVIC_SystemReset();
-#endif
 }
 
 
@@ -2122,7 +2116,11 @@ static const EXTConfig extcfg = {
 };
 
 static const GPTConfig gpt3cfg = {
-  1000,    /* 1kHz timer clock.*/
+#ifdef NANOVNA_F303
+  100,    /* 1kHz timer clock.*/
+#else
+  1000,
+#endif
   NULL,   /* Timer callback.*/
   0x0020, /* CR2:MMS=02 to output TRGO */
   0
@@ -2149,7 +2147,11 @@ void
 ui_init()
 {
   adc_init();
-  
+#ifdef NANOVNA_F303
+        adcStart(&ADCD1, NULL);
+        adcSTM32EnableVBAT(&ADCD1);
+        adcSTM32EnableVREF(&ADCD1);
+#endif  
   /*
    * Activates the EXT driver 1.
    */

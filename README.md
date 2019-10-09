@@ -57,6 +57,8 @@ At this moment, the ADC porting failed.  The rest of functions are working.  If 
 
 # Credit
 
+Thanks edy555 for creating this tiny feature rich gadget.
+
 Thanks hugen79 for providing the hardware for my porting work and debugging support.  For hardware mod information, please visit his page at
 
 https://github.com/hugen79/NanoVNA-H

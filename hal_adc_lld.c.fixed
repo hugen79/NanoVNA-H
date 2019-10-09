@@ -326,7 +326,7 @@ static void adc_lld_serve_interrupt(ADCDriver *adcp, uint32_t isr) {
  *
  * @isr
  */
-OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER) {
+__attribute__((weak)) OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER) {
   uint32_t isr;
 
   OSAL_IRQ_PROLOGUE();

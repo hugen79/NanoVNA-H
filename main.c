@@ -24,6 +24,9 @@
 #include "si5351.h"
 #include "nanovna.h"
 #include "fft.h"
+#if defined(NANOVNA_F303) 
+#include "adc_F303.h"
+#endif
 
 #include <chprintf.h>
 #include <shell.h>
@@ -252,7 +255,9 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 
     chprintf(chp, "Performing reset\r\n");
 
-#if !defined(NANOVNA_F303) 
+#if defined(NANOVNA_F303) 
+    rccEnableWWDG(TRUE);
+#else
     rccEnableWWDG(FALSE);
 #endif
 
@@ -1972,6 +1977,36 @@ static void cmd_vbat(BaseSequentialStream *chp, int argc, char *argv[])
   chprintf(chp, "%d mV\r\n", vbat);
 }
 
+#ifdef NANOVNA_F303
+static void cmd_adc_init(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  adc_init();
+}
+
+static void cmd_adc_stop(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  adc_stop(ADC2);
+}
+
+static void cmd_adc_single_read(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  adc_single_read(ADC2, ADC_CHSELR_CHSEL7);
+}
+
+static void cmd_start_awd(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  adc_start_analog_watchdogd(ADC2, ADC_CHSELR_CHSEL7);
+}
+#endif
+
 static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */442);
 
 static const ShellCommand commands[] =
@@ -2012,6 +2047,12 @@ static const ShellCommand commands[] =
     { "vbat", cmd_vbat },
     { "transform", cmd_transform },
     { "threshold", cmd_threshold },
+#ifdef NANOVNA_F303
+  {"adc_init", cmd_adc_init},
+  {"adc_stop", cmd_adc_stop},
+  {"adc_single_read", cmd_adc_single_read},
+  {"start_awd", cmd_start_awd},
+#endif
     { NULL, NULL }
 };
 

@@ -5,12 +5,6 @@
 #define ADC_SMPR_SMP_247P5      6   /**< @brief 260 cycles conversion time. */
 #define ADC_SMPR_SMP_24P5       3   /**< @brief 37 cycles conversion time.  */
 
-//static void adccallback(ADCDriver *adcp, adcsample_t *buffer, size_t n);
-static void adcerrorcallback(ADCDriver *adcp, adcerror_t err);
-
-
-
-
 
 #define rccEnableWWDG(lp) rccEnableAPB1(RCC_APB1ENR_WWDGEN, lp)
 #define ADC_CHSELR_CHSEL6  ADC_SQR1_SQ1_N(ADC_CHANNEL_IN3)
