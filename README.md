@@ -17,7 +17,7 @@ https://github.com/ttrftech/NanoVNA
 
 Please refer to original NanoVNA page for detail preparation information.
 
-The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V).
+The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V), and the USB_DP (PA12) is shorted with PA10.  AT power-up, PA10 will pull down USB_DP then release to indicate host a device is plugged in.
 
 Because edy555's ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c is not updated with ADCv3 protocol, I modified and name it as hal_adc_lld.c.fixed.  To put the file at the correct location, do the following.  I will find a nicer way to handle it later.
 
@@ -47,12 +47,13 @@ At Ubuntu, the shell can be accessed via
 
 # Status
 
-At this moment, the ADC porting failed.  The rest of functions are working.  If you are familiar with the STM32F3 analog watch dog coding in ChibiOS, please help me.
+At this moment, the ADC porting still doesn't work.  The rest of functions are working.  If you are familiar with the STM32F3 analog watch dog coding in ChibiOS, please help me.
 
 # Hardware mod candidates:
 
 - Add D2 Schottky diode to measure the battery voltage.  Easy.
-- Replace STM32F072CBT6 to STM32F303CCT6.  Add 1.5K resistor between VDD and USB_DP.  Harder.
+- Add another 220nF cap parallel to C38 to solve the fail-to-start issue.  Easy.
+- Replace STM32F072CBT6 to STM32F303CCT6.  Add 1.5K resistor between VDD and USB_DP.  Short USB_DP (PA12) and PA10.  Harder.
 - Add 8MHz chrystal to PCB.  Better with PCB revision.
 
 # Credit

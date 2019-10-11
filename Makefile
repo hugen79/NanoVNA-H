@@ -10,7 +10,11 @@ endif
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
-  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
+ ifeq ($(TARGET),F303)
+USE_OPT = -O0 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
+ else
+USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
+ endif
 endif
 
 # C specific options here (added to USE_OPT).

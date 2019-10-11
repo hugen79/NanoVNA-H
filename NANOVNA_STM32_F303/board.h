@@ -180,7 +180,7 @@
                                      PIN_PUPDR_FLOATING(7) |         \
                                      PIN_PUPDR_PULLUP(GPIOA_MCO) | \
                                      PIN_PUPDR_PULLUP(9) |         \
-                                     PIN_PUPDR_PULLUP(GPIOA_USB_DISC) | \
+                                     PIN_PUPDR_FLOATING(GPIOA_USB_DISC) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DM) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DP) | \
                                      PIN_PUPDR_PULLDOWN(GPIOA_JTMS) |   \
@@ -756,13 +756,15 @@
  * USB bus activation macro, required by the USB driver.
  */
 //#define usb_lld_connect_bus(usbp) palSetPad(GPIOC, GPIOC_USB_DISC)
-#define usb_lld_connect_bus(usbp) 
+//#define usb_lld_connect_bus(usbp) 
+#define usb_lld_connect_bus(usbp) palSetPadMode(GPIOA, GPIOA_USB_DISC, PAL_MODE_INPUT)
 
 /*
  * USB bus de-activation macro, required by the USB driver.
  */
 //#define usb_lld_disconnect_bus(usbp) palClearPad(GPIOC, GPIOC_USB_DISC)
-#define usb_lld_disconnect_bus(usbp)
+//#define usb_lld_disconnect_bus(usbp)
+#define usb_lld_disconnect_bus(usbp) palClearPad(GPIOA, GPIOA_USB_DISC)
 #endif
 
 #if !defined(_FROM_ASM_)

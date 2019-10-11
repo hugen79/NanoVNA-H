@@ -2117,7 +2117,7 @@ static const EXTConfig extcfg = {
 
 static const GPTConfig gpt3cfg = {
 #ifdef NANOVNA_F303
-  100,    /* 1kHz timer clock.*/
+  1000,    /* 1kHz timer clock.*/
 #else
   1000,
 #endif
