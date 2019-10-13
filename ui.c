@@ -2118,13 +2118,22 @@ static const EXTConfig extcfg = {
   }
 };
 
+int tim3_cnt=0;
+void tim3_cb (GPTDriver *gptp) {
+  (void)gptp;
+  tim3_cnt++;
+  #if 0
+  if (adc2_st == 1) {
+      adcConvert(&ADCD2, &adcgrpcfgTouch, samples, 1);
+      //adc_start_analog_watchdogd(ADC1, ADC_CHSELR_CHSEL7);
+      //ADCD2.adcm->CR   |= ADC_CR_ADSTART;
+  }
+  #endif
+}
+
 static const GPTConfig gpt3cfg = {
-#ifdef NANOVNA_F303
   1000,    /* 1kHz timer clock.*/
-#else
-  1000,
-#endif
-  NULL,   /* Timer callback.*/
+  tim3_cb, // NULL,   /* Timer callback.*/ 
   0x0020, /* CR2:MMS=02 to output TRGO */
   0
 };

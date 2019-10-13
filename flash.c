@@ -79,7 +79,11 @@ checksum(const void *start, size_t len)
 
 #define FLASH_PAGESIZE 0x800
 
+#ifdef NANOVNA_F303
+const uint32_t save_config_area = 0x08038000;
+#else
 const uint32_t save_config_area = 0x08018000;
+#endif
 
 int
 config_save(void)

@@ -33,6 +33,12 @@
 void adc_init(void);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
+
+extern int ovr_cnt;
+extern int ier_cnt;
+extern int adc_int_cnt;
+extern int adc2_st;
+extern  int tim3_cnt;
 #endif
 
 extern float measured[2][101][2];
@@ -86,6 +92,12 @@ extern float measured[2][101][2];
 #define ADC_IER_AWD1IE_Pos             (7U)                                    
 #define ADC_IER_AWD1IE_Msk             (0x1U << ADC_IER_AWD1IE_Pos)            /*!< 0x00000080 */
 #define ADC_IER_AWD1IE                 ADC_IER_AWD1IE_Msk                      /*!< ADC analog watchdog 1 interrupt */
+#define ADC_IER_EOCIE_Pos              (2U)                                    
+#define ADC_IER_EOCIE_Msk              (0x1U << ADC_IER_EOCIE_Pos)             /*!< 0x00000004 */
+#define ADC_IER_EOCIE                  ADC_IER_EOCIE_Msk                       /*!< ADC group regular end of unitary conversion interrupt */
+#define ADC_IER_EOSMPIE_Pos            (1U)                                    
+#define ADC_IER_EOSMPIE_Msk            (0x1U << ADC_IER_EOSMPIE_Pos)           /*!< 0x00000002 */
+#define ADC_IER_EOSMPIE                ADC_IER_EOSMPIE_Msk                     /*!< ADC group regular end of sampling interrupt */
 #endif
 
 void cal_collect(int type);

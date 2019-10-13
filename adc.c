@@ -31,9 +31,6 @@ static uint16_t awdd_dr=0xBEEF;
 static adcsample_t samplesVBAT[2];
 static adcsample_t samples[2];
 
-static int ovr_cnt=0;
-static int ier_cnt=0;
-static int adc_int_cnt=0;
 
 #define ADC_GRP_NUM_CHANNELS_VBAT   2
 #define ADC_GRP_BUF_DEPTH_VBAT      1
@@ -53,20 +50,32 @@ static const ADCConversionGroup adcgrpcfgVBAT = {
 static ADCConversionGroup adcgrpcfgTouch = {
   FALSE,
   1,
-  NULL,
-  //adccallback_touch,
-  NULL,
-  //adcerrorcallback_touch,
-  //ADC_CFGR_CONT            /* CFGR    */
+  NULL,                         /* adccallback_touch */
+  NULL,                         /* adcerrorcallback_touch */
+                                /* CFGR    */
   ADC_CFGR_EXTEN_0     // rising edge of external trigger
   | ADC_CFGR_EXTSEL_2  // TIM3_TRGO
   | ADC_CFGR_AWD1EN
-  //| ADC_CFGR_AWD1SGL | ADC_CFGR_AWD1CH_2 // single channel, #4
-  //| ADC_CFGR_AWD1SGL | (ADC_CHANNEL_IN4<<ADC_CFGR_AWD1CH_Pos)
   ,
-  ADC_TR(0, TOUCH_THRESHOLD),          /* TR1     */
-  {ADC_SMPR_SMP_1P5,0},  /* SMPR[2] */
-  {                         /* SQR[4]  */
+  ADC_TR(0, TOUCH_THRESHOLD),   /* TR1     */
+  {5,0},                        /* SMPR[2] */
+  {                             /* SQR[4]  */
+    ADC_SQR1_SQ1_N(ADC_CHANNEL_IN3) ,
+    0,
+    0,
+    0
+  }
+};
+
+static ADCConversionGroup adcgrpcfgXY = {
+  FALSE,
+  1,
+  NULL,                         /*adccallback_touch */
+  NULL,                         /* adcerrorcallback_touch */
+  ADC_CFGR1_RES_12BIT,          /* CFGR */
+  ADC_TR(0, 0),   /* TR1     */
+  {5,0},                        /* SMPR[2] */
+  {                             /* SQR[4]  */
     ADC_SQR1_SQ1_N(ADC_CHANNEL_IN3) ,
     0,
     0,
@@ -86,7 +95,7 @@ static ADCConversionGroup adcgrpcfgTouch = {
 void adc_init(void)
 {
 #ifdef NANOVNA_F303
-  adcStart(&ADCD2, NULL);
+  // adcStart(&ADCD2, NULL);
 #else
   rccEnableADC1(FALSE);
 
@@ -120,11 +129,10 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
   /* ADC setup */
 #ifdef NANOVNA_F303
-  adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
-  //adcgrpcfg.cr2 = ADC_CR2_SWSTART;
-  adcgrpcfgTouch.cfgr = ADC_CFGR_RES_12BIT;
-  //adcgrpcfg.tr1 = ADC_TR(0, 0);
-  adcConvert(&ADCD2, &adcgrpcfgTouch, samples, 1);
+  adc2_st = 2;
+  adcStart(&ADCD2, NULL);
+  adcgrpcfgXY.sqr[0] = ADC_SQR1_SQ1_N(chsel);
+  adcConvert(&ADCD2, &adcgrpcfgXY, samples, 1);
   //chThdSleepMilliseconds(1000);
   return(samples[0]); 
 #else
@@ -154,7 +162,8 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
 	float vrefint = 0;
 #ifdef NANOVNA_F303
 	//chSysLockFromISR();
-        #if 0 
+        #if 0
+	// save power
         adcStart(&ADCD1, NULL);
         adcSTM32EnableVBAT(&ADCD1);
         adcSTM32EnableVREF(&ADCD1);
@@ -163,6 +172,7 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
         adcSTM32DisableVBAT(&ADCD1);
         adcSTM32DisableVREF(&ADCD1);
 	#elseif
+	// Not to turn on/off ADC to avoid ADC on/off noise.
 	chMtxLock(&mutex);
         adcConvert(&ADCD1, &adcgrpcfgVBAT, samplesVBAT, 1);
 	chMtxUnlock(&mutex);
@@ -195,20 +205,20 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 
 #ifdef NANOVNA_F303
  #if DEBUG_ENABLE_AWDG
-  cfgr1 =   ADC_CFGR_RES_12BIT | ADC_CFGR_AWD1EN
-    | ADC_CFGR_EXTEN_0     // rising edge of external trigger
-    | ADC_CFGR_EXTSEL_2 ; // TIM3_TRGO
-  adcgrpcfgTouch.cfgr = cfgr1;
+  adcStart(&ADCD2, NULL);
+  adc2_st = 1;
   adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
   adcConvert(&ADCD2, &adcgrpcfgTouch, samples, 1);
   int foo = samples[0];
   chThdSleepMilliseconds(100);
-  ADC2->ISR    = ADC2->ISR;
-  ADC2->IER    = (ADC_IER_AWD1IE | ADC_IER_ADRDYIE);
+  //ADC2->ISR    = ADC2->ISR;
+  ADC2->ISR    = ADC_ISR_ADRDY;
+  //ADC2->IER    = (ADC_IER_AWD1IE | ADC_IER_ADRDYIE);
+  ADC2->IER    = (ADC_IER_AWD1IE | ADC_IER_EOSMPIE);
   //chThdSleepMilliseconds(100);
-  cfgr1 &= ~ADC_CFGR_DMAEN;
-  ADC2->CFGR = cfgr1;
-  ADCD2.adcm->CR   |= ADC_CR_ADSTART;
+  ADC2->CFGR  &= ~ADC_CFGR_DMAEN;
+  //ADCD2.adcm->CR   |= ADC_CR_ADSTART;
+  ADC2->CR |= ADC_CR_ADSTART;
 
   //test if ADC2 is working.
   int tmp_adc2_cr, tmp_adc_cr_adstart, tmp_and_res, tmp_dr;
@@ -216,6 +226,8 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
   tmp_adc2_cr = ADC2->CR;
   tmp_adc_cr_adstart = ADC_CR_ADSTART;
   tmp_and_res = tmp_adc2_cr & tmp_adc_cr_adstart;
+  tmp_dr = ADC2->DR;
+  tmp_dr = ADC2->DR;
  #endif 
 #else
   cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
@@ -242,6 +254,9 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 void adc_stop(ADC_TypeDef *adc)
 {
 #ifdef NANOVNA_F303
+ #if 1
+  adcStop(&ADCD2);
+ #else
   if (ADC2->CR & ADC_CR_ADEN) {
     if (ADC2->CR & ADC_CR_ADSTART) {
       ADC2->CR |= ADC_CR_ADSTP;
@@ -249,6 +264,7 @@ void adc_stop(ADC_TypeDef *adc)
         ;
     }
   }
+ #endif
 #else
   if (adc->CR & ADC_CR_ADEN) {
     if (adc->CR & ADC_CR_ADSTART) {
@@ -297,15 +313,10 @@ void adc_interrupt(ADC_TypeDef *adc)
  #endif
 }
 
-//#ifdef NANOVNA_F303
-//OSAL_IRQ_HANDLER(STM32_ADC2_HANDLER)
-//#else
 OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
-//#endif
 {
   OSAL_IRQ_PROLOGUE();
 
-  test_adc_interrupt_cnt++;
   adc_interrupt(ADC1);
 
   OSAL_IRQ_EPILOGUE();

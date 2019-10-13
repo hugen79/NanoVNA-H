@@ -26,6 +26,10 @@
 #include "fft.h"
 #if defined(NANOVNA_F303) 
 #include "adc_F303.h"
+ int ovr_cnt=0;
+ int ier_cnt=0;
+ int adc_int_cnt=0;
+ int adc2_st = 0;
 #endif
 
 #include <chprintf.h>
@@ -255,7 +259,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
     chprintf(chp, "Performing reset\r\n");
 
 #if defined(NANOVNA_F303) 
-    rccEnableWWDG(TRUE);
+    rccEnableWWDG(FALSE);
 #else
     rccEnableWWDG(FALSE);
 #endif
@@ -618,7 +622,8 @@ config_t config = {
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,
   .trace_color =       { RGB565(0,255,255), RGB565(255,0,40), RGB565(0,0,255), RGB565(50,255,0) },
-  .touch_cal =         { 693, 605, 124, 171 },  //{ 620, 600, 160, 190 },
+  //.touch_cal =         { 693, 605, 124, 171 },  //{ 620, 600, 160, 190 },
+  .touch_cal =         { 459, 619, 146, 181 },  //{ 620, 600, 160, 190 },
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
   .checksum =          0
@@ -2004,6 +2009,14 @@ static void cmd_start_awd(BaseSequentialStream *chp, int argc, char *argv[])
   (void)argv;
   adc_start_analog_watchdogd(ADC2, ADC_CHSELR_CHSEL7);
 }
+
+static void cmd_vars(BaseSequentialStream *chp, int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+  chprintf(chp, "ovr_cnt=%d, ier_cnt=%d, adc_int_cnt=%d, tim3_cnt=%d, adc2_st=%d\r\n", ovr_cnt, ier_cnt, adc_int_cnt, tim3_cnt, adc2_st);
+  chprintf(chp, "IER=0x%08x, ISR=0x%08x\r\n", ADC2->IER, ADC2->ISR);
+}
 #endif
 
 static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */442);
@@ -2051,6 +2064,7 @@ static const ShellCommand commands[] =
   {"adc_stop", cmd_adc_stop},
   {"adc_single_read", cmd_adc_single_read},
   {"start_awd", cmd_start_awd},
+  {"vars", cmd_vars},
 #endif
     { NULL, NULL }
 };
