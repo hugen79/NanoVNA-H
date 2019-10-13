@@ -124,10 +124,10 @@ static void menu_push_submenu(const menuitem_t *submenu);
 static int btn_check(void)
 {
     int cur_button = READ_PORT() & BUTTON_MASK;
-	int changed = last_button ^ cur_button;
-	int status = 0;
+    int changed = last_button ^ cur_button;
+    int status = 0;
     uint32_t ticks = chVTGetSystemTime();
-	if (changed & (1<<BIT_PUSH)) {
+    if (changed & (1<<BIT_PUSH)) {
       if (ticks - last_button_down_ticks >= BUTTON_DEBOUNCE_TICKS) {
         if (cur_button & (1<<BIT_PUSH)) {
           // button released
@@ -139,8 +139,8 @@ static int btn_check(void)
         }
         last_button_down_ticks = ticks;
       }
-	}
-
+    }
+    
     if (changed & (1<<BIT_UP1)) {
       if ((cur_button & (1<<BIT_UP1))
           && (ticks >= last_button_down_ticks + BUTTON_DEBOUNCE_TICKS)) {
@@ -156,8 +156,8 @@ static int btn_check(void)
       last_button_down_ticks = ticks;
     }
     last_button = cur_button;
-
-	return status;
+    
+    return status;
 }
 
 static int btn_wait_release(void)
@@ -2148,9 +2148,9 @@ ui_init()
 {
   adc_init();
 #ifdef NANOVNA_F303
-        adcStart(&ADCD1, NULL);
-        adcSTM32EnableVBAT(&ADCD1);
-        adcSTM32EnableVREF(&ADCD1);
+  adcStart(&ADCD1, NULL);
+  adcSTM32EnableVBAT(&ADCD1);
+  adcSTM32EnableVREF(&ADCD1);
 #endif  
   /*
    * Activates the EXT driver 1.

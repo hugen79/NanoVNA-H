@@ -17,7 +17,7 @@ https://github.com/ttrftech/NanoVNA
 
 Please refer to original NanoVNA page for detail preparation information.
 
-The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V), and the USB_DP (PA12) is shorted with PA10.  AT power-up, PA10 will pull down USB_DP then release to indicate host a device is plugged in.
+The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V), and the USB_DP (PA12) is shorted with PA10.  AT power-up, PA10 will pull down USB_DP then release to inform host a device is plugged in.
 
 Because edy555's ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c is not updated with ADCv3 protocol, I modified and name it as hal_adc_lld.c.fixed.  To put the file at the correct location, do the following.  I will find a nicer way to handle it later.
 

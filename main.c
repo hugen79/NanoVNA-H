@@ -36,7 +36,6 @@
 #include <math.h>
 #include <arm_math.h>
 
-
 #define ENABLED_DUMP
 
 static void apply_error_term_at(int i);
@@ -2100,7 +2099,7 @@ int main(void)
    * after a reset.
    */
     usbDisconnectBus(serusbcfg.usbp);
-    chThdSleepMilliseconds(100);
+    //chThdSleepMilliseconds(100);
     usbStart(serusbcfg.usbp, &usbcfg);
     usbConnectBus(serusbcfg.usbp);
 

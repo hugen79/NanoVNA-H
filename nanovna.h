@@ -31,7 +31,6 @@
 
 #ifdef NANOVNA_F303
 void adc_init(void);
-void adc_stop(ADC_TypeDef *adc);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #endif

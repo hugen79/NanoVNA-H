@@ -7,8 +7,8 @@
 
 
 #define rccEnableWWDG(lp) rccEnableAPB1(RCC_APB1ENR_WWDGEN, lp)
-#define ADC_CHSELR_CHSEL6  ADC_SQR1_SQ1_N(ADC_CHANNEL_IN3)
-#define ADC_CHSELR_CHSEL7  ADC_SQR1_SQ1_N(ADC_CHANNEL_IN4)
+#define ADC_CHSELR_CHSEL6  ADC_CHANNEL_IN3
+#define ADC_CHSELR_CHSEL7  ADC_CHANNEL_IN4
 #define ADC_SMPR_SMP_239P5      7U
 #define ADC_SMPR_SMP_28P5       3U  /**< @brief 41 cycles conversion time.  */
 #define ADC_CFGR_RES_12BIT             (0 << 3)
