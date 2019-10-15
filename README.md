@@ -17,7 +17,7 @@ https://github.com/ttrftech/NanoVNA
 
 Please refer to original NanoVNA page for detail preparation information.
 
-The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V), and the USB_DP (PA12) is shorted with PA10.  AT power-up, PA10 will pull down USB_DP then release to inform host a device is plugged in.
+The current test board has the MCU STM32F072CBT6 replaced by STM32F303CCT6.  Also, the USB_DP pin has a 1.5K ohm pull up resistor connected to VDD (3.3V), and the USB_DP (PA12) is shorted with PA10.  AT power-up, PA10 will pull down USB_DP then release to inform host a device is plugged in.  Another way is to connect USB_DP to PA10 directly and use PA10 to control USB connect and disconnect.
 
 Because edy555's ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c is not updated with ADCv3 protocol, I modified and name it as hal_adc_lld.c.fixed.  To put the file at the correct location, do the following.  I will find a nicer way to handle it later.
 
@@ -39,29 +39,23 @@ The flash firmware command at Linux(Ubuntu) is
 
     $ st-flash write build/ch.bin 0x8000000
 
-At times, it is necessary to short the BOOT pin to VCC at NanoVNA board for firmware update via st-flash.
-
 At Ubuntu, the shell can be accessed via
 
     $ sudo screen /dev/ttyACM0 57600
 
-# Status
-
-At this moment, the ADC porting still doesn't work.  The rest of functions are working.  If you are familiar with the STM32F3 analog watch dog coding in ChibiOS, please help me.
-
 # Hardware mod candidates:
 
 - Add D2 Schottky diode to measure the battery voltage.  Easy.
-- Add another 220nF cap parallel to C38 to solve the fail-to-start issue.  Easy.
+- Add another 220nF cap parallel to C38 to solve the tlv320aic3204 fail-to-start issue.  Easy.
 - Replace STM32F072CBT6 to STM32F303CCT6.  Add 1.5K resistor between VDD and USB_DP.  Short USB_DP (PA12) and PA10.  Harder.
 - Add 8MHz chrystal to PCB.  Better with PCB revision.
 
+# Status
+
+Most of functions are working, except DFU via manu.
+
 # Credit
 
-Thanks edy555 for creating this tiny feature rich gadget.
+Thanks [@edy555](https://github.com/edy555) for creating this tiny feature rich gadget.  edy555 is also working on the F303 version of NanoVNA plus other new features, probably named NanoVNA-V2.
 
-Thanks hugen79 for providing the hardware for my porting work and debugging support.  For hardware mod information, please visit his page at
-
-https://github.com/hugen79/NanoVNA-H
-
-At the same time, edy555 is also working on the F303 version of NanoVNA.
+Thanks [@hugen79](https://github.com/hugen79) for providing the hardware for my porting work and debugging support.  

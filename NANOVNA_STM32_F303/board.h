@@ -751,20 +751,21 @@
                                      PIN_AFIO_AF(13, 0) |          \
                                      PIN_AFIO_AF(14, 0) |          \
                                      PIN_AFIO_AF(15, 0))
+
 #ifdef NANOVNA_F303
 /*
- * USB bus activation macro, required by the USB driver.
+ * USB bus activation/de-activation macro, required by the USB driver.
  */
-//#define usb_lld_connect_bus(usbp) palSetPad(GPIOC, GPIOC_USB_DISC)
-//#define usb_lld_connect_bus(usbp) 
+#ifdef USB_DP_R_PA10			     
+#define usb_lld_connect_bus(usbp) palSetPad(GPIOA, GPIOA_USB_DISC)
+#define usb_lld_disconnect_bus(usbp) palClearPad(GPIO, GPIOA_USB_DISC)
+#elifdef USB_DP_R_VDD
+#define usb_lld_connect_bus(usbp) 
+#define usb_lld_disconnect_bus(usbp)
+#else // USB_DP connect to VDD by 1.5K R, and USB_DP short with PA10
 #define usb_lld_connect_bus(usbp) palSetPadMode(GPIOA, GPIOA_USB_DISC, PAL_MODE_INPUT)
-
-/*
- * USB bus de-activation macro, required by the USB driver.
- */
-//#define usb_lld_disconnect_bus(usbp) palClearPad(GPIOC, GPIOC_USB_DISC)
-//#define usb_lld_disconnect_bus(usbp)
 #define usb_lld_disconnect_bus(usbp) palClearPad(GPIOA, GPIOA_USB_DISC)
+#endif
 #endif
 
 #if !defined(_FROM_ASM_)
