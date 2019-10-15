@@ -27,7 +27,6 @@
 #include <stdint.h>
 #include <arm_math.h>
 
-
 static uint16_t reverse_bits(uint16_t x, int n) {
 	uint16_t result = 0;
 	for (int i = 0; i < n; i++, x >>= 1)

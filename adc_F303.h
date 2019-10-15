@@ -12,10 +12,12 @@
 #define ADC_SMPR_SMP_239P5      7U
 #define ADC_SMPR_SMP_28P5       3U  /**< @brief 41 cycles conversion time.  */
 #define ADC_CFGR_RES_12BIT             (0 << 3)
+/*
 msg_t adcConvert(ADCDriver *adcp,
                    const ADCConversionGroup *grpp,
                    adcsample_t *samples,
                    size_t depth);
+*/
 #define  ADC_CR1_AWDEN                       ((uint32_t)0x00800000)  /*!< Analog watchdog enable on regular channels */
 //ADC_Common_TypeDef        *adcc;
 #define ADC_CHSELR_VREFINT      ADC_CHANNEL_IN18

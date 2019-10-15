@@ -18,12 +18,8 @@
  * Boston, MA 02110-1301, USA.
  */
 #include "ch.h"
-#define M_PI 3.14159
 
-#ifdef NANOVNA_F303
-#define DEBUG_ENABLE_AWDG TRUE
-#endif
-
+#define M_PI 3.1415926
 
 /*
  * main.c
@@ -33,12 +29,6 @@
 void adc_init(void);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
-
-extern int ovr_cnt;
-extern int ier_cnt;
-extern int adc_int_cnt;
-extern int adc2_st;
-extern  int tim3_cnt;
 #endif
 
 extern float measured[2][101][2];
