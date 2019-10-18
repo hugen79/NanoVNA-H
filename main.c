@@ -657,7 +657,8 @@ ensure_edit_config(void)
 // main loop for measurement
 bool sweep(bool break_on_operation)
 {
-  int i;
+	palSetPad(GPIOC, GPIOC_LED);
+	int i;
 
   for (i = 0; i < sweep_points; i++) {
     int delay = set_frequency(frequencies[i]);
@@ -665,7 +666,7 @@ bool sweep(bool break_on_operation)
     wait_dsp(delay);
 
     // blink LED while scanning
-    palClearPad(GPIOC, GPIOC_LED);
+//    palClearPad(GPIOC, GPIOC_LED);
 
     /* calculate reflection coeficient */
     (*sample_func)(measured[0][i]);
@@ -677,7 +678,7 @@ bool sweep(bool break_on_operation)
     (*sample_func)(measured[1][i]);
 
     // blink LED while scanning
-    palSetPad(GPIOC, GPIOC_LED);
+    //palSetPad(GPIOC, GPIOC_LED);
 
     if (cal_status & CALSTAT_APPLY)
       apply_error_term_at(i);
@@ -689,8 +690,8 @@ bool sweep(bool break_on_operation)
     if (operation_requested && break_on_operation)
       return false;
   }
-
   transform_domain();
+  palClearPad(GPIOC, GPIOC_LED);
   return true;
 }
 
@@ -766,16 +767,15 @@ update_marker_index(void)
 void
 set_frequencies(uint32_t start, uint32_t stop, int16_t points)
 {
-  int i;
-  uint32_t span = stop - start;
-  for (i = 0; i < points; i++) {
-	  uint32_t offset = i * (span / (points - 1));
-    frequencies[i] = start + offset;
-  }
-
-  // disable at out of sweep range
-  for (; i < sweep_points; i++)
-    frequencies[i] = 0;
+	int i;
+		uint32_t span = stop - start;
+		for (i = 0; i < points; i++) {
+			uint32_t offset =(uint32_t) ((i *  (uint64_t)span) / (points - 1));
+	    frequencies[i] = start + offset;
+	  }
+	  // disable at out of sweep range
+	  for (; i < sweep_points; i++)
+	    frequencies[i] = 0;
 }
 
 void
@@ -1326,6 +1326,7 @@ cal_interpolate(int s)
   }
     
   cal_status |= src->_cal_status | CALSTAT_APPLY | CALSTAT_INTERPOLATED;
+  redraw_request |= REDRAW_CAL_STATUS;
 }
 
 static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])

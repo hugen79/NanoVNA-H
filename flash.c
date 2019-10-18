@@ -219,8 +219,11 @@ caldata_ref(int id)
   return src;
 }
 
+#if defined(ANTENNA_ANALYZER)
+const uint32_t save_config_prop_area_size = 0x6800;
+#else
 const uint32_t save_config_prop_area_size = 0x8000;
-
+#endif
 void
 clear_all_config_prop_data(void)
 {
