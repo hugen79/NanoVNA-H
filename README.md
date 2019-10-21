@@ -12,7 +12,7 @@ NanoVNASharp is a PC control software can export Touchstone (snp) files which ca
 
 
 
-![](D:\works\c\NanoVNA-H\doc\NanoVNA-H-2.jpg)
+![](doc/NanoVNA-H-2.jpg)
 
 
 ## 编译
