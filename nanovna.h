@@ -31,7 +31,28 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #endif
 
-extern float measured[2][101][2];
+#ifdef ILI9488
+#define LCD_WIDTH 480
+#define LCD_HEIGHT 320
+//#define SWEEP_POINTS 201
+#define LINE_SPACE 10
+#define X_SPACE 5
+//#define SPI_BUFFER_SIZE 2048
+void ili9341_test(int);
+#else
+#define LCD_WIDTH 320
+#define LCD_HEIGHT 240
+//#define SWEEP_POINTS 101
+#define LINE_SPACE 10
+#define X_SPACE 5
+//#define SPI_BUFFER_SIZE 1024
+#endif
+
+#define SWEEP_POINTS 101
+#define SPI_BUFFER_SIZE 1024
+
+
+extern float measured[2][SWEEP_POINTS][2];
 
 #define CAL_LOAD 0
 #define CAL_OPEN 1
@@ -264,7 +285,7 @@ void request_to_draw_cells_behind_menu(void);
 void request_to_draw_cells_behind_numeric_input(void);
 void redraw_marker(int marker, int update_info);
 void trace_get_info(int t, char *buf, int len);
-void plot_into_index(float measured[2][101][2]);
+void plot_into_index(float measured[2][SWEEP_POINTS][2]);
 void force_set_markmap(void);
 void draw_frequencies(void);
 void draw_all(bool flush);
@@ -300,7 +321,7 @@ typedef struct {
 
 extern const font_t NF20x24;
 
-extern uint16_t spi_buffer[1024];
+extern uint16_t spi_buffer[SPI_BUFFER_SIZE];
 
 void ili9341_init(void);
 void ili9341_test(int mode);
@@ -327,8 +348,8 @@ typedef struct {
   int16_t _sweep_points;
   uint16_t _cal_status;
 
-  uint32_t _frequencies[101];
-  float _cal_data[5][101][2];
+  uint32_t _frequencies[SWEEP_POINTS];
+  float _cal_data[5][SWEEP_POINTS][2];
   float _electrical_delay; // picoseconds
   
   trace_t _trace[TRACES_MAX];

@@ -41,7 +41,7 @@ int area_height = HEIGHT;
  * CELL_X[5:9] position in the cell
  * CELL_Y[0:4]
  */
-uint32_t trace_index[TRACES_MAX][101];
+uint32_t trace_index[TRACES_MAX][SWEEP_POINTS];
 
 #define INDEX(x, y, n) \
   ((((x)&0x03e0UL)<<22) | (((y)&0x03e0UL)<<17) | (((n)&0x0fffUL)<<10)  \
@@ -826,7 +826,7 @@ mark_cells_from_index(void)
   }
 }
 
-void plot_into_index(float measured[2][101][2])
+void plot_into_index(float measured[2][SWEEP_POINTS][2])
 {
   int i, t;
   for (i = 0; i < sweep_points; i++) {
@@ -924,7 +924,7 @@ cell_drawline(int w, int h, int x0, int y0, int x1, int y1, int c)
 }
 
 int
-search_index_range(int x, int y, uint32_t index[101], int *i0, int *i1)
+search_index_range(int x, int y, uint32_t index[SWEEP_POINTS], int *i0, int *i1)
 {
   int i, j;
   int head = 0;
@@ -954,14 +954,14 @@ search_index_range(int x, int y, uint32_t index[101], int *i0, int *i1)
     j--;
   *i0 = j;
   j = i;
-  while (j < 100 && x == CELL_X0(index[j+1]) && y == CELL_Y0(index[j+1]))
+  while (j < (SWEEP_POINTS-1) && x == CELL_X0(index[j+1]) && y == CELL_Y0(index[j+1]))
     j++;
   *i1 = j;
   return TRUE;
 }
 
 int
-search_index_range_x(int x, uint32_t index[101], int *i0, int *i1)
+search_index_range_x(int x, uint32_t index[SWEEP_POINTS], int *i0, int *i1)
 {
   int i, j;
   int head = 0;
@@ -991,7 +991,7 @@ search_index_range_x(int x, uint32_t index[101], int *i0, int *i1)
     j--;
   *i0 = j;
   j = i;
-  while (j < 100 && x == CELL_X0(index[j+1]))
+  while (j < (SWEEP_POINTS-1) && x == CELL_X0(index[j+1]))
     j++;
   *i1 = j;
   return TRUE;
@@ -1232,7 +1232,7 @@ draw_cell(int m, int n)
     if (search_index_range_x(x0, trace_index[t], &i0, &i1)) {
       if (i0 > 0)
         i0--;
-      if (i1 < 101-1)
+      if (i1 < SWEEP_POINTS-1)
         i1++;
       for (i = i0; i < i1; i++) {
         int x1 = CELL_X(trace_index[t][i]);
@@ -1526,7 +1526,7 @@ draw_frequencies(void)
       ili9341_drawstring_5x7(buf, OFFSETX, 233, 0xffff, 0x0000);
 
       strcpy(buf, "STOP ");
-      chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(101) * 1e9));
+      chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(SWEEP_POINTS) * 1e9));
       strcat(buf, "          ");
       ili9341_drawstring_5x7(buf, 205, 233, 0xffff, 0x0000);
   }
@@ -1537,7 +1537,11 @@ draw_cal_status(void)
 {
   int x = 0;
   int y = 100;
+#ifdef ILI9488
+#define YSTEP LINE_SPACE
+#else
 #define YSTEP 7
+#endif
   ili9341_fill(0, y, 10, 6*YSTEP, 0x0000);
   if (cal_status & CALSTAT_APPLY) {
     char c[3] = "C0";
@@ -1652,7 +1656,7 @@ request_to_redraw_grid(void)
 void
 redraw_frame(void)
 {
-  ili9341_fill(0, 0, 320, 240, 0);
+  ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
   draw_frequencies();
   draw_cal_status();
 }

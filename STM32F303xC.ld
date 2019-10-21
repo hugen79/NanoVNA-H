@@ -27,7 +27,7 @@ MEMORY
     flash5  : org = 0x00000000, len = 0
     flash6  : org = 0x00000000, len = 0
     flash7  : org = 0x00038000, len = 32k
-    ram0    : org = 0x20000000, len = 40k
+    ram0    : org = 0x20000000, len = 32k
     ram1    : org = 0x00000000, len = 0
     ram2    : org = 0x00000000, len = 0
     ram3    : org = 0x00000000, len = 0

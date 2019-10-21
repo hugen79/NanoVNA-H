@@ -152,18 +152,18 @@ transform_domain(void)
   // and calculate ifft for time domain
   float* tmp = (float*)spi_buffer;
 
-  uint8_t window_size = 101, offset = 0;
+  uint16_t window_size = SWEEP_POINTS, offset = 0;
   uint8_t is_lowpass = FALSE;
   switch (domain_mode & TD_FUNC) {
       case TD_FUNC_BANDPASS:
           offset = 0;
-          window_size = 101;
+          window_size = SWEEP_POINTS;
           break;
       case TD_FUNC_LOWPASS_IMPULSE:
       case TD_FUNC_LOWPASS_STEP:
           is_lowpass = TRUE;
-          offset = 101;
-          window_size = 202;
+          offset = SWEEP_POINTS;
+          window_size = SWEEP_POINTS*2;
           break;
   }
 
@@ -183,17 +183,17 @@ transform_domain(void)
 
   for (int ch = 0; ch < 2; ch++) {
       memcpy(tmp, measured[ch], sizeof(measured[0]));
-      for (int i = 0; i < 101; i++) {
+      for (int i = 0; i < SWEEP_POINTS; i++) {
           float w = kaiser_window(i+offset, window_size, beta);
           tmp[i*2+0] *= w;
           tmp[i*2+1] *= w;
       }
-      for (int i = 101; i < FFT_SIZE; i++) {
+      for (int i = SWEEP_POINTS; i < FFT_SIZE; i++) {
           tmp[i*2+0] = 0.0;
           tmp[i*2+1] = 0.0;
       }
       if (is_lowpass) {
-          for (int i = 1; i < 101; i++) {
+          for (int i = 1; i < SWEEP_POINTS; i++) {
               tmp[(FFT_SIZE-i)*2+0] =  tmp[i*2+0];
               tmp[(FFT_SIZE-i)*2+1] = -tmp[i*2+1];
           }
@@ -201,7 +201,7 @@ transform_domain(void)
 
       fft256_inverse((float(*)[2])tmp);
       memcpy(measured[ch], tmp, sizeof(measured[0]));
-      for (int i = 0; i < 101; i++) {
+      for (int i = 0; i < SWEEP_POINTS; i++) {
           measured[ch][i][0] /= (float)FFT_SIZE;
           if (is_lowpass) {
               measured[ch][i][1] = 0.0;
@@ -210,7 +210,7 @@ transform_domain(void)
           }
       }
       if ( (domain_mode & TD_FUNC) == TD_FUNC_LOWPASS_STEP ) {
-          for (int i = 1; i < 101; i++) {
+          for (int i = 1; i < SWEEP_POINTS; i++) {
               measured[ch][i][0] += measured[ch][i-1][0];
           }
       }
@@ -415,7 +415,7 @@ int16_t dump_selection = 0;
 
 volatile int16_t wait_count = 0;
 
-float measured[2][101][2];
+float measured[2][SWEEP_POINTS][2];
 
 static void
 wait_dsp(int count)
@@ -530,7 +530,7 @@ static void cmd_dump(BaseSequentialStream *chp, int argc, char *argv[])
 static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
 {
 // read pixel count at one time (PART*2 bytes required for read buffer)
-#define PART 320
+#define PART LCD_WIDTH
     (void)argc;
     (void)argv;
 
@@ -538,9 +538,9 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
 
     // use uint16_t spi_buffer[1024] (defined in ili9341) for read buffer
     uint16_t *buf = &spi_buffer[0];
-    int len = 320 * 240;
+    int len = LCD_WIDTH * LCD_HEIGHT;
     int i;
-    ili9341_read_memory(0, 0, 320, 240, PART, buf);
+    ili9341_read_memory(0, 0, LCD_WIDTH, LCD_HEIGHT, PART, buf);
     for (i = 0; i < PART; i++) {
         streamPut(chp, buf[i] >> 8);
         streamPut(chp, buf[i] & 0xff);
@@ -600,11 +600,11 @@ static void cmd_sample(BaseSequentialStream *chp, int argc, char *argv[])
 #if 0
 int32_t frequency0 = 1000000;
 int32_t frequency1 = 300000000;
-int16_t sweep_points = 101;
+int16_t sweep_points = SWEEP_POINTS;
 
-uint32_t frequencies[101];
+uint32_t frequencies[SWEEP_POINTS];
 uint16_t cal_status;
-float cal_data[5][101][2];
+float cal_data[5][SWEEP_POINTS][2];
 #endif
 
 config_t config = {
@@ -624,7 +624,7 @@ properties_t current_props = {
   /* magic */   CONFIG_MAGIC,
   /* frequency0 */     50000, // start = 50kHz
   /* frequency1 */ 900000000, // end = 900MHz
-  /* sweep_points */     101,
+  /* sweep_points */     SWEEP_POINTS,
   /* cal_status */         0,
   /* frequencies */       {},
   /* cal_data */          {},

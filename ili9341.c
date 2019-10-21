@@ -28,7 +28,7 @@
 #define DC_CMD			palClearPad(GPIOB, 7)
 #define DC_DATA			palSetPad(GPIOB, 7)
 
-uint16_t spi_buffer[1024];
+uint16_t spi_buffer[SPI_BUFFER_SIZE];
 
 void
 ssp_wait(void)
@@ -71,6 +71,17 @@ ssp_senddata16(uint16_t x)
   SPI1->DR = x;
   //while (SPI1->SR & SPI_SR_BSY)
   //  ;
+}
+
+static inline void
+ssp_senddata16RGB(uint16_t x)
+{
+  uint8_t r = (x & 0xF800) >> 8;
+  uint8_t g = (x & 0x07E0) >> 3;
+  uint8_t b = (x & 0x001F) << 3;
+  ssp_senddata(r);
+  ssp_senddata(g);
+  ssp_senddata(b);
 }
 
 void
@@ -116,7 +127,7 @@ spi_init(void)
   dmaStreamSetPeripheral(dmatx, &SPI1->DR);
 
   SPI1->CR1 = 0;
-  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;// | SPI_CR1_BR_1;
+  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI; // | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
   SPI1->CR2 = 0x0700 | SPI_CR2_TXDMAEN | SPI_CR2_FRXTH;
   SPI1->CR1 |= SPI_CR1_SPE;  
 }
@@ -124,28 +135,45 @@ spi_init(void)
 void
 send_command(uint8_t cmd, int len, const uint8_t *data)
 {
-	CS_LOW;
-	DC_CMD;
-    ssp_databit8();
-	ssp_senddata(cmd);
-	DC_DATA;
-	while (len-- > 0) {
+  CS_LOW;
+  DC_CMD;
+  ssp_databit8();
+  ssp_senddata(cmd);
+  DC_DATA;
+  #ifdef ILI9488
+  if ((cmd==0x2C) && (len==2)) {
+    // write pixel, convert to RGB888
+      int color = (data[1]<<8)+data[0];
+      uint8_t r = (color & 0xF800) >> 8;
+      uint8_t g = (color & 0x07E0) >> 3;
+      uint8_t b = (color & 0x001F)<<3;
+      ssp_senddata(r);
+      ssp_senddata(g);
+      ssp_senddata(b);
+  } else {
+    while (len-- > 0) {
       ssp_senddata(*data++);
-	}
-	//CS_HIGH;
+    }
+  }
+  #else
+  while (len-- > 0) {
+    ssp_senddata(*data++);
+  }
+  #endif
+  //CS_HIGH;
 }
 
 void
 send_command16(uint8_t cmd, int data)
 {
-	CS_LOW;
-	DC_CMD;
-    ssp_databit8();
-	ssp_senddata(cmd);
-	DC_DATA;
-    ssp_databit16();
-	ssp_senddata16(data);
-	CS_HIGH;
+  CS_LOW;
+  DC_CMD;
+  ssp_databit8();
+  ssp_senddata(cmd);
+  DC_DATA;
+  ssp_databit16();
+  ssp_senddata16(data);
+  CS_HIGH;
 }
 
 const uint8_t ili9341_init_seq[] = {
@@ -174,7 +202,7 @@ const uint8_t ili9341_init_seq[] = {
 		0xC7, 1, 0xBE,
 		// MEMORY_ACCESS_CONTROL
 		//0x36, 1, 0x48, // portlait
-		0x36, 1, 0x28, // landscape
+		0x36, 1, 0x28, // landscape, BGR565
 		// COLMOD_PIXEL_FORMAT_SET : 16 bit pixel
 		0x3A, 1, 0x55,
 		// Frame Rate
@@ -208,6 +236,59 @@ const uint8_t ili9341_init_seq[] = {
 		0 // sentinel
 };
 
+const uint8_t ili9488_init_seq[] = {
+  //Interface Mode Control
+  0xB0,1,0x00,
+  //Frame Rate
+  0xB1, 1, 0xA,
+  //Display Inversion Control , 2 Dot
+  0xB4, 1, 0x02,
+  //RGB/MCU Interface Control
+  0xB6, 3, 0x02, 0x02, 0x3B, 
+  //EntryMode
+  0xB7, 1, 0xC6,
+  //Power Control 1
+  0xC0, 2, 0x17, 0x15,
+  //Power Control 2
+  0xC1, 1, 0x41,
+  //Power Control 3
+    // 0xC5, 3, 0x00, 0x4D, 0x90,
+  //VCOM Control
+  0xC5, 3, 0x00, 0x12, 0x80,
+  //Memory Access	
+  // ILI9488_MADCTL, 1, MADCTL_MX | MADCTL_BGR
+  0x36, 1, 0x28,  // landscape, BGR
+  //0x36, 1, 0x20,  // landscape, RGB
+  //16bpp DPI and DBI and
+  //Interface Pixel Format	
+  0x3A, 1, 0x66, 
+  //default gamma	
+    // 0xC0, 2, 0x18, 0x16,
+    // 0xBE, 2, 0x00, 0x04,
+  //P-Gamma
+  0xE0, 15, 0x00, 0x03, 0x09, 0x08,
+            0x16, 0x0A, 0x3F, 0x78,
+            0x4C, 0x09, 0x0A, 0x08,
+            0x16, 0x1A, 0x0F,
+  //N-Gamma
+  0xE1, 15, 0x00, 0X16, 0X19, 0x03,
+            0x0F, 0x05, 0x32, 0x45,
+            0x46, 0x04, 0x0E, 0x0D,
+            0x35, 0x37, 0x0F,
+  //Set Image Func
+  0xE9, 1, 0x00, 
+  //Set Brightness to Max
+  0x51, 1, 0xFF,
+  //Adjust Control
+  0xF7, 4, 0xA9, 0x51, 0x2C, 0x82,
+  //set default rotation to 0
+  //Exit Sleep
+  0x11, 0x00,
+  // sentinel
+  0
+};
+
+
 void
 ili9341_init(void)
 {
@@ -223,7 +304,11 @@ ili9341_init(void)
   send_command(0x28, 0, NULL); // display off
 
   const uint8_t *p;
+  #ifdef ILI9488
+  for (p = ili9488_init_seq; *p; ) {
+  #else
   for (p = ili9341_init_seq; *p; ) {
+  #endif
     send_command(p[0], p[1], &p[2]);
     p += 2 + p[1];
     chThdSleepMilliseconds(5);
@@ -246,6 +331,32 @@ void ili9341_pixel(int x, int y, int color)
 
 
 
+#ifdef ILI9488
+void ili9341_fill(int x, int y, int w, int h, int color)
+{
+  if (((x+w)>LCD_WIDTH) || ((y+h)>LCD_HEIGHT)) {
+    return;
+  }
+  uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
+  uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
+  int len = w * h;
+  uint8_t r = (color & 0xF800) >> 8;
+  uint8_t g = (color & 0x07E0) >> 3;
+  uint8_t b = (color & 0x001F) << 3;
+  uint16_t rg = r<<8 | g;
+  uint16_t br = b<<8 | r;
+  uint16_t gb = g<<8 | b;  
+  send_command(0x2A, 4, xx);
+  send_command(0x2B, 4, yy);
+  send_command(0x2C, 0, NULL);
+  while (len > 0) {
+    ssp_senddata16(rg);
+    ssp_senddata16(br);
+    ssp_senddata16(gb);
+    len -= 2;
+  }
+}
+#else
 void ili9341_fill(int x, int y, int w, int h, int color)
 {
 	uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
@@ -254,9 +365,10 @@ void ili9341_fill(int x, int y, int w, int h, int color)
 	send_command(0x2A, 4, xx);
     send_command(0x2B, 4, yy);
     send_command(0x2C, 0, NULL);
-    while (len-- > 0) 
+    while (len-- > 0)
       ssp_senddata16(color);
 }
+#endif
 
 #if 0
 void ili9341_bulk(int x, int y, int w, int h)
@@ -281,12 +393,19 @@ void ili9341_bulk(int x, int y, int w, int h)
 	send_command(0x2A, 4, xx);
 	send_command(0x2B, 4, yy);
 	send_command(0x2C, 0, NULL);
-
+    #ifdef ILI9488
+    uint16_t *buf=spi_buffer;
+    ssp_databit8();
+    while (len-- > 0) 
+      ssp_senddata16RGB(*buf++);
+    ssp_databit16();
+    #else
     dmaStreamSetMemory0(dmatx, spi_buffer);
     dmaStreamSetTransactionSize(dmatx, len);
     dmaStreamSetMode(dmatx, txdmamode | STM32_DMA_CR_MINC);
     dmaStreamEnable(dmatx);
     dmaWaitCompletion(dmatx);
+    #endif
 }
 #endif
 
@@ -310,7 +429,11 @@ ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
         r = ssp_sendrecvdata(0);
         g = ssp_sendrecvdata(0);
         b = ssp_sendrecvdata(0);
+	#ifdef ILI9488
+        *out++ = (r << 11) | (g << 5) | b;
+	#else
         *out++ = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+	#endif
     }
 
     CS_HIGH;
@@ -337,6 +460,9 @@ ili9341_read_memory_continue(int len, uint16_t* out)
 void
 ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
+  #ifdef ILI9488
+  ili9341_drawchar_size(ch, x, y, fg, bg, 1);
+  #else
   uint16_t *buf = spi_buffer;
   uint16_t bits;
   int c, r;
@@ -348,6 +474,7 @@ ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
     }
   }
   ili9341_bulk(x, y, 5, 7);
+  #endif
 }
 
 void
@@ -355,7 +482,7 @@ ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg)
 {
   while (*str) {
     ili9341_drawchar_5x7(*str, x, y, fg, bg);
-    x += 5;
+    x += X_SPACE;
     str++;
   }
 }
@@ -451,6 +578,14 @@ ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint
 }
 
 #if 0
+
+static long rands = 654321;
+uint16_t my_rand () {
+  rands = (54321123457 * rands) % 31459;
+  return rands;                   
+}
+
+#if 1
 const uint16_t colormap[] = {
   RGB565(255,0,0), RGB565(0,255,0), RGB565(0,0,255),
   RGB565(255,255,0), RGB565(0,255,255), RGB565(255,0,255)
@@ -461,30 +596,38 @@ ili9341_test(int mode)
 {
   int x, y;
   int i;
+  uint16_t x0, x1, y0, y1;
+  int c;
+  int r;
   switch (mode) {
   default:
 #if 1
-    ili9341_fill(0, 0, 320, 240, 0);
-    for (y = 0; y < 240; y++) {
-      ili9341_fill(0, y, 320, 1, RGB565(y, (y + 120) % 256, 240-y));
+    //ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+    for (y = 0; y < LCD_HEIGHT; y++) {
+      ili9341_fill(0, y, LCD_WIDTH, 1, RGB565(y, (y + 120) % 256, LCD_HEIGHT-y));
     }
     break;
   case 1:
-    ili9341_fill(0, 0, 320, 240, 0);
-    for (y = 0; y < 240; y++) {
-      for (x = 0; x < 320; x++) {
+    ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+    for (y = 0; y < LCD_HEIGHT; y++) {
+      for (x = 0; x < LCD_WIDTH; x++) {
         ili9341_pixel(x, y, (y<<8)|x);
       }
     }
     break;
   case 2:
     //send_command16(0x55, 0xff00);
-    ili9341_pixel(64, 64, 0xaa55);
+    for (y = 0; y < LCD_HEIGHT; y++) {
+      for (x = 0; x < LCD_WIDTH; x++) {
+        ili9341_pixel(x, y, my_rand()%65536);
+      }
+    }
     break;
 #endif
 #if 1
   case 3:
-	for (i = 0; i < 10; i++)
+    //ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+    for (i = 0; i < 20; i++)
       ili9341_drawfont(i, &NF20x24, i*20, 120, colormap[i%6], 0x0000);
     break;
 #endif
@@ -493,12 +636,34 @@ ili9341_test(int mode)
     draw_grid(10, 8, 29, 29, 15, 0, 0xffff, 0);
     break;
 #endif
+#if 1
   case 4:
-    ili9341_line(0, 0, 15, 100, 0xffff);
-    ili9341_line(0, 0, 100, 100, 0xffff);
-    ili9341_line(0, 15, 100, 0, 0xffff);
-    ili9341_line(0, 100, 100, 0, 0xffff);
+    ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+    x0 = (uint16_t) my_rand() % LCD_WIDTH;
+    y0 = (uint16_t) my_rand() % LCD_HEIGHT-4;
+    if ((x0>=LCD_WIDTH) || (y0>=LCD_HEIGHT) || (x0<0) || (y0<0)) {
+      return;
+    }
+    r  = (int) my_rand() % 100;
+    for (i=0; i<100; i++) {
+      x1 = (uint16_t) my_rand() % LCD_WIDTH;
+      y1 = (uint16_t) my_rand() % LCD_HEIGHT-4;
+      if ((x1>=LCD_WIDTH) || (y1>=LCD_HEIGHT) || (x1<0) || (y1<0)) {
+	return;
+      }
+      //c = RGB565(255,255,255);
+      //c = colormap[i % 6];
+      c = (uint16_t) my_rand() % 65536;
+      ili9341_line(x0, y0,   x1, y1,   c);
+      ili9341_line(x0, y0+1, x1, y1+1, c);
+      //ili9341_line(x0, y0+2, x1, y1+2, c);
+      //ili9341_line(x0, y0+3, x1, y1+3, c);
+      x0 = x1;
+      y0 = y1;
+    }
     break;
+#endif
   }
 }
+#endif
 #endif
