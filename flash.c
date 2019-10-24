@@ -80,7 +80,7 @@ checksum(const void *start, size_t len)
 #define FLASH_PAGESIZE 0x800
 
 #ifdef NANOVNA_F303
-const uint32_t save_config_area = 0x08038000;
+const uint32_t save_config_area = 0x08030000;
 #else
 const uint32_t save_config_area = 0x08018000;
 #endif
@@ -128,9 +128,12 @@ config_recall(void)
 
 #define SAVEAREA_MAX 5
 
-const uint32_t saveareas[] =
-  { 0x08018800, 0x0801a000, 0x0801b800, 0x0801d000, 0x0801e800 };
-
+uint32_t saveareas[] =  
+#ifdef NANOVNA_F303
+    { 0x08031000, 0x08034000, 0x08037000, 0x0803a000, 0x0803d000 };
+#else
+    { 0x08018800, 0x0801a000, 0x0801b800, 0x0801d000, 0x0801e800 };
+#endif
 int16_t lastsaveid = 0;
 
 

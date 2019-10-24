@@ -29,6 +29,11 @@
 void adc_init(void);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
+#define SWEEP_POINTS 101
+#define SPI_BUFFER_SIZE 2048
+#else
+#define SWEEP_POINTS 101
+#define SPI_BUFFER_SIZE 1024
 #endif
 
 #ifdef ILI9488
@@ -48,8 +53,6 @@ void ili9341_test(int);
 //#define SPI_BUFFER_SIZE 1024
 #endif
 
-#define SWEEP_POINTS 101
-#define SPI_BUFFER_SIZE 1024
 
 
 extern float measured[2][SWEEP_POINTS][2];
