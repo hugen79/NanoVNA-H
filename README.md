@@ -52,7 +52,7 @@ At Ubuntu, the shell can be accessed via
 
 # Status
 
-Most of functions are working, except DFU via manu.
+Most of functions are working, except DFU via pull-down menu.
 
 # Credit
 

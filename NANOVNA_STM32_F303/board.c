@@ -62,7 +62,7 @@ const PALConfig pal_default_config = {
 };
 #endif
 
-//extern void si5351_setup(void);
+// extern void si5351_setup(void);
 
 /*
  * Early initialization code.
@@ -70,7 +70,40 @@ const PALConfig pal_default_config = {
  * any other initialization.
  */
 void __early_init(void) {
-  //si5351_setup();
+  // Refer to thess pages for how to start dfu from software
+  // https://community.st.com/s/question/0D50X00009XkeeWSAR/stm32l476rg-jump-to-bootloader-from-software
+  // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
+  if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
+    typedef void (*pFunction)(void);
+    pFunction bootloader;
+    uint32_t msp;
+    // require irq
+    __enable_irq();
+    // reset magic bytes
+    *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = 0;
+    #if 0
+    uint32_t foo = SYSCFG->CFGR1;
+    foo = (foo & ~SYSCFG_CFGR1_MEM_MODE) || 1;
+    SYSCFG->CFGR1 = foo;
+    foo = SYSCFG->CFGR1;
+    //SYSCFG->CFGR1 =  (SYSCFG->CFGR1 & ~SYSCFG_CFGR1_MEM_MODE) || 0;
+    #endif
+    __DSB();
+    __ISB();
+    __DSB();
+    __ISB();
+    // set msp for system memory
+    //msp = *(uint32_t *)0;
+    //msp = *(uint32_t *)0x0;
+    msp = *(uint32_t *) STM32F303xC_SYSTEM_MEMORY;
+    bootloader = (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4)));
+    // __set_MSP(msp);
+    __set_MSP(SYSTEM_BOOT_MSP); 
+    // bootloader();
+    ( (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4))) )();
+    while(1);
+  }
+  // si5351_setup();
   stm32_clock_init();
 }
 
