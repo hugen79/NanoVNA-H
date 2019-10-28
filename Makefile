@@ -13,7 +13,7 @@ ifeq ($(USE_OPT),)
  ifeq ($(TARGET),F303)
 USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
  else
-USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
  endif
 endif
 
@@ -149,7 +149,7 @@ CSRC = $(STARTUPSRC) \
        $(STREAMSSRC) \
        $(SHELLSRC) \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x24.c Font5x7.c flash.c adc.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c flash.c adc.c
 
 #       $(TESTSRC) \
 
