@@ -343,6 +343,7 @@ extern properties_t *active_props;
 extern properties_t current_props;
 
 extern int8_t previous_marker;
+extern bool biginfo_enabled;
 
 #define frequency0 current_props._frequency0
 #define frequency1 current_props._frequency1

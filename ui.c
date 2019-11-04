@@ -441,6 +441,7 @@ show_logo(void)
     ili9341_drawstring_7x13("NANOVNA.COM", x+100, y += 15, 0xffff, 0x0000);
     ili9341_drawstring_7x13("https://github.com/hugen79/NanoVNA-H", x, y += 15, 0xffff, 0x0000);
     ili9341_drawstring_7x13("Based on edy555 design", x, y += 15, 0xffff, 0x0000);
+    ili9341_drawstring_7x13("Variant with info screen by DL9CAT =^..^=", x, y += 15, 0xffff, 0x0000);
     ili9341_drawstring_7x13("2016-2019 Copyright @edy555", x, y += 15, 0xffff, 0x0000);
     ili9341_drawstring_7x13("https://github.com/ttrftech/NanoVNA", x, y += 15, 0xffff, 0x0000);
     ili9341_drawstring_7x13("Version: " VERSION, x, y += 15, 0xffff, 0x0000);
@@ -582,6 +583,19 @@ menu_config_cb(int item)
       redraw_frame();
       request_to_redraw_grid();
       draw_menu();
+      break;
+  case 4:
+      if ( biginfo_enabled == FALSE )
+      {
+        biginfo_enabled = TRUE;
+      }
+      else
+      {
+        biginfo_enabled = FALSE;
+      }
+      menu_move_back();
+      ui_mode_normal();
+      break;
   }
 }
 
@@ -1096,6 +1110,7 @@ const menuitem_t menu_config[] = {
   { MT_CALLBACK, "TOUCH TEST", menu_config_cb },
   { MT_CALLBACK, "SAVE", menu_config_cb },
   { MT_CALLBACK, "VERSION", menu_config_cb },
+  { MT_CALLBACK, "INFO CH0", menu_config_cb },
   { MT_SUBMENU, S_RARROW"DFU", menu_dfu },
   { MT_CANCEL, S_LARROW" BACK", NULL },
   { MT_NONE, NULL, NULL } // sentinel
