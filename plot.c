@@ -8,11 +8,11 @@
 #define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
 
 static void cell_draw_marker_info(int m, int n, int w, int h);
-void frequency_string(char *buf, size_t len, int32_t freq);
-void markmap_all_markers(void);
-uint16_t cell_drawchar_size(int w, int h, uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
-uint16_t cell_drawstring_size(int w, int h, const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
-void request_to_draw_cells_behind_biginfo(void);
+static void frequency_string(char *buf, size_t len, int32_t freq);
+static void markmap_all_markers(void);
+static uint16_t cell_drawchar_size(int w, int h, uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
+static uint16_t cell_drawstring_size(int w, int h, const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
+static void request_to_draw_cells_behind_biginfo(void);
 
 //#define GRID_COLOR 0x0863
 //uint16_t grid_color = 0x1084;
@@ -1162,7 +1162,7 @@ markmap_marker(int marker)
   }
 }
 
-void
+static void
 markmap_all_markers(void)
 {
   int i;
@@ -1254,21 +1254,27 @@ draw_cell(int m, int n)
     float v;
     v = swr(coeff);
     int cxpos = 10, cypos = 16;
+
+#if !defined(ANTENNA_ANALYZER)
+    uint8_t size = 4;
+#else
+    uint8_t size = 3;
+#endif
     
     cxpos -= m * CELLWIDTH - CELLOFFSETX;
     cypos -= n * CELLHEIGHT;
 
     chsnprintf(buf, sizeof(buf), "CH0 Marker %d:", active_marker + 1);
-    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0x0000, 0xffff, 3);
+    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0x0000, 0xffff, size);
 
     chsnprintf(buf, sizeof(buf), "SWR 1:%.2f", v);
-    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x000, 3);
+    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x000, size);
 
     frequency_string(buf, sizeof(buf), frequencies[ markers[active_marker].index ]);
-    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x0000, 3);
+    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x0000, size);
 
     gamma2imp(buf, sizeof(buf), coeff, frequencies[ markers[active_marker].index ]);
-    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x0000, 3);
+    cell_drawstring_size(w, h, buf, cxpos, cypos+=40, 0xffff, 0x0000, size);
 
     request_to_draw_cells_behind_biginfo();
 
@@ -1400,7 +1406,7 @@ request_to_draw_cells_behind_numeric_input(void)
 
 
 
-void
+static void
 request_to_draw_cells_behind_biginfo(void)
 {
   int n, m;
@@ -1415,7 +1421,7 @@ request_to_draw_cells_behind_biginfo(void)
 
 
 
-uint16_t
+static uint16_t
 cell_drawstring_size(int w, int h, const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
   unsigned char clength = 0;
@@ -1439,7 +1445,7 @@ cell_drawstring_size(int w, int h, const char *str, int x, int y, uint16_t fg, u
 void
 cell_drawchar_5x7(int w, int h, uint8_t ch, int x, int y, uint16_t fg, int invert)
 {
-  uint16_t bits;
+  uint8_t bits;
   int c, r;
   if (y <= -7 || y >= h || x <= -5 || x >= w)
     return;
@@ -1450,7 +1456,7 @@ cell_drawchar_5x7(int w, int h, uint8_t ch, int x, int y, uint16_t fg, int inver
     if (invert)
       bits = ~bits;
     for (r = 0; r < 5; r++) {
-      if ((x+r) >= 0 && (x+r) < w && (0x8000 & bits)) 
+      if ((x+r) >= 0 && (x+r) < w && (0x80 & bits)) 
         spi_buffer[(y+c)*w + (x+r)] = fg;
       bits <<= 1;
     }
@@ -1479,7 +1485,7 @@ cell_drawstring_invert_5x7(int w, int h, char *str, int x, int y, uint16_t fg, i
 
 
 
-uint16_t
+static uint16_t
 cell_drawchar_size(int w, int h, uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
   uint8_t bits;
@@ -1589,7 +1595,7 @@ cell_draw_marker_info(int m, int n, int w, int h)
   }
 }
 
-void
+static void
 frequency_string(char *buf, size_t len, int32_t freq)
 {
   if (freq < 0) {
@@ -1702,7 +1708,7 @@ draw_cal_status(void)
 
 #else
 
-uint16_t
+static uint16_t
 cell_drawchar_size(int w, int h, uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
   uint16_t bits;

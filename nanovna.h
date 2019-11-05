@@ -160,7 +160,7 @@ extern int area_height;
 
 // font
 #if !defined(ANTENNA_ANALYZER)
-extern const uint16_t x5x7_bits [];
+extern const uint8_t x5x7_bits [];
 #else
 extern const uint16_t x7x13b_bits [];
 #endif
@@ -257,8 +257,6 @@ void draw_frequencies(void);
 void draw_all(bool flush);
 
 void draw_cal_status(void);
-
-void markmap_all_markers(void);
 
 void marker_position(int m, int t, int *x, int *y);
 int search_nearest_index(int x, int y, int t);
