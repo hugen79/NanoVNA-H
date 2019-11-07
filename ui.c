@@ -593,6 +593,7 @@ menu_config_cb(int item)
       {
         biginfo_enabled = FALSE;
       }
+      config.biginfo_enabled = biginfo_enabled;
       menu_move_back();
       ui_mode_normal();
       break;
