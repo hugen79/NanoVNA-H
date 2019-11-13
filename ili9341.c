@@ -127,7 +127,9 @@ spi_init(void)
   dmaStreamSetPeripheral(dmatx, &SPI1->DR);
 
   SPI1->CR1 = 0;
-  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI; // | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
+  //  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI; // | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
+  //SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_BR_2 | SPI_CR1_BR_1 | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
+  SPI1->CR1 = SPI_CR1_MSTR  | SPI_CR1_SSM | SPI_CR1_SSI ;
   SPI1->CR2 = 0x0700 | SPI_CR2_TXDMAEN | SPI_CR2_FRXTH;
   SPI1->CR1 |= SPI_CR1_SPE;  
 }
@@ -261,7 +263,11 @@ const uint8_t ili9488_init_seq[] = {
   //0x36, 1, 0x20,  // landscape, RGB
   //16bpp DPI and DBI and
   //Interface Pixel Format	
-  0x3A, 1, 0x66, 
+  #if defined(ILI9488)
+  0x3A, 1, 0x66,
+  #else
+  0x3A, 1, 0x55,
+  #endif
   //default gamma	
     // 0xC0, 2, 0x18, 0x16,
     // 0xBE, 2, 0x00, 0x04,
@@ -304,7 +310,7 @@ ili9341_init(void)
   send_command(0x28, 0, NULL); // display off
 
   const uint8_t *p;
-  #ifdef ILI9488
+  #if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
   for (p = ili9488_init_seq; *p; ) {
   #else
   for (p = ili9341_init_seq; *p; ) {
@@ -331,7 +337,7 @@ void ili9341_pixel(int x, int y, int color)
 
 
 
-#ifdef ILI9488
+#if defined(ILI9488) 
 void ili9341_fill(int x, int y, int w, int h, int color)
 {
   if (((x+w)>LCD_WIDTH) || ((y+h)>LCD_HEIGHT)) {
@@ -460,7 +466,7 @@ ili9341_read_memory_continue(int len, uint16_t* out)
 void
 ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
-  #ifdef ILI9488
+  #if defined(ILI9488) 
   ili9341_drawchar_size(ch, x, y, fg, bg, 1);
   #else
   uint16_t *buf = spi_buffer;
@@ -578,7 +584,7 @@ ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint
     ili9341_bulk(x, y, font->width, font->height);
 }
 
-#if 0
+#if 1
 
 static long rands = 654321;
 uint16_t my_rand () {

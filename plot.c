@@ -103,9 +103,9 @@ circle_inout(int x, int y, int r)
 }
 
 
-#define P_CENTER_X 146
-#define P_CENTER_Y 116
-#define P_RADIUS 116
+#define P_CENTER_X (LCD_WIDTH/2-14)
+#define P_CENTER_Y (LCD_HEIGHT/2-4)
+#define P_RADIUS P_CENTER_Y
 
 int
 polar_grid(int x, int y)
@@ -175,36 +175,36 @@ smith_grid(int x, int y)
   // shift circle center to right origin
   x -= P_RADIUS;
 
-  // Constant Reactance Circle: 2j : R/2 = 58
-  if (circle_inout(x, y+58, 58) == 0)
+  // Constant Reactance Circle: 2j : R/2 = (P_RADIUS/2)
+  if (circle_inout(x, y+(P_RADIUS/2), (P_RADIUS/2)) == 0)
     return c;
-  if (circle_inout(x, y-58, 58) == 0)
+  if (circle_inout(x, y-(P_RADIUS/2), (P_RADIUS/2)) == 0)
     return c;
 
-  // Constant Resistance Circle: 3 : R/4 = 29
-  d = circle_inout(x+29, y, 29);
+  // Constant Resistance Circle: 3 : R/4 = (P_RADIUS/4)
+  d = circle_inout(x+(P_RADIUS/4), y, (P_RADIUS/4));
   if (d > 0) return 0;
   if (d == 0) return c;
 
-  // Constant Reactance Circle: 1j : R = 116
-  if (circle_inout(x, y+116, 116) == 0)
+  // Constant Reactance Circle: 1j : R = P_RADIUS
+  if (circle_inout(x, y+P_RADIUS, P_RADIUS) == 0)
     return c;
-  if (circle_inout(x, y-116, 116) == 0)
+  if (circle_inout(x, y-P_RADIUS, P_RADIUS) == 0)
     return c;
 
-  // Constant Resistance Circle: 1 : R/2 = 58
-  d = circle_inout(x+58, y, 58);
+  // Constant Resistance Circle: 1 : R/2 = (P_RADIUS/2)
+  d = circle_inout(x+(P_RADIUS/2), y, (P_RADIUS/2));
   if (d > 0) return 0;
   if (d == 0) return c;
 
-  // Constant Reactance Circle: 1/2j : R*2 = 232
-  if (circle_inout(x, y+232, 232) == 0)
+  // Constant Reactance Circle: 1/2j : R*2 = (P_RADIUS*2)
+  if (circle_inout(x, y+(P_RADIUS*2), (P_RADIUS*2)) == 0)
     return c;
-  if (circle_inout(x, y-232, 232) == 0)
+  if (circle_inout(x, y-(P_RADIUS*2), (P_RADIUS*2)) == 0)
     return c;
 
-  // Constant Resistance Circle: 1/3 : R*3/4 = 87
-  if (circle_inout(x+87, y, 87) == 0)
+  // Constant Resistance Circle: 1/3 : R*3/4 = (P_RADIUS*3/4)
+  if (circle_inout(x+(P_RADIUS*3/4), y, (P_RADIUS*3/4)) == 0)
     return c;
   return 0;
 }
@@ -229,47 +229,47 @@ smith_grid2(int x, int y, float scale)
   // shift circle center to right origin
   x -= P_RADIUS * scale;
 
-  // Constant Reactance Circle: 2j : R/2 = 58
-  if (circle_inout(x, y+58*scale, 58*scale) == 0)
+  // Constant Reactance Circle: 2j : R/2 = (P_RADIUS/2)
+  if (circle_inout(x, y+(P_RADIUS/2)*scale, (P_RADIUS/2)*scale) == 0)
     return c;
-  if (circle_inout(x, y-58*scale, 58*scale) == 0)
+  if (circle_inout(x, y-(P_RADIUS/2)*scale, (P_RADIUS/2)*scale) == 0)
     return c;
 #if 0
-  // Constant Resistance Circle: 3 : R/4 = 29
-  d = circle_inout(x+29*scale, y, 29*scale);
+  // Constant Resistance Circle: 3 : R/4 = (P_RADIUS/4)
+  d = circle_inout(x+(P_RADIUS/4)*scale, y, (P_RADIUS/4)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
-  d = circle_inout(x-29*scale, y, 29*scale);
+  d = circle_inout(x-(P_RADIUS/4)*scale, y, (P_RADIUS/4)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
 #endif
 
-  // Constant Reactance Circle: 1j : R = 116
-  if (circle_inout(x, y+116*scale, 116*scale) == 0)
+  // Constant Reactance Circle: 1j : R = P_RADIUS
+  if (circle_inout(x, y+P_RADIUS*scale, P_RADIUS*scale) == 0)
     return c;
-  if (circle_inout(x, y-116*scale, 116*scale) == 0)
+  if (circle_inout(x, y-P_RADIUS*scale, P_RADIUS*scale) == 0)
     return c;
 
-  // Constant Resistance Circle: 1 : R/2 = 58
-  d = circle_inout(x+58*scale, y, 58*scale);
+  // Constant Resistance Circle: 1 : R/2 = (P_RADIUS/2)
+  d = circle_inout(x+(P_RADIUS/2)*scale, y, (P_RADIUS/2)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
-  d = circle_inout(x-58*scale, y, 58*scale);
+  d = circle_inout(x-(P_RADIUS/2)*scale, y, (P_RADIUS/2)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
 
-  // Constant Reactance Circle: 1/2j : R*2 = 232
-  if (circle_inout(x, y+232*scale, 232*scale) == 0)
+  // Constant Reactance Circle: 1/2j : R*2 = (P_RADIUS*2)
+  if (circle_inout(x, y+(P_RADIUS*2)*scale, (P_RADIUS*2)*scale) == 0)
     return c;
-  if (circle_inout(x, y-232*scale, 232*scale) == 0)
+  if (circle_inout(x, y-(P_RADIUS*2)*scale, (P_RADIUS*2)*scale) == 0)
     return c;
 
 #if 0
-  // Constant Resistance Circle: 1/3 : R*3/4 = 87
-  d = circle_inout(x+87*scale, y, 87*scale);
+  // Constant Resistance Circle: 1/3 : R*3/4 = (P_RADIUS*3/4)
+  d = circle_inout(x+(P_RADIUS*3/4)*scale, y, (P_RADIUS*3/4)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
-  d = circle_inout(x+87*scale, y, 87*scale);
+  d = circle_inout(x+(P_RADIUS*3/4)*scale, y, (P_RADIUS*3/4)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
 #endif
@@ -282,11 +282,11 @@ smith_grid2(int x, int y, float scale)
   if (d > 0) return 0;
   if (d == 0) return c;
 
-  // Constant Resistance Circle: -1/3 : R*3/2 = 174
-  d = circle_inout(x+174*scale, y, 174*scale);
+  // Constant Resistance Circle: -1/3 : R*3/2 = (P_RADIUS*3/2)
+  d = circle_inout(x+(P_RADIUS*3/2)*scale, y, (P_RADIUS*3/2)*scale);
   if (d > 0) return 0;
   if (d == 0) return c;
-  d = circle_inout(x-174*scale, y, 174*scale);
+  d = circle_inout(x-(P_RADIUS*3/2)*scale, y, (P_RADIUS*3/2)*scale);
   //if (d > 0) return 0;
   if (d == 0) return c;
   return 0;
@@ -294,15 +294,15 @@ smith_grid2(int x, int y, float scale)
 
 
 const int cirs[][4] = {
-  { 0, 58/2, 58/2, 0 },    // Constant Reactance Circle: 2j : R/2 = 58
-  { 29/2, 0, 29/2, 1 },    // Constant Resistance Circle: 3 : R/4 = 29
-  { 0, 116/2, 116/2, 0 },  // Constant Reactance Circle: 1j : R = 116
-  { 58/2, 0, 58/2, 1 },    // Constant Resistance Circle: 1 : R/2 = 58
-  { 0, 232/2, 232/2, 0 },  // Constant Reactance Circle: 1/2j : R*2 = 232
-  { 87/2, 0, 87/2, 1 },    // Constant Resistance Circle: 1/3 : R*3/4 = 87
-  { 0, 464/2, 464/2, 0 },  // Constant Reactance Circle: 1/4j : R*4 = 464
-  { 116/2, 0, 116/2, 1 },  // Constant Resistance Circle: 0 : R
-  { 174/2, 0, 174/2, 1 },  // Constant Resistance Circle: -1/3 : R*3/2 = 174
+  { 0, (P_RADIUS/2)/2, (P_RADIUS/2)/2, 0 },    // Constant Reactance Circle: 2j : R/2 = (P_RADIUS/2)
+  { (P_RADIUS/4)/2, 0, (P_RADIUS/4)/2, 1 },    // Constant Resistance Circle: 3 : R/4 = (P_RADIUS/4)
+  { 0, P_RADIUS/2, P_RADIUS/2, 0 },  // Constant Reactance Circle: 1j : R = P_RADIUS
+  { (P_RADIUS/2)/2, 0, (P_RADIUS/2)/2, 1 },    // Constant Resistance Circle: 1 : R/2 = (P_RADIUS/2)
+  { 0, (P_RADIUS*2)/2, (P_RADIUS*2)/2, 0 },  // Constant Reactance Circle: 1/2j : R*2 = (P_RADIUS*2)
+  { (P_RADIUS*3/4)/2, 0, (P_RADIUS*3/4)/2, 1 },    // Constant Resistance Circle: 1/3 : R*3/4 = (P_RADIUS*3/4)
+  { 0, (P_RADIUS*4)/2, (P_RADIUS*4)/2, 0 },  // Constant Reactance Circle: 1/4j : R*4 = (P_RADIUS*4)
+  { P_RADIUS/2, 0, P_RADIUS/2, 1 },  // Constant Resistance Circle: 0 : R
+  { (P_RADIUS*3/2)/2, 0, (P_RADIUS*3/2)/2, 1 },  // Constant Resistance Circle: -1/3 : R*3/2 = (P_RADIUS*3/2)
   { 0, 0, 0, 0 } // sentinel
 };  
 
@@ -1513,40 +1513,40 @@ draw_frequencies(void)
         strcpy(buf, "START ");
         frequency_string(buf+6, 24-6, start);
         strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, OFFSETX, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
         frequency_string(buf+5, 24-5, stop);
         strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, 205, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
         frequency_string(buf+7, 24-7, fcenter);
         strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, OFFSETX, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "SPAN ");
         frequency_string(buf+5, 24-5, fspan);
         strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, 205, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
         chsnprintf(buf, 24, "CW %d.%03d %03d MHz    ",
                    (int)(fcenter / 1000000),
                    (int)((fcenter / 1000) % 1000),
                    (int)(fcenter % 1000));
-        ili9341_drawstring_5x7(buf, OFFSETX, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         chsnprintf(buf, 24, "                             ");
-        ili9341_drawstring_5x7(buf, 205, 233, 0xffff, 0x0000);
+        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
       }
   } else {
       strcpy(buf, "START 0s        ");
-      ili9341_drawstring_5x7(buf, OFFSETX, 233, 0xffff, 0x0000);
+      ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
 
       strcpy(buf, "STOP ");
       chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(SWEEP_POINTS) * 1e9));
       strcat(buf, "          ");
-      ili9341_drawstring_5x7(buf, 205, 233, 0xffff, 0x0000);
+      ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
   }
 }
 
@@ -1555,11 +1555,6 @@ draw_cal_status(void)
 {
   int x = 0;
   int y = 100;
-#ifdef ILI9488
-#define YSTEP LINE_SPACE
-#else
-#define YSTEP 7
-#endif
   ili9341_fill(0, y, 10, 6*YSTEP, 0x0000);
   if (cal_status & CALSTAT_APPLY) {
     char c[3] = "C0";

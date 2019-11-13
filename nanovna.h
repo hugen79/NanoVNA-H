@@ -36,12 +36,13 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #define SPI_BUFFER_SIZE 1024
 #endif
 
-#ifdef ILI9488
+#if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
 #define LCD_WIDTH 480
 #define LCD_HEIGHT 320
 //#define SWEEP_POINTS 201
 #define LINE_SPACE 10
 #define X_SPACE 5
+#define YSTEP LINE_SPACE
 //#define SPI_BUFFER_SIZE 2048
 void ili9341_test(int);
 #else
@@ -50,6 +51,7 @@ void ili9341_test(int);
 //#define SWEEP_POINTS 101
 #define LINE_SPACE 10
 #define X_SPACE 5
+#define YSTEP 7
 //#define SPI_BUFFER_SIZE 1024
 #endif
 
@@ -174,18 +176,17 @@ extern void tlv320aic3204_select(int channel);
 /*
  * plot.c
  */
+#define GRIDY (LCD_HEIGHT/8-1)
 #define OFFSETX 15
 #define OFFSETY 0
-#define WIDTH 291
-#define HEIGHT 233
+#define WIDTH LCD_WIDTH-GRIDY
+#define HEIGHT LCD_HEIGHT-7
 
 #define CELLOFFSETX 5
 #define AREA_WIDTH_NORMAL (WIDTH + CELLOFFSETX*2)
 
 extern int area_width;
 extern int area_height;
-
-#define GRIDY 29
 
 // font
 

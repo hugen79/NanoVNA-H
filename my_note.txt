@@ -13,8 +13,8 @@ cd /usr/local/STMicroelectronics/STM32Cube/STM32CubeMX
 cp hal_adc_lld.c.fixed ./ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c
 
 #Merge with upstream 
-$ git fetch upstream
-$ git merge upstream/master
+git fetch upstream
+git merge upstream/master
 -> git stash and merge, resolve conflicts before commit.
 
 ADC:
