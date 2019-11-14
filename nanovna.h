@@ -17,13 +17,27 @@
  * the Free Software Foundation, Inc., 51 Franklin Street,
  * Boston, MA 02110-1301, USA.
  */
+#ifndef __NANOVNA_H__
+#define __NANOVNA_H__
 #include "ch.h"
 
+
+//#define __DUMP_CMD__
+//#define __SCANRAW_CMD__
+//#define __COLOR_CMD__
+//#define __USE_STDIO__
 /*
  * main.c
  */
-
-extern float measured[2][101][2];
+#define POINT_COUNT     101
+#define MARKER_COUNT    4
+#if !defined(ANTENNA_ANALYZER)
+#define TRACE_COUNT     4
+#else
+#define TRACE_COUNT     2
+#endif
+     
+extern float measured[2][POINT_COUNT][2];
 
 #define CAL_LOAD 0
 #define CAL_OPEN 1
@@ -50,17 +64,17 @@ extern float measured[2][101][2];
 #define ETERM_ET 3 /* error term transmission tracking */
 #define ETERM_EX 4 /* error term isolation */
 
-#define DOMAIN_MODE (1<<0)
-#define DOMAIN_FREQ (0<<0)
-#define DOMAIN_TIME (1<<0)
-#define TD_FUNC (0b11<<1)
-#define TD_FUNC_BANDPASS (0b00<<1)
-#define TD_FUNC_LOWPASS_IMPULSE (0b01<<1)
-#define TD_FUNC_LOWPASS_STEP    (0b10<<1)
-#define TD_WINDOW (0b11<<3)
-#define TD_WINDOW_NORMAL (0b00<<3)
-#define TD_WINDOW_MINIMUM (0b01<<3)
-#define TD_WINDOW_MAXIMUM (0b10<<3)
+#define DOMAIN_MODE             (1<<0)
+#define DOMAIN_FREQ             (0<<0)
+#define DOMAIN_TIME             (1<<0)
+#define TD_FUNC                 (3<<1)
+#define TD_FUNC_BANDPASS        (0<<1)
+#define TD_FUNC_LOWPASS_IMPULSE (1<<1)
+#define TD_FUNC_LOWPASS_STEP    (2<<1)
+#define TD_WINDOW               (3<<3)
+#define TD_WINDOW_NORMAL        (0<<3)
+#define TD_WINDOW_MINIMUM       (1<<3)
+#define TD_WINDOW_MAXIMUM       (2<<3)
 
 #define FFT_SIZE 256
 
@@ -73,8 +87,6 @@ enum {
 
 void set_sweep_frequency(int type, int32_t frequency);
 uint32_t get_sweep_frequency(int type);
-
-float my_atof(const char *p);
 
 void toggle_sweep(void);
 
@@ -92,16 +104,17 @@ extern uint8_t operation_requested;
 /*
  * dsp.c
  */
+
 // 5ms @ 48kHz
 #define AUDIO_BUFFER_LEN 96
-
-extern int16_t rx_buffer[];
-
-#define STATE_LEN 32
+     
+//#define STATE_LEN 32
 #define SAMPLE_LEN 48
 
+#ifdef __DUMP_CMD__
 extern int16_t ref_buf[];
 extern int16_t samp_buf[];
+#endif //__DUMP_CMD__
 
 void dsp_process(int16_t *src, size_t len);
 void reset_dsp_accumerator(void);
@@ -109,29 +122,14 @@ void calculate_gamma(float *gamma);
 void fetch_amplitude(float *gamma);
 void fetch_amplitude_ref(float *gamma);
 
-int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_strength);
-
 
 /*
  * tlv320aic3204.c
  */
-typedef struct {
-  int target_level;
-  int gain_hysteresis;
-  int attack;
-  int attack_scale;
-  int decay;
-  int decay_scale;
-} tlv320aic3204_agc_config_t;
 
 extern void tlv320aic3204_init(void);
 extern void tlv320aic3204_set_gain(int lgain, int rgain);
-extern void tlv320aic3204_set_digital_gain(int gain);
-extern void tlv320aic3204_set_volume(int gain);
-extern void tlv320aic3204_agc_config(tlv320aic3204_agc_config_t *conf);
-extern void tlv320aic3204_select_in1(void);
-extern void tlv320aic3204_select_in3(void);
-extern void tlv320aic3204_adc_filter_enable(int enable);
+extern void tlv320aic3204_select(int channel);
 
 
 /*
@@ -160,11 +158,11 @@ extern int area_height;
 
 // font
 #if !defined(ANTENNA_ANALYZER)
-extern const uint16_t x5x7_bits [];
+extern const uint8_t x5x7_bits [];
 #else
 extern const uint16_t x7x13b_bits [];
 #endif
-extern const uint32_t numfont20x24[][24];
+extern const uint8_t numfont20x22[][22 * 3];
 
 #define S_PI    "\034"
 #define S_MICRO "\035"
@@ -174,11 +172,7 @@ extern const uint32_t numfont20x24[][24];
 #define S_RARROW "\033"
 
 // trace 
-#if !defined(ANTENNA_ANALYZER)
-#define TRACES_MAX 4
-#else
-#define TRACES_MAX 2
-#endif
+
 enum {
   TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_OFF
 };
@@ -203,21 +197,22 @@ typedef struct {
 } trace_t;
 
 typedef struct {
-  int32_t magic;
-  uint16_t dac_value;
-  uint16_t grid_color;
-  uint16_t menu_normal_color;
-  uint16_t menu_active_color;
-  uint16_t trace_color[TRACES_MAX];
-  int16_t touch_cal[4];
-  int8_t default_loadcal;
-  uint32_t harmonic_freq_threshold;
-  int32_t checksum;
+    int32_t magic;
+    uint16_t dac_value;
+    uint16_t grid_color;
+    uint16_t menu_normal_color;
+    uint16_t menu_active_color;
+    uint16_t trace_color[TRACE_COUNT];
+    int16_t touch_cal[4];
+    int8_t default_loadcal;
+    uint32_t harmonic_freq_threshold;
+    int16_t vbat_offset;
+    int32_t checksum;
 } config_t;
 
 extern config_t config;
 
-//extern trace_t trace[TRACES_MAX];
+//extern trace_t trace[TRACE_COUNT];
 
 void set_trace_type(int t, int type);
 void set_trace_channel(int t, int channel);
@@ -227,6 +222,7 @@ float get_trace_scale(int t);
 float get_trace_refpos(int t);
 const char *get_trace_typename(int t);
 void draw_battery_status(void);
+void draw_pll_lock_error(void);
 
 void set_electrical_delay(float picoseconds);
 float get_electrical_delay(void);
@@ -239,7 +235,7 @@ typedef struct {
   uint32_t frequency;
 } marker_t;
 
-//extern marker_t markers[4];
+//extern marker_t markers[MARKER_COUNT];
 //extern int active_marker;
 
 void plot_init(void);
@@ -251,14 +247,12 @@ void request_to_draw_cells_behind_menu(void);
 void request_to_draw_cells_behind_numeric_input(void);
 void redraw_marker(int marker, int update_info);
 void trace_get_info(int t, char *buf, int len);
-void plot_into_index(float measured[2][101][2]);
+void plot_into_index(float measured[2][POINT_COUNT][2]);
 void force_set_markmap(void);
 void draw_frequencies(void);
 void draw_all(bool flush);
 
 void draw_cal_status(void);
-
-void markmap_all_markers(void);
 
 void marker_position(int m, int t, int *x, int *y);
 int search_nearest_index(int x, int y, int t);
@@ -271,23 +265,29 @@ extern uint16_t redraw_request;
 #define REDRAW_MARKER     (1<<3)
 
 extern int16_t vbat;
+extern bool pll_lock_failed;
+
 
 /*
  * ili9341.c
  */
-#define RGB565(b,r,g)     ( (((b)<<8)&0xfc00) | (((r)<<2)&0x03e0) | (((g)>>3)&0x001f) )
-
+//gggBBBbb RRRrrGGG
+#define RGB(r,g,b)  ( (((g)&0x1c)<<11) | (((b)&0xf8)<<5) | ((r)&0xf8) | (((g)&0xe0)>>5) )
+#define RGBHEX(hex) ( (((hex)&0x001c00)<<3) | (((hex)&0x0000f8)<<5) | (((hex)&0xf80000)>>16) | (((hex)&0x00e000)>>13) )
+     
 typedef struct {
 	uint16_t width;
 	uint16_t height;
 	uint16_t scaley;
 	uint16_t slide;
-	const uint32_t *bitmap;
+	const uint8_t *bitmap;
 } font_t;
 
-extern const font_t NF20x24;
+extern const font_t NF20x22;
 
 extern uint16_t spi_buffer[1024];
+
+extern mutex_t mutex_ili9341;
 
 void ili9341_init(void);
 void ili9341_test(int mode);
@@ -305,6 +305,7 @@ void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_
 void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t* out);
 void ili9341_read_memory_continue(int len, uint16_t* out);
+void ili9341_line(int x0, int y0, int x1, int y1, uint16_t fg);
 void show_version(void);
 void show_logo(void);
 
@@ -320,12 +321,12 @@ typedef struct {
   int16_t _sweep_points;
   uint16_t _cal_status;
 
-  uint32_t _frequencies[101];
-  float _cal_data[5][101][2];
+  uint32_t _frequencies[POINT_COUNT];
+  float _cal_data[5][POINT_COUNT][2];
   float _electrical_delay; // picoseconds
   
-  trace_t _trace[TRACES_MAX];
-  marker_t _markers[4];
+  trace_t _trace[TRACE_COUNT];
+  marker_t _markers[MARKER_COUNT];
   int _active_marker;
   uint8_t _domain_mode; /* 0bxxxxxffm : where ff: TD_FUNC m: DOMAIN_MODE */
   uint8_t _velocity_factor; // %
@@ -333,9 +334,9 @@ typedef struct {
   int32_t checksum;
 } properties_t;
 #if !defined(ANTENNA_ANALYZER)
-#define CONFIG_MAGIC 0x434f4e45 /* 'CONF FRE900' */
+#define CONFIG_MAGIC 0x434f4e48 /* 'CONF FRE900' */
 #else
-#define CONFIG_MAGIC 0x434f4e47 /* 'CONF AA_FRE900' */
+#define CONFIG_MAGIC 0x434f4e49 /* 'CONF AA_FRE900' */
 #endif
 
 extern int16_t lastsaveid;
@@ -360,7 +361,7 @@ extern int8_t previous_marker;
 
 int caldata_save(int id);
 int caldata_recall(int id);
-const properties_t *caldata_ref(int id);
+const properties_t* caldata_ref(int id);
 
 int config_save(void);
 int config_recall(void);
@@ -397,6 +398,7 @@ void touch_cal_exec(void);
 void touch_draw_test(void);
 void enter_dfu(void);
 
+extern double my_atof(const char *p);
 /*
  * adc.c
  */
@@ -405,22 +407,23 @@ void adc_init(void);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 void adc_stop(ADC_TypeDef *adc);
-void adc_interrupt(ADC_TypeDef *adc);
 int16_t adc_vbat_read(ADC_TypeDef *adc);
+int16_t adc_tjun_read(ADC_TypeDef *adc);
+
 
 /*
  * misclinous
  */
-#define PULSE do { palClearPad(GPIOC, GPIOC_LED); palSetPad(GPIOC, GPIOC_LED);} while(0)
+#define PULSE { palClearPad(GPIOC, GPIOC_LED); palSetPad(GPIOC, GPIOC_LED);}
 
-// convert vbat [mV] to battery indicator
-static inline uint8_t vbat2bati(int16_t vbat)
-{
-	if (vbat < 3200) return 0;
-	if (vbat < 3450) return 25;
-	if (vbat < 3700) return 50;
-	if (vbat < 4100) return 75;
-	return 100;
-}
+    // convert vbat [mV] to battery indicator
+    static inline uint8_t vbat2bati(int16_t vbat)
+    {
+    	if (vbat < 3200) return 0;
+    	if (vbat < 3450) return 25;
+    	if (vbat < 3700) return 50;
+    	if (vbat < 4100) return 75;
+    	return 100;
+    }
 
-/*EOF*/
+#endif //__NANOVNA_H__

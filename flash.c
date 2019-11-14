@@ -40,7 +40,7 @@ static void flash_erase_page0(uint32_t page_address)
 	FLASH->CR &= ~FLASH_CR_PER;
 }
 
-int flash_erase_page(uint32_t page_address)
+static int flash_erase_page(uint32_t page_address)
 {
   chSysLock();
   flash_erase_page0(page_address);
@@ -48,7 +48,7 @@ int flash_erase_page(uint32_t page_address)
   return 0;
 }
 
-void flash_program_half_word(uint32_t address, uint16_t data)
+static void flash_program_half_word(uint32_t address, uint16_t data)
 {
 	flash_wait_for_last_operation();
 	FLASH->CR |= FLASH_CR_PG;
@@ -57,7 +57,7 @@ void flash_program_half_word(uint32_t address, uint16_t data)
 	FLASH->CR &= ~FLASH_CR_PG;
 }
 
-void flash_unlock(void)
+static void flash_unlock(void)
 {
   // unlock sequence
   FLASH->KEYR = 0x45670123;
@@ -65,11 +65,10 @@ void flash_unlock(void)
 }
 
 
-static uint32_t
-checksum(const void *start, size_t len)
+static uint32_t checksum(const void *start, size_t len)
 {
   uint32_t *p = (uint32_t*)start;
-  uint32_t *tail = (uint32_t*)(start + len);
+  uint32_t *tail = (uint32_t*)((uint8_t*)start + len);
   uint32_t value = 0;
   while (p < tail)
     value ^= *p++;
@@ -84,8 +83,8 @@ const uint32_t save_config_area = 0x08018000;
 #else
 const uint32_t save_config_area = 0x08019800;
 #endif
-int
-config_save(void)
+
+int config_save(void)
 {
   uint16_t *src = (uint16_t*)&config;
   uint16_t *dst = (uint16_t*)save_config_area;
@@ -109,8 +108,7 @@ config_save(void)
   return 0;
 }
 
-int
-config_recall(void)
+int config_recall(void)
 {
   const config_t *src = (const config_t*)save_config_area;
   void *dst = &config;
@@ -139,8 +137,7 @@ const uint32_t saveareas[] =
 int16_t lastsaveid = 0;
 
 
-int
-caldata_save(int id)
+int caldata_save(int id)
 {
   uint16_t *src = (uint16_t*)&current_props;
   uint16_t *dst;
@@ -157,8 +154,8 @@ caldata_save(int id)
   flash_unlock();
 
   /* erase flash pages */
-  void *p = dst;
-  void *tail = p + sizeof(properties_t);
+  uint8_t* p = (uint8_t*)dst;
+  uint8_t* tail = p + sizeof(properties_t);
   while (p < tail) {
     flash_erase_page((uint32_t)p);
     p += FLASH_PAGESIZE;
@@ -177,8 +174,7 @@ caldata_save(int id)
   return 0;
 }
 
-int
-caldata_recall(int id)
+int caldata_recall(int id)
 {
   properties_t *src;
   void *dst = &current_props;
@@ -204,8 +200,7 @@ caldata_recall(int id)
   return 0;
 }
 
-const properties_t *
-caldata_ref(int id)
+const properties_t* caldata_ref(int id)
 {
   const properties_t *src;
   if (id < 0 || id >= SAVEAREA_MAX)
@@ -224,14 +219,14 @@ const uint32_t save_config_prop_area_size = 0x6800;
 #else
 const uint32_t save_config_prop_area_size = 0x8000;
 #endif
-void
-clear_all_config_prop_data(void)
+
+void clear_all_config_prop_data(void)
 {
   flash_unlock();
 
   /* erase flash pages */
-  void *p = (void*)save_config_area;
-  void *tail = p + save_config_prop_area_size;
+  uint8_t* p = (uint8_t*)save_config_area;
+  uint8_t* tail = p + save_config_prop_area_size;
   while (p < tail) {
     flash_erase_page((uint32_t)p);
     p += FLASH_PAGESIZE;

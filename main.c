@@ -32,92 +32,98 @@
 #include <ctype.h>
 #include <math.h>
 
-#define ENABLED_DUMP
+#define START_MIN 10000
+#define STOP_MAX 1500000000
 
 static void apply_error_term_at(int i);
 static void apply_edelay_at(int i);
 static void cal_interpolate(int s);
-void update_frequencies(void);
-void set_frequencies(uint32_t start, uint32_t stop, int16_t points);
+static void update_frequencies(void);
+static void set_frequencies(uint32_t start, uint32_t stop, int16_t points);
+static bool sweep(bool break_on_operation);
 
-bool sweep(bool break_on_operation);
-
-static MUTEX_DECL(mutex);
+mutex_t mutex_sweep;
+mutex_t mutex_ili9341;
 
 #define DRIVE_STRENGTH_AUTO (-1)
 #define FREQ_HARMONICS (config.harmonic_freq_threshold)
 #define IS_HARMONIC_MODE(f) ((f) > FREQ_HARMONICS)
 
-
-int32_t frequency_offset = 5000;
-uint32_t frequency = 10000000;
-int8_t drive_strength = DRIVE_STRENGTH_AUTO;
+static int32_t frequency_offset = 5000;
+static uint32_t frequency = 10000000;
+static int8_t drive_strength = DRIVE_STRENGTH_AUTO;
 int8_t sweep_enabled = TRUE;
-int8_t sweep_once = FALSE;
-int8_t cal_auto_interpolate = TRUE;
+static int8_t sweep_once = FALSE;
+static int8_t cal_auto_interpolate = TRUE;
 uint16_t redraw_request = 0; // contains REDRAW_XXX flags
 int16_t vbat = 0;
+bool pll_lock_failed;
+
 
 static THD_WORKING_AREA(waThread1, 640);
 static THD_FUNCTION(Thread1, arg)
 {
-    (void)arg;
     chRegSetThreadName("sweep");
-
     while (1) {
-      bool completed = false;
-      if (sweep_enabled || sweep_once) {
-        chMtxLock(&mutex);
-        completed = sweep(true);
-        sweep_once = FALSE;
-        chMtxUnlock(&mutex);
-      } else {
-        __WFI();
-      }
+      
+        bool completed = false;
+        if (sweep_enabled || sweep_once) {
+            chMtxLock(&mutex_sweep);
+            palClearPad(GPIOC, GPIOC_LED);  // disable led and wait for voltage stabilization
+            chThdSleepMilliseconds(10);
+        
+            completed = sweep(true);
+            sweep_once = FALSE;
 
-      chMtxLock(&mutex);
-      ui_process();
-
-      if (sweep_enabled) {
-        if (vbat != -1) {
-          adc_stop(ADC1);
-          vbat = adc_vbat_read(ADC1);
-          touch_start_watchdog();
-          draw_battery_status();
-      }
-
-        /* calculate trace coordinates and plot only if scan completed */
-        if (completed) {
-          plot_into_index(measured);
-          redraw_request |= REDRAW_CELLS;
+            // enable led
+            palSetPad(GPIOC, GPIOC_LED);
+            chMtxUnlock(&mutex_sweep);
+        } else {
+            __WFI();
         }
-      }
 
-      /* plot trace and other indications as raster */
-      draw_all(completed); // flush markmap only if scan completed to prevent remaining traces
-      chMtxUnlock(&mutex);
+        chMtxLock(&mutex_sweep);
+
+        ui_process();
+
+        if (sweep_enabled) {
+            adc_stop(ADC1);
+            vbat = adc_vbat_read(ADC1);
+            touch_start_watchdog();
+            draw_battery_status();
+
+ //           if (pll_lock_failed) {
+//                draw_pll_lock_error();
+//            }
+
+            /* calculate trace coordinates and plot only if scan completed */
+            if (completed) {
+                plot_into_index(measured);
+                redraw_request |= REDRAW_CELLS;
+            }
+        }
+        /* plot trace and other indications as raster */
+        draw_all(completed); // flush markmap only if scan completed to prevent remaining traces
+        chMtxUnlock(&mutex_sweep);
     }
 }
 
-void
-pause_sweep(void)
+static void pause_sweep(void)
 {
-  sweep_enabled = FALSE;
+    sweep_enabled = FALSE;
 }
 
-void
-resume_sweep(void)
+static void resume_sweep(void)
 {
-  sweep_enabled = TRUE;
+    sweep_enabled = TRUE;
 }
 
-void
-toggle_sweep(void)
+void toggle_sweep(void)
 {
   sweep_enabled = !sweep_enabled;
 }
 
-float bessel0(float x) {
+static float bessel0(float x) {
 	const float eps = 0.0001;
 
 	float ret = 0;
@@ -133,84 +139,88 @@ float bessel0(float x) {
 	return ret;
 }
 
-float kaiser_window(float k, float n, float beta) {
+static float kaiser_window(float k, float n, float beta) {
 	if (beta == 0.0) return 1.0;
 	float r = (2 * k) / (n - 1) - 1;
 	return bessel0(beta * sqrt(1 - r * r)) / bessel0(beta);
 }
 
-static
-void
-transform_domain(void)
+static void transform_domain(void)
 {
-  if ((domain_mode & DOMAIN_MODE) != DOMAIN_TIME) return; // nothing to do for freq domain
-  // use spi_buffer as temporary buffer
-  // and calculate ifft for time domain
-  float* tmp = (float*)spi_buffer;
+    if ((domain_mode & DOMAIN_MODE) != DOMAIN_TIME) return; // nothing to do for freq domain
+  
+    chMtxLock(&mutex_ili9341); // [protect spi_buffer]
+    // use spi_buffer as temporary buffer
+    // and calculate ifft for time domain
+    float* tmp = (float*)spi_buffer;
 
-  uint8_t window_size = 101, offset = 0;
-  uint8_t is_lowpass = FALSE;
-  switch (domain_mode & TD_FUNC) {
-      case TD_FUNC_BANDPASS:
-          offset = 0;
-          window_size = 101;
-          break;
-      case TD_FUNC_LOWPASS_IMPULSE:
-      case TD_FUNC_LOWPASS_STEP:
-          is_lowpass = TRUE;
-          offset = 101;
-          window_size = 202;
-          break;
-  }
+    uint8_t window_size = POINT_COUNT, offset = 0;
+    uint8_t is_lowpass = FALSE;
+    switch (domain_mode & TD_FUNC) {
+        case TD_FUNC_BANDPASS:
+            offset = 0;
+            window_size = POINT_COUNT;
+            break;
+        case TD_FUNC_LOWPASS_IMPULSE:
+        case TD_FUNC_LOWPASS_STEP:
+            is_lowpass = TRUE;
+            offset = POINT_COUNT;
+            window_size = POINT_COUNT * 2;
+            break;
+    }
 
-  float beta = 0.0;
-  switch (domain_mode & TD_WINDOW) {
-      case TD_WINDOW_MINIMUM:
-          beta = 0.0; // this is rectangular
-          break;
-      case TD_WINDOW_NORMAL:
-          beta = 6.0;
-          break;
-      case TD_WINDOW_MAXIMUM:
-          beta = 13;
-          break;
-  }
+    float beta = 0.0;
+    switch (domain_mode & TD_WINDOW) {
+        case TD_WINDOW_MINIMUM:
+            beta = 0.0; // this is rectangular
+            break;
+        case TD_WINDOW_NORMAL:
+            beta = 6.0;
+            break;
+        case TD_WINDOW_MAXIMUM:
+            beta = 13;
+            break;
+    }
 
 
-  for (int ch = 0; ch < 2; ch++) {
-      memcpy(tmp, measured[ch], sizeof(measured[0]));
-      for (int i = 0; i < 101; i++) {
-          float w = kaiser_window(i+offset, window_size, beta);
-          tmp[i*2+0] *= w;
-          tmp[i*2+1] *= w;
-      }
-      for (int i = 101; i < FFT_SIZE; i++) {
-          tmp[i*2+0] = 0.0;
-          tmp[i*2+1] = 0.0;
-      }
-      if (is_lowpass) {
-          for (int i = 1; i < 101; i++) {
-              tmp[(FFT_SIZE-i)*2+0] =  tmp[i*2+0];
-              tmp[(FFT_SIZE-i)*2+1] = -tmp[i*2+1];
-          }
-      }
+    for (int ch = 0; ch < 2; ch++) {
+        memcpy(tmp, measured[ch], sizeof(measured[0]));
+        for (int i = 0; i < POINT_COUNT; i++) {
+            float w = kaiser_window(i+offset, window_size, beta);
+            tmp[i*2+0] *= w;
+            tmp[i*2+1] *= w;
+        }
+#if POINT_COUNT >= FFT_SIZE
+#error CHECK ME
+#endif
+        for (int i = POINT_COUNT; i < FFT_SIZE; i++) {
+            tmp[i*2+0] = 0.0;
+            tmp[i*2+1] = 0.0;
+        }
+        if (is_lowpass) {
+            for (int i = 1; i < POINT_COUNT; i++) {
+                tmp[(FFT_SIZE-i)*2+0] =  tmp[i*2+0];
+                tmp[(FFT_SIZE-i)*2+1] = -tmp[i*2+1];
+            }
+        }
 
-      fft256_inverse((float(*)[2])tmp);
-      memcpy(measured[ch], tmp, sizeof(measured[0]));
-      for (int i = 0; i < 101; i++) {
-          measured[ch][i][0] /= (float)FFT_SIZE;
-          if (is_lowpass) {
-              measured[ch][i][1] = 0.0;
-          } else {
-              measured[ch][i][1] /= (float)FFT_SIZE;
-          }
-      }
-      if ( (domain_mode & TD_FUNC) == TD_FUNC_LOWPASS_STEP ) {
-          for (int i = 1; i < 101; i++) {
-              measured[ch][i][0] += measured[ch][i-1][0];
-          }
-      }
-  }
+        fft256_inverse((float(*)[2])tmp);
+        memcpy(measured[ch], tmp, sizeof(measured[0]));
+        for (int i = 0; i < POINT_COUNT; i++) {
+            measured[ch][i][0] /= (float)FFT_SIZE;
+            if (is_lowpass) {
+                measured[ch][i][1] = 0.0;
+            } else {
+                measured[ch][i][1] /= (float)FFT_SIZE;
+            }
+        }
+        if ( (domain_mode & TD_FUNC) == TD_FUNC_LOWPASS_STEP ) {
+            for (int i = 1; i < POINT_COUNT; i++) {
+                measured[ch][i][0] += measured[ch][i-1][0];
+            }
+        }
+    }
+    chMtxUnlock(&mutex_ili9341); // [/protect spi_buffer]
 }
 
 static void cmd_pause(BaseSequentialStream *chp, int argc, char *argv[])
@@ -228,10 +238,11 @@ static void cmd_resume(BaseSequentialStream *chp, int argc, char *argv[])
     (void)argv;
 
     // restore frequencies array and cal
+    chMtxLock(&mutex_sweep);
     update_frequencies();
     if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))
-      cal_interpolate(lastsaveid);
-
+        cal_interpolate(lastsaveid);
+    chMtxUnlock(&mutex_sweep);
     resume_sweep();
 }
 
@@ -260,33 +271,35 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
       ;
 }
 
-const int8_t gain_table[] = {
-  5,5,  // 0 ~ 300MHz
-  42, 40,// 300 ~ 600MHz
-  52,50,// 600 ~ 900MHz
-  80,78, // 900 ~ 1200MHz
-  90,88, // 1200 ~ 1400MHz
-  95,93  // 1400MHz ~
+static const int8_t gain_table[][2] = {
+    {  5,  5 },     // 1st: 0 ~ 300MHz
+    { 42, 40 },     // 2nd: 300 ~ 600MHz
+    { 52, 50 },     // 3rd: 600 ~ 900MHz
+    { 80, 78 },     // 4th: 900 ~ 1200MHz
+    { 90, 88 },     // 5th: 1200 ~ 1400MHz
+    { 95, 93 },     // 6th: 1400MHz ~
 };
 
-#define DELAY_GAIN_CHANGE 10
-
-static int
-adjust_gain(int newfreq)
+static int adjust_gain(int newfreq)
 {
   int delay = 0;
   int new_order = newfreq / FREQ_HARMONICS;
   int old_order = frequency / FREQ_HARMONICS;
   if (new_order != old_order) {
-    tlv320aic3204_set_gain(gain_table[new_order*2], gain_table[new_order*2+1]);
-    delay += DELAY_GAIN_CHANGE;
+    tlv320aic3204_set_gain(gain_table[new_order][0], gain_table[new_order][1]);
+    delay += 10;
   }
   return delay;
 }
 
-int set_frequency(uint32_t freq)
+static int set_frequency(uint32_t freq)
 {
-    int delay = adjust_gain(freq);
+    int delay = 0;
+    if (frequency == freq)
+      return delay;
+
+    delay += adjust_gain(freq);
+
     int8_t ds = drive_strength;
     if (ds == DRIVE_STRENGTH_AUTO) {
       ds = freq > FREQ_HARMONICS ? SI5351_CLK_DRIVE_STRENGTH_8MA : SI5351_CLK_DRIVE_STRENGTH_2MA;
@@ -303,8 +316,10 @@ static void cmd_offset(BaseSequentialStream *chp, int argc, char *argv[])
         chprintf(chp, "usage: offset {frequency offset(Hz)}\r\n");
         return;
     }
+    chMtxLock(&mutex_sweep);
     frequency_offset = atoi(argv[0]);
     set_frequency(frequency);
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
@@ -315,10 +330,10 @@ static void cmd_freq(BaseSequentialStream *chp, int argc, char *argv[])
         return;
     }
     pause_sweep();
-    chMtxLock(&mutex);
+    chMtxLock(&mutex_sweep);
     freq = atoi(argv[0]);
     set_frequency(freq);
-    chMtxUnlock(&mutex);
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
@@ -328,7 +343,9 @@ static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
         return;
     }
     drive_strength = atoi(argv[0]);
+    chMtxLock(&mutex_sweep);
     set_frequency(frequency);
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_time(BaseSequentialStream *chp, int argc, char *argv[])
@@ -363,7 +380,9 @@ static void cmd_threshold(BaseSequentialStream *chp, int argc, char *argv[])
         return;
     }
     value = atoi(argv[0]);
+    chMtxLock(&mutex_sweep);
     config.harmonic_freq_threshold = value;
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_saveconfig(BaseSequentialStream *chp, int argc, char *argv[])
@@ -376,45 +395,42 @@ static void cmd_saveconfig(BaseSequentialStream *chp, int argc, char *argv[])
 
 static void cmd_clearconfig(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  if (argc != 1) {
-    chprintf(chp, "usage: clearconfig {protection key}\r\n");
-    return;
-  }
-
-  if (strcmp(argv[0], "1234") != 0) {
-    chprintf(chp, "Key unmatched.\r\n");
-    return;
-  }
-
-  clear_all_config_prop_data();
-  chprintf(chp, "Config and all cal data cleared.\r\n");
+    if (argc != 1) {
+        chprintf(chp, "usage: clearconfig {protection key}\r\n");
+        return;
+    }
+    if (strcmp(argv[0], "1234") != 0) {
+        chprintf(chp, "Key unmatched.\r\n");
+        return;
+    }
+    chMtxLock(&mutex_sweep);        // TODO: separate mutex?
+    clear_all_config_prop_data();
+    chMtxUnlock(&mutex_sweep);
+    chprintf(chp, "Config and all cal data cleared.\r\n");
+//    chprintf(chp, "WARNING: Do reset manually to take effect.\r\n");
 }
 
 static struct {
   int16_t rms[2];
   int16_t ave[2];
   int callback_count;
-
-#if 0
-  int32_t last_counter_value;
-  int32_t interval_cycles;
-  int32_t busy_cycles;
-#endif
+//  int32_t last_counter_value;
+//  int32_t interval_cycles;
+//  int32_t busy_cycles;
 } stat;
 
-int16_t rx_buffer[AUDIO_BUFFER_LEN * 2];
+static int16_t rx_buffer[AUDIO_BUFFER_LEN * 2];
 
-#ifdef ENABLED_DUMP
+#ifdef __DUMP_CMD__
 int16_t dump_buffer[AUDIO_BUFFER_LEN];
 int16_t dump_selection = 0;
 #endif
 
-volatile int16_t wait_count = 0;
+static volatile int16_t wait_count = 0;
 
-float measured[2][101][2];
+float measured[2][POINT_COUNT][2];
 
-static void
-wait_dsp(int count)
+static void wait_dsp(int count)
 {
   wait_count = count;
   //reset_dsp_accumerator();
@@ -422,9 +438,8 @@ wait_dsp(int count)
     __WFI();
 }
 
-#ifdef ENABLED_DUMP
-static void
-duplicate_buffer_to_dump(int16_t *p)
+#ifdef __DUMP_CMD__
+static void duplicate_buffer_to_dump(int16_t *p)
 {
   if (dump_selection == 1)
     p = samp_buf;
@@ -434,7 +449,7 @@ duplicate_buffer_to_dump(int16_t *p)
 }
 #endif
 
-void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
+static void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
 {
 #if PORT_SUPPORTS_RT
   int32_t cnt_s = port_rt_get_counter_value();
@@ -447,7 +462,7 @@ void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
   if (wait_count > 0) {
     if (wait_count == 1) 
       dsp_process(p, n);
-#ifdef ENABLED_DUMP
+#ifdef __DUMP_CMD__
       duplicate_buffer_to_dump(p);
 #endif
     --wait_count;
@@ -463,42 +478,52 @@ void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
 }
 
 static const I2SConfig i2sconfig = {
-  NULL, // TX Buffer
-  rx_buffer, // RX Buffer
-  AUDIO_BUFFER_LEN * 2,
-  NULL, // tx callback
-  i2s_end_callback, // rx callback
-  0, // i2scfgr
-  2 // i2spr
+  .tx_buffer    = NULL,                 // TX Buffer
+  .rx_buffer    = rx_buffer,            // RX Buffer
+  .size         = AUDIO_BUFFER_LEN * 2,
+  .tx_end_cb    = NULL,                 // tx callback
+  .rx_end_cb    = i2s_end_callback,     // rx callback
+  .i2scfgr      = 0,                    // i2scfgr
+  .i2spr        = 2                     // i2spr
 };
 
 static void cmd_data(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  int i;
-  int sel = 0;
-
-  if (argc == 1)
-    sel = atoi(argv[0]);
-  if (sel == 0 || sel == 1) {
-    chMtxLock(&mutex);
-    for (i = 0; i < sweep_points; i++) {
-      if (frequencies[i] != 0)
-        chprintf(chp, "%f %f\r\n", measured[sel][i][0], measured[sel][i][1]);
+    int sel = 0;
+    if (argc == 1)
+        sel = atoi(argv[0]);
+    if (sel < 0 || sel > 6) {
+        chprintf(chp, "usage: data [array]\r\n");
+    } else {
+        if (sel > 1) 
+            sel = sel-2; 
+        chMtxLock(&mutex_sweep);
+        for (int i = 0; i < sweep_points; i++) {
+#ifndef __USE_STDIO__
+            // WARNING: chprintf doesn't support proper float formatting
+            chprintf(chp, "%f %f\r\n", measured[sel][i][0], measured[sel][i][1]);
+#else
+            // printf floating point losslessly: float="%.9g", double="%.17g"
+            char tmpbuf[20];
+            int leng;
+            leng = snprintf(tmpbuf, sizeof(tmpbuf), "%.9g", measured[sel][i][0]);
+            for (int j=0; j < leng; j++) {
+                streamPut(chp, (uint8_t)tmpbuf[j]); 
+            }
+            streamPut(chp, (uint8_t)' '); 
+            leng = snprintf(tmpbuf, sizeof(tmpbuf), "%.9g", measured[sel][i][1]);
+            for (int j=0; j < leng; j++) {
+                streamPut(chp, (uint8_t)tmpbuf[j]); 
+            }
+            streamPut(chp, (uint8_t)'\r'); 
+            streamPut(chp, (uint8_t)'\n'); 
+#endif // __USE_STDIO__
+        }
+        chMtxUnlock(&mutex_sweep);
     }
-    chMtxUnlock(&mutex);
-  } else if (sel >= 2 && sel < 7) {
-    chMtxLock(&mutex);
-    for (i = 0; i < sweep_points; i++) {
-      if (frequencies[i] != 0)
-        chprintf(chp, "%f %f\r\n", cal_data[sel-2][i][0], cal_data[sel-2][i][1]);
-    }
-    chMtxUnlock(&mutex);
-  } else {
-    chprintf(chp, "usage: data [array]\r\n");
-  }
 }
 
-#ifdef ENABLED_DUMP
+#ifdef __DUMP_CMD__
 static void cmd_dump(BaseSequentialStream *chp, int argc, char *argv[])
 {
   int i, j;
@@ -524,12 +549,9 @@ static void cmd_dump(BaseSequentialStream *chp, int argc, char *argv[])
 static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
 {
 // read pixel count at one time (PART*2 bytes required for read buffer)
-#define PART 320
-    (void)argc;
-    (void)argv;
-
-    chMtxLock(&mutex);
-
+#define PART 960
+    
+    chMtxLock(&mutex_ili9341); // [capture display + spi_buffer]
     // use uint16_t spi_buffer[1024] (defined in ili9341) for read buffer
     uint16_t *buf = &spi_buffer[0];
     int len = 320 * 240;
@@ -549,27 +571,23 @@ static void cmd_capture(BaseSequentialStream *chp, int argc, char *argv[])
         }
         len -= PART;
     }
-    //*/
-
-    chMtxUnlock(&mutex);
+    chMtxUnlock(&mutex_ili9341); // [/capture display + spi_buffer]
 }
 
-#if 0
-static void cmd_gamma(BaseSequentialStream *chp, int argc, char *argv[])
-{
-  float gamma[2];
-  (void)argc;
-  (void)argv;
-  
-  pause_sweep();
-  chMtxLock(&mutex);
-  wait_dsp(4);  
-  calculate_gamma(gamma);
-  chMtxUnlock(&mutex);
-
-  chprintf(chp, "%d %d\r\n", gamma[0], gamma[1]);
-}
-#endif
+//static void cmd_gamma(BaseSequentialStream *chp, int argc, char *argv[])
+//{
+//  float gamma[2];
+//  (void)argc;
+//  (void)argv;
+//  
+//  pause_sweep();
+//  chMtxLock(&mutex_sweep);
+//  wait_dsp(4);  
+//  calculate_gamma(gamma);
+//  chMtxUnlock(&mutex_sweep);
+//
+//  chprintf(chp, "%d %d\r\n", gamma[0], gamma[1]);
+//}
 
 static void (*sample_func)(float *gamma) = calculate_gamma;
 
@@ -594,11 +612,11 @@ static void cmd_sample(BaseSequentialStream *chp, int argc, char *argv[])
 #if 0
 int32_t frequency0 = 1000000;
 int32_t frequency1 = 300000000;
-int16_t sweep_points = 101;
+int16_t sweep_points = POINT_COUNT;
 
-uint32_t frequencies[101];
+uint32_t frequencies[POINT_COUNT];
 uint16_t cal_status;
-float cal_data[5][101][2];
+float cal_data[5][POINT_COUNT][2];
 #endif
 
 config_t config = {
@@ -607,41 +625,41 @@ config_t config = {
   .grid_color =        0x1084,
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,
-  .trace_color =       { RGB565(0,255,255), RGB565(255,0,40), RGB565(0,0,255), RGB565(50,255,0) },
+  .trace_color =       { RGBHEX(0xffe31f), RGBHEX(0x00bfe7), RGBHEX(0x1fe300), RGBHEX(0xe7079f) },
   .touch_cal =         { 370, 540, 154, 191 },  //{ 620, 600, 160, 190 },
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
+  .vbat_offset =       100,
   .checksum =          0
 };
 
 properties_t current_props = {
-  /* magic */   CONFIG_MAGIC,
-  /* frequency0 */     50000, // start = 50kHz
-  /* frequency1 */ 900000000, // end = 900MHz
-  /* sweep_points */     101,
-  /* cal_status */         0,
-  /* frequencies */       {},
-  /* cal_data */          {},
-  /* electrical_delay */   0,
-  /* trace[4] */
-  {/*enable, type, channel, polar, scale*/
+  .magic =              CONFIG_MAGIC,
+  ._frequency0 =        50000, // start = 50kHz
+  ._frequency1 =        900000000, // end = 900MHz
+  ._sweep_points =      POINT_COUNT,
+  ._cal_status =        0,
+  //._frequencies =     {},
+  //._cal_data =        {},
+  ._electrical_delay =  0,
+  ._trace = /*[4] */
+  {/*enable, type, channel, polar, scale, refpos*/
     { 1, TRC_LOGMAG, 0, 0, 1.0, 7.0 },
     { 1, TRC_LOGMAG, 1, 0, 1.0, 7.0 },
     { 1, TRC_SMITH,  0, 1, 1.0, 0.0 },
     { 1, TRC_PHASE,  1, 0, 1.0, 4.0 }
   },
-  /* markers[4] */ {
+  ._markers = /*[4] */ {
     { 1, 30, 0 }, { 0, 40, 0 }, { 0, 60, 0 }, { 0, 80, 0 }
   },
-  /* active_marker */      0,
-  /* domain_mode */        0,
-  /* velocity_factor */   70,
-  /* checksum */           0
+  ._active_marker =        0,
+  ._domain_mode =          0,
+  ._velocity_factor =     70,
+  .checksum =              0
 };
 properties_t *active_props = &current_props;
 
-void
-ensure_edit_config(void)
+static void ensure_edit_config(void)
 {
   if (active_props == &current_props)
     return;
@@ -652,48 +670,130 @@ ensure_edit_config(void)
   cal_status = 0;
 }
 
-#define DELAY_CHANNEL_CHANGE 1
-
 // main loop for measurement
-bool sweep(bool break_on_operation)
+static bool sweep(bool break_on_operation)
 {
-	palSetPad(GPIOC, GPIOC_LED);
-	int i;
+    pll_lock_failed = false;
+    for (int i = 0; i < sweep_points; i++) {
+        int delay = set_frequency(frequencies[i]);
+        delay = delay < 3 ? 3 : delay;
+        delay = delay > 8 ? 8 : delay;
+    
+        tlv320aic3204_select(0); // CH0:REFLECT
+        wait_dsp(delay);
 
-  for (i = 0; i < sweep_points; i++) {
-    int delay = set_frequency(frequencies[i]);
-    tlv320aic3204_select_in3(); // CH0:REFLECT
-    wait_dsp(delay);
+        /* calculate reflection coeficient */
+        (*sample_func)(measured[0][i]);
 
-    // blink LED while scanning
-//    palClearPad(GPIOC, GPIOC_LED);
+        tlv320aic3204_select(1); // CH1:TRANSMISSION
+        wait_dsp(delay);
 
-    /* calculate reflection coeficient */
-    (*sample_func)(measured[0][i]);
+        /* calculate transmission coeficient */
+        (*sample_func)(measured[1][i]);
 
-    tlv320aic3204_select_in1(); // CH1:TRANSMISSION
-    wait_dsp(delay + DELAY_CHANNEL_CHANGE);
+        if (cal_status & CALSTAT_APPLY)
+            apply_error_term_at(i);
 
-    /* calculate transmission coeficient */
-    (*sample_func)(measured[1][i]);
+        if (electrical_delay != 0)
+            apply_edelay_at(i);
 
-    // blink LED while scanning
-    //palSetPad(GPIOC, GPIOC_LED);
+        // back to toplevel to handle ui operation
+        if (operation_requested && break_on_operation)
+            return false;
+    }
 
-    if (cal_status & CALSTAT_APPLY)
-      apply_error_term_at(i);
-
-    if (electrical_delay != 0)
-      apply_edelay_at(i);
-
-    // back to toplevel to handle ui operation
-    if (operation_requested && break_on_operation)
-      return false;
-  }
-  transform_domain();
-  palClearPad(GPIOC, GPIOC_LED);
-  return true;
+    transform_domain();
+    return true;
 }
+
+#ifdef __SCANRAW_CMD__
+static void measure_gamma_avg(uint8_t channel, uint32_t freq, uint16_t avg_count, float* gamma) {
+    int delay = set_frequency(freq);
+    delay = delay < 3 ? 3 : delay;
+    delay = delay > 8 ? 8 : delay;
+    
+    tlv320aic3204_select(channel);
+    wait_dsp(delay);
+    
+    gamma[0] = 0.0;
+    gamma[1] = 0.0;
+    float gamma_acc[2] = { 0, 0 };
+    for (int j = 0; j < avg_count; j++) {
+            
+        wait_dsp(1);
+        /* calculate reflection/transmission coeficient */
+        (*sample_func)(gamma);
+
+        if (avg_count == 1) break;
+        gamma_acc[0] += gamma[0];
+        gamma_acc[1] += gamma[1];
+    }
+    if (avg_count > 1) {
+        gamma[0] = gamma_acc[0] / avg_count;
+        gamma[1] = gamma_acc[1] / avg_count;
+    }
+}
+
+static void cmd_scanraw(BaseSequentialStream *chp, int argc, char *argv[])
+{
+    int32_t chan, freq, step, count, avg_count;
+    if (argc != 4 && argc != 5) {
+        chprintf(chp, "usage: scanraw {channel(0|1)} {start(Hz)} {stEp(Hz)} {count} [average]\r\n");
+        return;
+    }
+    chan = atoi(argv[0]);
+    freq = atoi(argv[1]);
+    step = atoi(argv[2]);
+    count = atoi(argv[3]);
+    avg_count = 1;
+    if (argc == 5)
+        avg_count = atoi(argv[4]);
+    if (chan < 0 || chan > 1) {
+        chprintf(chp, "error: invalid channel\r\n");
+        return;
+    }
+    if (freq < START_MIN || 
+        (freq+(uint64_t)step*count) < START_MIN ||
+        (freq+(uint64_t)step*count) > STOP_MAX) {
+        chprintf(chp, "error: invalid frequency range\r\n");
+        return;
+    }
+    if (avg_count < 1 || avg_count > 1000) {
+        chprintf(chp, "error: invalid average\r\n");
+        return;
+    }
+
+    chMtxLock(&mutex_sweep);
+    palClearPad(GPIOC, GPIOC_LED);  // disable led and wait for voltage stabilization
+    chThdSleepMilliseconds(10);
+
+    for (int i = 0; i < count; i++, freq += step) {
+        float gamma[2];
+        measure_gamma_avg(chan, freq, avg_count, gamma);
+
+#ifndef __USE_STDIO__
+        // WARNING: chprintf doesn't support proper float formatting
+        chprintf(chp, "%f\t%f\r\n", gamma[0], gamma[1]);
+#else
+        // printf floating point losslessly: float="%.9g", double="%.17g"
+        char tmpbuf[20];
+        int leng;
+        leng = snprintf(tmpbuf, sizeof(tmpbuf), "%.9g", gamma[0]);
+        for (int j=0; j < leng; j++) {
+            streamPut(chp, (uint8_t)tmpbuf[j]); 
+        }
+        streamPut(chp, (uint8_t)'\t'); 
+        leng = snprintf(tmpbuf, sizeof(tmpbuf), "%.9g", gamma[1]);
+        for (int j=0; j < leng; j++) {
+            streamPut(chp, (uint8_t)tmpbuf[j]); 
+        }
+        streamPut(chp, (uint8_t)'\r'); 
+        streamPut(chp, (uint8_t)'\n'); 
+#endif // __USE_STDIO__
+    }
+    chMtxUnlock(&mutex_sweep);
+}
+#endif //__SCANRAW_CMD__
 
 static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -701,7 +801,7 @@ static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
   int16_t points = sweep_points;
 
   if (argc != 2 && argc != 3) {
-    chprintf(chp, "usage: sweep {start(Hz)} {stop(Hz)} [points]\r\n");
+    chprintf(chp, "usage: scan {start(Hz)} {stop(Hz)} [points]\r\n");
     return;
   }
 
@@ -720,25 +820,24 @@ static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
   }
 
   pause_sweep();
-  chMtxLock(&mutex);
+  chMtxLock(&mutex_sweep);
   set_frequencies(start, stop, points);
   if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))
     cal_interpolate(lastsaveid);
 
   sweep_once = TRUE;
-  chMtxUnlock(&mutex);
+  chMtxUnlock(&mutex_sweep);
 
   // wait finishing sweep
   while (sweep_once)
     chThdSleepMilliseconds(10);
 }
 
-static void
-update_marker_index(void)
+static void update_marker_index(void)
 {
   int m;
   int i;
-  for (m = 0; m < 4; m++) {
+  for (m = 0; m < MARKER_COUNT; m++) {
     if (!markers[m].enabled)
       continue;
     uint32_t f = markers[m].frequency;
@@ -764,23 +863,24 @@ update_marker_index(void)
   }
 }
 
-void
-set_frequencies(uint32_t start, uint32_t stop, int16_t points)
+static void set_frequencies(uint32_t start, uint32_t stop, int16_t points)
 {
-	int i;
-		uint32_t span = stop - start;
-		for (i = 0; i < points; i++) {
-			uint32_t offset =(uint32_t) ((i *  (uint64_t)span) / (points - 1));
-	    frequencies[i] = start + offset;
-	  }
-	  // disable at out of sweep range
-	  for (; i < sweep_points; i++)
-	    frequencies[i] = 0;
+  chMtxLock(&mutex_sweep);
+  uint32_t i;
+  uint32_t span = stop - start;
+  for (i = 0; i < points; i++) {
+    uint32_t offset = (uint32_t)((i * (uint64_t)span) / (points - 1));
+    frequencies[i] = start + (uint32_t)offset;
+  }
+  // disable at out of sweep range
+  for (; i < sweep_points; i++)
+    frequencies[i] = 0;
+  chMtxUnlock(&mutex_sweep);
 }
 
-void
-update_frequencies(void)
+static void update_frequencies(void)
 {
+  chMtxLock(&mutex_sweep);
   uint32_t start, stop;
   if (frequency1 > 0) {
     start = frequency0;
@@ -799,10 +899,10 @@ update_frequencies(void)
   
   // set grid layout
   update_grid();
+  chMtxUnlock(&mutex_sweep);
 }
 
-void
-freq_mode_startstop(void)
+static void freq_mode_startstop(void)
 {
   if (frequency1 <= 0) {
     int center = frequency0;
@@ -813,8 +913,7 @@ freq_mode_startstop(void)
   }
 }
 
-void
-freq_mode_centerspan(void)
+static void freq_mode_centerspan(void)
 {
   if (frequency1 > 0) {
     int start = frequency0;
@@ -826,99 +925,98 @@ freq_mode_centerspan(void)
 }
 
 
-#define START_MIN 50000
-//#define STOP_MAX 900000000
-#define STOP_MAX 1500000000
-
-void
-set_sweep_frequency(int type, int32_t freq)
+void set_sweep_frequency(int type, int32_t freq)
 {
+  chMtxLock(&mutex_sweep);
+  int32_t center;
+  int32_t span;
   int cal_applied = cal_status & CALSTAT_APPLY;
   switch (type) {
   case ST_START:
+    ensure_edit_config();
     freq_mode_startstop();
     if (freq < START_MIN)
       freq = START_MIN;
     if (freq > STOP_MAX)
       freq = STOP_MAX;
-    if (frequency0 != freq) {
-      ensure_edit_config();
-      frequency0 = freq;
-      // if start > stop then make start = stop
-      if (frequency1 < freq)
-        frequency1 = freq;
-      update_frequencies();
-    }
+    frequency0 = freq;
+    // if start > stop then make start = stop
+    if (frequency1 < freq)
+      frequency1 = freq;
+    update_frequencies();
     break;
   case ST_STOP:
+    ensure_edit_config();
     freq_mode_startstop();
     if (freq > STOP_MAX)
       freq = STOP_MAX;
     if (freq < START_MIN)
       freq = START_MIN;
-    if (frequency1 != freq) {
-      ensure_edit_config();
-      frequency1 = freq;
-      // if start > stop then make start = stop
-      if (frequency0 > freq)
-        frequency0 = freq;
-      update_frequencies();
-    }
+    frequency1 = freq;
+    // if start > stop then make start = stop
+    if (frequency0 > freq)
+      frequency0 = freq;
+    update_frequencies();
     break;
   case ST_CENTER:
     ensure_edit_config();
     freq_mode_centerspan();
-    if (frequency0 != freq) {
-      ensure_edit_config();
-      frequency0 = freq;
-      int center = frequency0;
-      int span = -frequency1;
-      if (center-span/2 < START_MIN) {
-        span = (center - START_MIN) * 2;
-        frequency1 = -span;
-      }
-      if (center+span/2 > STOP_MAX) {
-        span = (STOP_MAX - center) * 2;
-        frequency1 = -span;
-      }
-      update_frequencies();
+    if (freq > STOP_MAX)
+      freq = STOP_MAX;
+    if (freq < START_MIN)
+      freq = START_MIN;
+    frequency0 = freq;
+    center = frequency0;
+    span = -frequency1;
+    if (center-span/2 < START_MIN) {
+      span = (center - START_MIN) * 2;
+      frequency1 = -span;
     }
+    if (center+span/2 > STOP_MAX) {
+      span = (STOP_MAX - center) * 2;
+      frequency1 = -span;
+    }
+    update_frequencies();
     break;
   case ST_SPAN:
+    ensure_edit_config();
     freq_mode_centerspan();
-    if (frequency1 != -freq) {
-      ensure_edit_config();
-      frequency1 = -freq;
-      int center = frequency0;
-      int span = -frequency1;
-      if (center-span/2 < START_MIN) {
-        center = START_MIN + span/2;
-        frequency0 = center;
-      }
-      if (center+span/2 > STOP_MAX) {
-        center = STOP_MAX - span/2;
-        frequency0 = center;
-      }
-      update_frequencies();
+    if (freq > STOP_MAX-START_MIN)
+        freq = STOP_MAX-START_MIN;
+    if (freq < 0)
+      freq = 0;
+    frequency1 = -freq;
+    center = frequency0;
+    span = -frequency1;
+    if (center-span/2 < START_MIN) {
+      center = START_MIN + span/2;
+      frequency0 = center;
     }
+    if (center+span/2 > STOP_MAX) {
+      center = STOP_MAX - span/2;
+      frequency0 = center;
+    }
+    update_frequencies();
     break;
   case ST_CW:
+    ensure_edit_config();
     freq_mode_centerspan();
-    if (frequency0 != freq || frequency1 != 0) {
-      ensure_edit_config();
-      frequency0 = freq;
-      frequency1 = 0;
-      update_frequencies();
-    }
+    if (freq > STOP_MAX)
+      freq = STOP_MAX;
+    if (freq < START_MIN)
+      freq = START_MIN;
+    frequency0 = freq;
+    frequency1 = 0;
+    update_frequencies();
     break;
   }
 
   if (cal_auto_interpolate && cal_applied)
     cal_interpolate(lastsaveid);
+  chMtxUnlock(&mutex_sweep);
 }
 
-uint32_t
-get_sweep_frequency(int type)
+uint32_t get_sweep_frequency(int type)
 {
   if (frequency1 >= 0) {
     switch (type) {
@@ -990,8 +1088,7 @@ usage:
 }
 
 
-static void
-eterm_set(int term, float re, float im)
+static void eterm_set(int term, float re, float im)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
@@ -1000,19 +1097,18 @@ eterm_set(int term, float re, float im)
   }
 }
 
-static void
-eterm_copy(int dst, int src)
+static void eterm_copy(int dst, int src)
 {
   memcpy(cal_data[dst], cal_data[src], sizeof cal_data[dst]);
 }
 
 
-const struct open_model {
-  float c0;
-  float c1;
-  float c2;
-  float c3;
-} open_model = { 50, 0, -300, 27 };
+//const struct open_model {
+//  float c0;
+//  float c1;
+//  float c2;
+//  float c3;
+//} open_model = { 50, 0, -300, 27 };
 
 #if 0
 static void
@@ -1032,8 +1128,7 @@ adjust_ed(void)
 }
 #endif
 
-static void
-eterm_calc_es(void)
+static void eterm_calc_es(void)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
@@ -1067,8 +1162,7 @@ eterm_calc_es(void)
   cal_status |= CALSTAT_ES;
 }
 
-static void
-eterm_calc_er(int sign)
+static void eterm_calc_er(int sign)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
@@ -1096,8 +1190,7 @@ eterm_calc_er(int sign)
 }
 
 // CAUTION: Et is inversed for efficiency
-static void
-eterm_calc_et(void)
+static void eterm_calc_et(void)
 {
   int i;
   for (i = 0; i < sweep_points; i++) {
@@ -1148,7 +1241,7 @@ void apply_error_term(void)
 }
 #endif
 
-void apply_error_term_at(int i)
+static void apply_error_term_at(int i)
 {
     // S11m' = S11m - Ed
     // S11a = S11m' / (Er + Es S11m')
@@ -1192,11 +1285,10 @@ static void apply_edelay_at(int i)
   measured[1][i][1] = imag * c + real * s;
 }
 
-void
-cal_collect(int type)
+void cal_collect(int type)
 {
+  chMtxLock(&mutex_sweep);
   ensure_edit_config();
-  chMtxLock(&mutex);
 
   switch (type) {
   case CAL_LOAD:
@@ -1226,13 +1318,13 @@ cal_collect(int type)
     memcpy(cal_data[CAL_ISOLN], measured[1], sizeof measured[0]);
     break;
   }
-  chMtxUnlock(&mutex);
   redraw_request |= REDRAW_CAL_STATUS;
+  chMtxUnlock(&mutex_sweep);
 }
 
-void
-cal_done(void)
+void cal_done(void)
 {
+  chMtxLock(&mutex_sweep);
   ensure_edit_config();
   if (!(cal_status & CALSTAT_LOAD))
     eterm_set(ETERM_ED, 0.0, 0.0);
@@ -1263,16 +1355,19 @@ cal_done(void)
 
   cal_status |= CALSTAT_APPLY;
   redraw_request |= REDRAW_CAL_STATUS;
+  chMtxUnlock(&mutex_sweep);
 }
 
-void
-cal_interpolate(int s)
+static void cal_interpolate(int s)
 {
+  chMtxLock(&mutex_sweep);
   const properties_t *src = caldata_ref(s);
   int i, j;
   int eterm;
-  if (src == NULL)
+  if (src == NULL) {
+    chMtxUnlock(&mutex_sweep);
     return;
+  }
 
   ensure_edit_config();
 
@@ -1326,7 +1421,8 @@ cal_interpolate(int s)
   }
     
   cal_status |= src->_cal_status | CALSTAT_APPLY | CALSTAT_INTERPOLATED;
-  redraw_request |= REDRAW_CAL_STATUS;
+  redraw_request |= REDRAW_CAL_STATUS;  
+  chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
@@ -1346,33 +1442,38 @@ static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
   char *cmd = argv[0];
   if (strcmp(cmd, "load") == 0) {
     cal_collect(CAL_LOAD);
-    return;
   } else if (strcmp(cmd, "open") == 0) {
     cal_collect(CAL_OPEN);
-    return;
   } else if (strcmp(cmd, "short") == 0) {
     cal_collect(CAL_SHORT);
-    return;
   } else if (strcmp(cmd, "thru") == 0) {
     cal_collect(CAL_THRU);
-    return;
   } else if (strcmp(cmd, "isoln") == 0) {
     cal_collect(CAL_ISOLN);
-    return;
   } else if (strcmp(cmd, "done") == 0) {
     cal_done();
     return;
   } else if (strcmp(cmd, "on") == 0) {
+    if (cal_status & CALSTAT_APPLY) 
+        return;
+    chMtxLock(&mutex_sweep);
     cal_status |= CALSTAT_APPLY;
     redraw_request |= REDRAW_CAL_STATUS;
+    chMtxUnlock(&mutex_sweep);
     return;
   } else if (strcmp(cmd, "off") == 0) {
+    if (!(cal_status & CALSTAT_APPLY)) 
+        return;
+    chMtxLock(&mutex_sweep);
     cal_status &= ~CALSTAT_APPLY;
     redraw_request |= REDRAW_CAL_STATUS;
+    chMtxUnlock(&mutex_sweep);
     return;
   } else if (strcmp(cmd, "reset") == 0) {
+    chMtxLock(&mutex_sweep);
     cal_status = 0;
     redraw_request |= REDRAW_CAL_STATUS;
+    chMtxUnlock(&mutex_sweep);
     return;
   } else if (strcmp(cmd, "data") == 0) {
     chprintf(chp, "%f %f\r\n", cal_data[CAL_LOAD][0][0], cal_data[CAL_LOAD][0][1]);
@@ -1396,49 +1497,36 @@ static void cmd_cal(BaseSequentialStream *chp, int argc, char *argv[])
 
 static void cmd_save(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  (void)chp;
-
-  if (argc != 1)
-    goto usage;
-
-  int id = atoi(argv[0]);
-  if (id < 0 || id >= SAVEAREA_MAX)
-    goto usage;
-  caldata_save(id);
-  redraw_request |= REDRAW_CAL_STATUS;
-  return;
-
- usage:
-  chprintf(chp, "save {id}\r\n");
+    int id = argc == 1 ? atoi(argv[0]) : -1;
+    if (argc != 1 || id < 0 || id >= SAVEAREA_MAX) {
+        chprintf(chp, "save {id}\r\n");
+        return;
+    }
+    chMtxLock(&mutex_sweep);
+    caldata_save(id);
+    redraw_request |= REDRAW_CAL_STATUS;
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_recall(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  (void)chp;
-  if (argc != 1)
-    goto usage;
-
-  int id = atoi(argv[0]);
-  if (id < 0 || id >= SAVEAREA_MAX)
-    goto usage;
-
-  pause_sweep();
-  chMtxLock(&mutex);
-  if (caldata_recall(id) == 0) {
-    // success
-    //update_frequencies();
-    update_grid();
-    redraw_request |= REDRAW_CAL_STATUS;
-  }
-  chMtxUnlock(&mutex);
-  resume_sweep();
-  return;
-
- usage:
-  chprintf(chp, "recall {id}\r\n");
+    int id = argc == 1 ? atoi(argv[0]) : -1;
+    if (argc != 1 || id < 0 || id >= SAVEAREA_MAX) {
+        chprintf(chp, "recall {id}\r\n");
+        return;
+    }
+    pause_sweep();
+    chMtxLock(&mutex_sweep);
+    if (caldata_recall(id) == 0) {
+        // success
+        update_frequencies();
+        redraw_request |= REDRAW_CAL_STATUS;
+    }
+    chMtxUnlock(&mutex_sweep);
+    resume_sweep();
 }
 
-const struct {
+static const struct {
   const char *name;
   uint16_t refpos;
   float scale_unit;
@@ -1456,12 +1544,11 @@ const struct {
   { "X",      4, 100 }
 };
 
-const char * const trc_channel_name[] = {
+static const char * const trc_channel_name[] = {
   "CH0", "CH1"
 };
 
-const char *
-get_trace_typename(int t)
+const char* get_trace_typename(int t)
 {
   return trace_info[trace[t].type].name;
 }
@@ -1527,19 +1614,18 @@ float get_trace_refpos(int t)
   return trace[t].refpos;
 }
 
-float
-my_atof(const char *p)
+double my_atof(const char *p)
 {
   int neg = FALSE;
   if (*p == '-')
     neg = TRUE;
   if (*p == '-' || *p == '+')
     p++;
-  float x = atoi(p);
+    double x = atoi(p);
   while (isdigit((int)*p))
     p++;
   if (*p == '.') {
-    float d = 1.0f;
+        double d = 1.0f;
     p++;
     while (isdigit((int)*p)) {
       d /= 10;
@@ -1678,90 +1764,88 @@ static void cmd_edelay(BaseSequentialStream *chp, int argc, char *argv[])
 
 static void cmd_marker(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  int t;
-  if (argc == 0) {
-    for (t = 0; t < 4; t++) {
-      if (markers[t].enabled) {
-        chprintf(chp, "%d %d %d\r\n", t+1, markers[t].index, markers[t].frequency);
-      }
-    }
-    return;
-  } 
-  if (strcmp(argv[0], "off") == 0) {
-    active_marker = -1;
-    for (t = 0; t < 4; t++)
-      markers[t].enabled = FALSE;
-    redraw_request |= REDRAW_MARKER;
-    return;
-  }
-
-  t = atoi(argv[0])-1;
-  if (t < 0 || t >= 4)
-    goto usage;
-  if (argc == 1) {
-    chprintf(chp, "%d %d %d\r\n", t+1, markers[t].index, frequency);
-    active_marker = t;
-    // select active marker
-    markers[t].enabled = TRUE;
-    redraw_request |= REDRAW_MARKER;
-    return;
-  }
-  if (argc > 1) {
-    if (strcmp(argv[1], "off") == 0) {
-      markers[t].enabled = FALSE;
-      if (active_marker == t)
+    chMtxLock(&mutex_sweep);
+    if (argc == 0) {
+        for (int t = 0; t < MARKER_COUNT; t++) {
+            if (markers[t].enabled) {
+                chprintf(chp, "%d %d %d\r\n", t+1, markers[t].index, markers[t].frequency);
+            }
+        }
+        chMtxUnlock(&mutex_sweep);
+        return;
+    } 
+    if (strcmp(argv[0], "off") == 0) {
         active_marker = -1;
-      redraw_request |= REDRAW_MARKER;
-    } else if (strcmp(argv[1], "on") == 0) {
-      markers[t].enabled = TRUE;
-      active_marker = t;
-      redraw_request |= REDRAW_MARKER;
-    } else {
-      // select active marker and move to index
-      markers[t].enabled = TRUE;
-      int index = atoi(argv[1]);
-      markers[t].index = index;
-      markers[t].frequency = frequencies[index];
-      active_marker = t;
-      redraw_request |= REDRAW_MARKER;
+        for (int t = 0; t < MARKER_COUNT; t++)
+            markers[t].enabled = FALSE;
+        redraw_request |= REDRAW_MARKER;
+        chMtxUnlock(&mutex_sweep);
+        return;
     }
-  }
-  return;
- usage:
-  chprintf(chp, "marker [n] [off|{index}]\r\n");
+    int t = atoi(argv[0]) - 1;
+    if (t < 0 || t >= MARKER_COUNT) {
+        chprintf(chp, "marker [n] [off|{index}]\r\n");
+        chMtxUnlock(&mutex_sweep);
+        return;
+    }
+    if (argc == 1) {
+        chprintf(chp, "%d %d %d\r\n", t+1, markers[t].index, frequency);
+        active_marker = t;
+        // select active marker
+        markers[t].enabled = TRUE;
+        redraw_request |= REDRAW_MARKER;
+    }
+    else if (argc > 1) {
+        if (strcmp(argv[1], "off") == 0) {
+            markers[t].enabled = FALSE;
+            if (active_marker == t) {
+                active_marker = -1;
+            }
+            redraw_request |= REDRAW_MARKER;
+        } else if (strcmp(argv[1], "on") == 0) {
+            markers[t].enabled = TRUE;
+            active_marker = t;
+            redraw_request |= REDRAW_MARKER;
+        } else {
+            // select active marker and move to index
+            int index = atoi(argv[1]);
+            if (index < 0 || index >= POINT_COUNT) {
+                chprintf(chp, "error: invalid index\r\n");
+            } else {
+                markers[t].index = index;
+                markers[t].frequency = frequencies[index];
+                markers[t].enabled = TRUE;
+                previous_marker = -1;
+                active_marker = t;
+                redraw_request |= REDRAW_MARKER;
+            }
+        }
+    }
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_touchcal(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  (void)argc;
-  (void)argv;
-  //extern int16_t touch_cal[4];
-  int i;
-
-  chMtxLock(&mutex);
+  chMtxLock(&mutex_sweep);
   chprintf(chp, "first touch upper left, then lower right...");
   touch_cal_exec();
   chprintf(chp, "done\r\n");
 
   chprintf(chp, "touch cal params: ");
-  for (i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
     chprintf(chp, "%d ", config.touch_cal[i]);
   }
   chprintf(chp, "\r\n");
-  chMtxUnlock(&mutex);
+  chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_touchtest(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  (void)chp;
-  (void)argc;
-  (void)argv;
-  chMtxLock(&mutex);
+  chMtxLock(&mutex_sweep);
   do {
     touch_draw_test();
   } while(argc);
-  chMtxUnlock(&mutex);
-  
+  chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_frequencies(BaseSequentialStream *chp, int argc, char *argv[])
@@ -1776,8 +1860,7 @@ static void cmd_frequencies(BaseSequentialStream *chp, int argc, char *argv[])
   }
 }
 
-static void
-set_domain_mode(int mode) // accept DOMAIN_FREQ or DOMAIN_TIME
+static void set_domain_mode(int mode) // accept DOMAIN_FREQ or DOMAIN_TIME
 {
   if (mode != (domain_mode & DOMAIN_MODE)) {
     domain_mode = (domain_mode & ~DOMAIN_MODE) | (mode & DOMAIN_MODE);
@@ -1785,14 +1868,12 @@ set_domain_mode(int mode) // accept DOMAIN_FREQ or DOMAIN_TIME
   }
 }
 
-static void
-set_timedomain_func(int func) // accept TD_FUNC_LOWPASS_IMPULSE, TD_FUNC_LOWPASS_STEP or TD_FUNC_BANDPASS
+static void set_timedomain_func(int func) // accept TD_FUNC_LOWPASS_IMPULSE, TD_FUNC_LOWPASS_STEP or TD_FUNC_BANDPASS
 {
   domain_mode = (domain_mode & ~TD_FUNC) | (func & TD_FUNC);
 }
 
-static void
-set_timedomain_window(int func) // accept TD_WINDOW_MINIMUM/TD_WINDOW_NORMAL/TD_WINDOW_MAXIMUM
+static void set_timedomain_window(int func) // accept TD_WINDOW_MINIMUM/TD_WINDOW_NORMAL/TD_WINDOW_MAXIMUM
 {
   domain_mode = (domain_mode & ~TD_WINDOW) | (func & TD_WINDOW);
 }
@@ -1834,59 +1915,56 @@ usage:
 
 static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[])
 {
-  (void)chp;
-  (void)argc;
-  (void)argv;
-
+    chMtxLock(&mutex_sweep);
 #if 0
-  int i;
-  for (i = 0; i < 100; i++) {
-    palClearPad(GPIOC, GPIOC_LED);
-    set_frequency(10000000);
-    palSetPad(GPIOC, GPIOC_LED);
-    chThdSleepMilliseconds(50);
+    for (int i = 0; i < 100; i++) {
+        palClearPad(GPIOC, GPIOC_LED);
+        set_frequency(10000000);
+        palSetPad(GPIOC, GPIOC_LED);
+        chThdSleepMilliseconds(50);
 
-    palClearPad(GPIOC, GPIOC_LED);
-    set_frequency(90000000);
-    palSetPad(GPIOC, GPIOC_LED);
-    chThdSleepMilliseconds(50);
-  }
+        palClearPad(GPIOC, GPIOC_LED);
+        set_frequency(90000000);
+        palSetPad(GPIOC, GPIOC_LED);
+        chThdSleepMilliseconds(50);
+    } 
 #endif
 
 #if 0
-  int i;
-  int mode = 0;
-  if (argc >= 1)
-    mode = atoi(argv[0]);
+    int mode = 0;
+    if (argc >= 1)
+        mode = atoi(argv[0]);
 
-  for (i = 0; i < 20; i++) {
-    palClearPad(GPIOC, GPIOC_LED);
-    ili9341_test(mode);
-    palSetPad(GPIOC, GPIOC_LED);
-    chThdSleepMilliseconds(50);
-  }
+    for (int i = 0; i < 20; i++) {
+        palClearPad(GPIOC, GPIOC_LED);
+        ili9341_test(mode);
+        palSetPad(GPIOC, GPIOC_LED);
+        chThdSleepMilliseconds(50);
+    }
 #endif
 
 #if 0
-  //extern adcsample_t adc_samples[2];
-  //chprintf(chp, "adc: %d %d\r\n", adc_samples[0], adc_samples[1]);
-  int i;
-  int x, y;
-  for (i = 0; i < 50; i++) {
-    test_touch(&x, &y);
-    chprintf(chp, "adc: %d %d\r\n", x, y);
-    chThdSleepMilliseconds(200);
-  }
-  //extern int touch_x, touch_y;
-  //chprintf(chp, "adc: %d %d\r\n", touch_x, touch_y);
-#endif
-
-  while (argc > 1) {
+    //extern adcsample_t adc_samples[2];
+    //chprintf(chp, "adc: %d %d\r\n", adc_samples[0], adc_samples[1]);
     int x, y;
-    touch_position(&x, &y);
-    chprintf(chp, "touch: %d %d\r\n", x, y);
-    chThdSleepMilliseconds(200);
-  }
+    for (int i = 0; i < 50; i++) {
+        test_touch(&x, &y);
+        chprintf(chp, "adc: %d %d\r\n", x, y);
+        chThdSleepMilliseconds(200);
+    }
+    //extern int touch_x, touch_y;
+    //chprintf(chp, "adc: %d %d\r\n", touch_x, touch_y);
+#endif
+
+#if 1  
+    while (argc > 1) {
+        int x, y;
+        touch_position(&x, &y);
+        chprintf(chp, "touch: %d %d\r\n", x, y);
+        chThdSleepMilliseconds(200);
+    }
+#endif
+    chMtxUnlock(&mutex_sweep);
 }
 
 static void cmd_gain(BaseSequentialStream *chp, int argc, char *argv[])
@@ -1911,10 +1989,7 @@ static void cmd_port(BaseSequentialStream *chp, int argc, char *argv[])
     return;
   }
   port = atoi(argv[0]);
-  if (port)
-    tlv320aic3204_select_in1();
-  else
-    tlv320aic3204_select_in3(); // default
+  tlv320aic3204_select(port);
 }
 
 static void cmd_stat(BaseSequentialStream *chp, int argc, char *argv[])
@@ -1938,8 +2013,8 @@ static void cmd_stat(BaseSequentialStream *chp, int argc, char *argv[])
     acc0 += (p[i] - ave0)*(p[i] - ave0);
     acc1 += (p[i+1] - ave1)*(p[i+1] - ave1);
   }
-  stat.rms[0] = sqrtf(acc0 / count);
-  stat.rms[1] = sqrtf(acc1 / count);
+  stat.rms[0] = (int16_t)sqrtf(acc0 / count);
+  stat.rms[1] = (int16_t)sqrtf(acc1 / count);
   stat.ave[0] = ave0;
   stat.ave[1] = ave1;
 
@@ -1958,7 +2033,7 @@ static void cmd_stat(BaseSequentialStream *chp, int argc, char *argv[])
 #define VERSION "unknown"
 #endif
 
-const char NANOVNA_VERSION[] = VERSION;
+static const char NANOVNA_VERSION[] = VERSION;
 
 static void cmd_version(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -1974,7 +2049,73 @@ static void cmd_vbat(BaseSequentialStream *chp, int argc, char *argv[])
   chprintf(chp, "%d mV\r\n", vbat);
 }
 
-static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */442);
+#ifdef __COLOR_CMD__
+static void cmd_color(BaseSequentialStream *chp, int argc, char *argv[])
+{
+    if (argc != 2) {
+        chprintf(chp, "usage: color {id} {rgb24}\r\n");
+        for (int i=-3; i < TRACE_COUNT; i++) {
+            uint32_t color = 0;
+            if (i==-3)
+                color = config.menu_active_color;
+            else if (i==-2)
+                color = config.menu_normal_color;
+            else if (i==-1)
+                color = config.grid_color;
+            else
+                color = config.trace_color[i];
+            color = ((color >> 3) & 0x001c00) |
+                ((color >> 5) & 0x0000f8) |
+                ((color << 16) & 0xf80000) |
+                ((color << 13) & 0x00e000);
+            color |= 0x070307;
+            if ((color & 0xff0000) == 0x070000)
+                color &= 0xf8ffff;
+            if ((color & 0x00ff00) == 0x000300)
+                color &= 0xfffcff;
+            if ((color & 0x0000ff) == 0x000007)
+                color &= 0xfffff8;
+            chprintf(chp, "   %d: 0x%06x\r\n", i, color);
+        }
+        return;
+    }
+    int track = atoi(argv[0]);
+    int color = atoi(argv[1]);
+    if (strlen(argv[1]) > 2 && argv[1][0] == '0' && (argv[1][1] == 'X' || argv[1][1] == 'x')) {
+        color = strtol(&argv[1][2], (char **)0, 16);
+    }
+    if (color < 0 || color > 0xffffff) {
+        chprintf(chp, "error: invalid color\r\n");
+        return;
+    }
+    color = RGBHEX(color);
+    if (track < -3 || track > (TRACE_COUNT-1)) {
+        chprintf(chp, "error: invalid track\r\n");
+        return;
+    }
+    if (track >= 0)
+        config.trace_color[track] = (uint16_t)color;
+    else if (track == -1)
+        config.grid_color = (uint16_t)color;
+    else if (track == -2)
+        config.menu_normal_color = (uint16_t)color;
+    else if (track == -3)
+        config.menu_active_color = (uint16_t)color;
+}
+#endif
+
+/*
+static void cmd_vbat_offset(BaseSequentialStream *chp, int argc, char *argv[])
+{
+    if (argc != 1) {
+        chprintf(chp, "%d\r\n", config.vbat_offset);
+        return;
+    }
+    int offset = atoi(argv[0]);
+    config.vbat_offset = (int16_t)offset;
+}
+*/
+static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */510 + 32);
 
 static const ShellCommand commands[] =
 {
@@ -1987,7 +2128,7 @@ static const ShellCommand commands[] =
     { "saveconfig", cmd_saveconfig },
     { "clearconfig", cmd_clearconfig },
     { "data", cmd_data },
-#ifdef ENABLED_DUMP
+#ifdef __DUMP_CMD__
     { "dump", cmd_dump },
 #endif
     { "frequencies", cmd_frequencies },
@@ -1998,6 +2139,9 @@ static const ShellCommand commands[] =
     { "sample", cmd_sample },
     //{ "gamma", cmd_gamma },
     { "scan", cmd_scan },
+#ifdef __SCANRAW_CMD__
+    { "scanraw", cmd_scanraw },
+#endif // __SCANRAW_CMD__
     { "sweep", cmd_sweep },
     { "test", cmd_test },
     { "touchcal", cmd_touchcal },
@@ -2014,51 +2158,51 @@ static const ShellCommand commands[] =
     { "vbat", cmd_vbat },
     { "transform", cmd_transform },
     { "threshold", cmd_threshold },
+#ifdef __COLOR_CMD__
+    { "color", cmd_color },
+#endif
+//    { "vbat_offset", cmd_vbat_offset },
     { NULL, NULL }
 };
 
 static const ShellConfig shell_cfg1 =
 {
-    (BaseSequentialStream *)&SDU1,
-    commands
+    .sc_channel  = (BaseSequentialStream *)&SDU1,
+    .sc_commands = commands
 };
 
 static const I2CConfig i2ccfg = {
-  0x00300506, //voodoo magic 400kHz @ HSI 8MHz
-  0,
-  0
+  .timingr  = 0x00300506, //voodoo magic 400kHz @ HSI 8MHz
+  .cr1      = 0,
+  .cr2      = 0
 };
 
 static DACConfig dac1cfg1 = {
-  //init:         2047U,
-  init:         1922U,
-  datamode:     DAC_DHRM_12BIT_RIGHT
+  //.init =         2047U,
+  .init =         1922U,
+  .datamode =     DAC_DHRM_12BIT_RIGHT
 };
 
 int main(void)
-
 {
     halInit();
     chSysInit();
 
-    chMtxObjectInit(&mutex);
+    chMtxObjectInit(&mutex_sweep);
+    chMtxObjectInit(&mutex_ili9341);
+
+/*
+      * SPI LCD Initialize
+      */
+     ili9341_init();
+     show_logo();
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     i2cStart(&I2CD1, &i2ccfg);
-    si5351_init();
-
-    /*
-      * SPI LCD Initialize
-      */
-     ili9341_init();
-
-     /*
-      * Initialize graph plotting
-      */
-
-     show_logo();
-     plot_init();
+    while (!si5351_init()) {
+        ili9341_drawstring_size("error: si5351_init failed", 0, 0, RGBHEX(0xff0000), 0x0000, 2);
+    }
 
     // MCO on PA8
     //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
@@ -2079,7 +2223,10 @@ int main(void)
     usbConnectBus(serusbcfg.usbp);
 
 
-
+    /*
+    * Initialize graph plotting
+    */
+    plot_init();
 
   /* restore config */
   config_recall();
@@ -2121,37 +2268,24 @@ int main(void)
     // redraw_frame();
      draw_frequencies();
      draw_cal_status();
-
+	 
+    chThdSetPriority(HIGHPRIO);
     chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
     while (1) {
-      if (SDU1.config->usbp->state == USB_ACTIVE) {
-        thread_t *shelltp = chThdCreateStatic(waThread2, sizeof(waThread2), 
-                                              NORMALPRIO + 1,
-                                              shellThread, (void *)&shell_cfg1);
-        chThdWait(shelltp);               /* Waiting termination.             */
-      }
-
-      chThdSleepMilliseconds(1000);
+        if (SDU1.config->usbp->state == USB_ACTIVE) {
+            thread_t *shelltp = chThdCreateStatic(
+                waThread2, sizeof(waThread2),
+                NORMALPRIO + 1,
+                shellThread, (void*)&shell_cfg1);
+            chThdWait(shelltp);               /* Waiting termination.             */
+        }
+        chThdSleepMilliseconds(1000);
     }
 }
 
-/* The prototype shows it is a naked function - in effect this is just an
-assembly function. */
-void HardFault_Handler( void );
-
-void hard_fault_handler_c(uint32_t *sp) __attribute__( ( naked ) );;
-
+// see also ch.dbg.panic_msg
 void HardFault_Handler(void)
 {
-  uint32_t* sp;
-  //__asm volatile ("mrs %0, msp \n\t": "=r" (sp) );
-  __asm volatile ("mrs %0, psp \n\t": "=r" (sp) );
-  hard_fault_handler_c(sp);
-}
-
-void hard_fault_handler_c(uint32_t* sp)
-{
-  (void)sp;
-  while (true) {}
+    while (true) {}
 }

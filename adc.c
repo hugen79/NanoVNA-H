@@ -75,29 +75,51 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
   return adc->DR;
 }
 
+
+#define ADCFILTER 32
+static uint16_t adc_single_read_filtered(ADC_TypeDef *adc, uint32_t chsel)
+{
+    uint32_t value = 0;
+    for (int i=0; i < ADCFILTER; i++) 
+        value += adc_single_read(adc, chsel);
+    value /= ADCFILTER;
+    return (uint16_t)value;
+}
+
+
+#define TEMP110_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7C2))
+#define TEMP30_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7B8))
+#define VDD_CALIB ((uint16_t) (330))
+#define VDD_APPLI ((uint16_t) (300))
+#define VREFINT_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7BA))
+
 int16_t adc_vbat_read(ADC_TypeDef *adc)
 {
-#define ADC_FULL_SCALE 3300
-#define VREFINT_CAL (*((uint16_t*)0x1FFFF7BA))
-	float vbat = 0;
-	float vrefint = 0;
+    // VREFINT == ADC_IN17
+    // VBAT == ADC_IN18
+    // VBATEN enables resiter devider circuit. It consume vbat power.
+    ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_VBATEN;
+    int32_t adc_ref = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL17);
+    int32_t adc_bat = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL18);
+    ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_VBATEN);
 
-	ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_VBATEN;
-	// VREFINT == ADC_IN17
-	vrefint = adc_single_read(adc, ADC_CHSELR_CHSEL17);
-	// VBAT == ADC_IN18
-	// VBATEN enables resiter devider circuit. It consume vbat power.
-	vbat = adc_single_read(adc, ADC_CHSELR_CHSEL18);
-	ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_VBATEN);
+    int16_t vbat_raw = (int16_t)((2 * 3300 * (int64_t)(*VREFINT_CAL_ADDR) * adc_bat) / ((int64_t)adc_ref * ((1<<12)-1)));
+    return vbat_raw + config.vbat_offset;
+}
 
-	uint16_t vbat_raw = (ADC_FULL_SCALE * VREFINT_CAL * vbat * 2 / (vrefint * ((1<<12)-1)));
-	if (vbat_raw < 100) {
-		// maybe D2 is not installed
-		return -1;
-	}
-	
-	return vbat_raw;
+int16_t adc_tjun_read(ADC_TypeDef *adc)
+{
+    // TJUN == ADC_IN16
+    ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_TSEN;
+    int32_t adc_ref = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL17);
+    int32_t adc_t = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL16);
+  	ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_TSEN);
 
+    int32_t t = ((adc_t * (*VREFINT_CAL_ADDR)) / adc_ref) - (int32_t) *TEMP30_CAL_ADDR;
+    t *= (int32_t)(110 - 30);
+    t = t / (int32_t)(*TEMP110_CAL_ADDR - *TEMP30_CAL_ADDR);
+    t += 30;
+    return (int16_t)t;
 }
 
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
@@ -138,7 +160,7 @@ void adc_stop(ADC_TypeDef *adc)
   }
 }
 
-void adc_interrupt(ADC_TypeDef *adc)
+static void adc_interrupt(ADC_TypeDef *adc)
 {
   uint32_t isr = adc->ISR;
   adc->ISR = isr;

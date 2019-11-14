@@ -17,6 +17,8 @@
 #ifndef _BOARD_H_
 #define _BOARD_H_
 
+#include <stdint.h>
+
 /*
  * Setup for the Strawberry Linux STbee
  */
@@ -40,10 +42,13 @@
  */
 #define STM32F072xB
 
-#define STM32F072xB_SYSTEM_MEMORY 0x1FFFC800
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20003FF0
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
-#define SYSTEM_BOOT_MSP 0x20002250
+/*
+ * DFU mode constants
+ */
+#define SYSMEM_RESET_VECTOR         0x1fffc804
+#define BOOTLOADER_MAGIC_KEYWORD    0xDEADBEEF
+
+extern volatile uint32_t dfu_reset_to_bootloader_magic;
 
 /*
  * IO pins assignments
