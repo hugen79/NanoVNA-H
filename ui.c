@@ -135,7 +135,7 @@ static void draw_menu(void);
 static void leave_ui_mode();
 static void erase_menu_buttons(void);
 static void ui_process_keypad(void);
-static void ui_process_numeric(void);
+//static void ui_process_numeric(void);
 
 static void menu_push_submenu(const menuitem_t *submenu);
 static void menu_move_back(void);
@@ -688,8 +688,8 @@ void enter_dfu(void)
    ili9341_drawstring_7x13("To exit DFU mode, please reset device yourself.", x, y += 15, 0xffff, 0x0000);
 #endif
 
-  // see __early_init in ./NANOVNA_STM32_F072/board.c
-  dfu_reset_to_bootloader_magic = BOOTLOADER_MAGIC_KEYWORD;
+   // see __early_init in ./NANOVNA_STM32_F072/board.c
+     *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
   NVIC_SystemReset();
 }
 
@@ -946,7 +946,7 @@ static void menu_transform_cb(int item)
       status = btn_wait_release();
       if (status & EVT_BUTTON_DOWN_LONG) {
         ui_mode_numeric(KM_VELOCITY_FACTOR);
-        ui_process_numeric();
+//        ui_process_numeric();
       } else {
         ui_mode_keypad(KM_VELOCITY_FACTOR);
         ui_process_keypad();
@@ -976,7 +976,7 @@ static void menu_scale_cb(int item)
   status = btn_wait_release();
   if (status & EVT_BUTTON_DOWN_LONG) {
     ui_mode_numeric(km);
-    ui_process_numeric();
+//    ui_process_numeric();
   } else {
     ui_mode_keypad(km);
     ui_process_keypad();
@@ -995,7 +995,7 @@ static void menu_stimulus_cb(int item)
     status = btn_wait_release();
     if (status & EVT_BUTTON_DOWN_LONG) {
       ui_mode_numeric(item);
-      ui_process_numeric();
+//      ui_process_numeric();
     } else {
       ui_mode_keypad(item);
       ui_process_keypad();
@@ -1298,7 +1298,7 @@ static void draw_numeric_area_frame(void)
 #else
   ili9341_drawstring_7x13(keypad_mode_label[keypad_mode], 10, 220, 0x0000, 0xffff);
 #endif
-  ili9341_drawfont(KP_KEYPAD, &NF20x22, 300, 216, 0x0000, 0xffff);
+  //ili9341_drawfont(KP_KEYPAD, &NF20x22, 300, 216, 0x0000, 0xffff);
 }
 
 static void draw_numeric_input(const char *buf)
@@ -1865,6 +1865,7 @@ static void numeric_apply_touch(void)
   return;
 }
 
+#if 0
 static void ui_process_numeric(void)
 {
   int status = btn_check();
@@ -1930,6 +1931,8 @@ static void ui_process_numeric(void)
   // cancel operation
   ui_mode_normal();
 }
+#endif
+
 
 static void ui_process_keypad(void)
 {
@@ -1974,7 +1977,7 @@ static void ui_process_keypad(void)
         break;
       else if (key == -2) {
         //xxx;
-        return;
+ //       return;
       }
     }
   }
@@ -1995,9 +1998,9 @@ static void ui_process_lever(void)
   case UI_MENU:
     ui_process_menu();
     break;    
-  case UI_NUMERIC:
-    ui_process_numeric();
-    break;    
+//  case UI_NUMERIC:
+//    ui_process_numeric();
+//    break;
   case UI_KEYPAD:
     ui_process_keypad();
     break;    

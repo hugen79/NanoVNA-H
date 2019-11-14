@@ -62,25 +62,26 @@ const PALConfig pal_default_config = {
 };
 #endif
 
-volatile uint32_t dfu_reset_to_bootloader_magic;
-
 /*
  * Early initialization code.
  * This initialization must be performed just after stack setup and before
  * any other initialization.
  */
 void __early_init(void) {
-    if (dfu_reset_to_bootloader_magic == BOOTLOADER_MAGIC_KEYWORD) {
-        dfu_reset_to_bootloader_magic = 0;
-        void (*bootloader)(void) = (void (*)(void)) (*((uint32_t *) SYSMEM_RESET_VECTOR));
-        __set_MSP(*(uint32_t*)0);
-        __enable_irq();
-        // remap memory. unneeded for F072?
-        // RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
-        // SYSCFG->CFGR1 = 0x01;
-        bootloader();
-        while (1);
-    }
+  if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
+    // require irq
+    __enable_irq();
+    // reset magic bytes
+    *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = 0;
+    // remap memory. unneeded for F072?
+    // RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    // SYSCFG->CFGR1 = 0x01;
+    // set msp for system memory
+    __set_MSP(SYSTEM_BOOT_MSP); 
+    // jump to system memory
+    ( (void (*)(void)) (*((uint32_t *)(STM32F072xB_SYSTEM_MEMORY+4))) )();
+    while (1);
+  }
 
   //si5351_setup();
   stm32_clock_init();
