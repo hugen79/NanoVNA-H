@@ -67,7 +67,7 @@ static const uint8_t si5351_configs[] = {
   0 // sentinel
 };
 
-static bool si5351_wait_ready()
+static bool si5351_wait_ready(void)
 {
     uint8_t status = 0xff;
     systime_t start = chVTGetSystemTime();
@@ -83,7 +83,7 @@ static bool si5351_wait_ready()
 }
 
 #if 1
-static void si5351_wait_pll_lock()
+static void si5351_wait_pll_lock(void)
 {
     systime_t start = chVTGetSystemTime();
     uint8_t status = 0xff;

@@ -1720,10 +1720,10 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     int idx0 = markers[previous_marker].index;
     xpos = 189;
     xpos -= m * CELLWIDTH -CELLOFFSETX;
-    ypos += 21;
+    ypos += 13;
     chsnprintf(buf, sizeof buf, "D%d:", previous_marker+1);
     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
-    xpos += 14;
+    xpos += 21;
 	    if ((domain_mode & DOMAIN_MODE) == DOMAIN_FREQ) {
       frequency_string(buf, sizeof buf, frequencies[idx] - frequencies[idx0]);
     } else {

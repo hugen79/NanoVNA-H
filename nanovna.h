@@ -312,7 +312,11 @@ void show_logo(void);
 /*
  * flash.c
  */
+#if !defined(ANTENNA_ANALYZER)
 #define SAVEAREA_MAX 5
+#else
+#define SAVEAREA_MAX 4
+#endif
 
 typedef struct {
   int32_t magic;

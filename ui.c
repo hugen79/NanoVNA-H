@@ -22,7 +22,7 @@
 #include "hal.h"
 #include "chprintf.h"
 #include "nanovna.h"
-
+#include <string.h>
 
 
 uistat_t uistat = {
@@ -132,7 +132,7 @@ static void ui_mode_menu(void);
 static void ui_mode_numeric(int _keypad_mode);
 static void ui_mode_keypad(int _keypad_mode);
 static void draw_menu(void);
-static void leave_ui_mode();
+static void leave_ui_mode(void);
 static void erase_menu_buttons(void);
 static void ui_process_keypad(void);
 //static void ui_process_numeric(void);
@@ -721,7 +721,8 @@ static void menu_calop_cb(int item)
 
 static void menu_caldone_cb(int item)
 {
-  cal_done();
+  (void) item;
+	cal_done();
   draw_cal_status();
   menu_move_back();
   menu_push_submenu(menu_save);
@@ -1507,7 +1508,7 @@ static void erase_numeric_input(void)
   ili9341_fill(0, 240-32, 320, 32, bg);
 }
 
-static void leave_ui_mode()
+static void leave_ui_mode(void)
 {
   if (ui_mode == UI_MENU) {
     request_to_draw_cells_behind_menu();
@@ -1564,6 +1565,7 @@ static void fetch_numeric_target(void)
   uistat.previous_value = uistat.value;
 }
 
+#if 0
 static void set_numeric_value(void)
 {
   switch (keypad_mode) {
@@ -1596,6 +1598,8 @@ static void set_numeric_value(void)
     break;
   }
 }
+
+#endif
 
 static void draw_numeric_area(void)
 {

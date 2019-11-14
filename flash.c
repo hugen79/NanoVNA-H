@@ -122,11 +122,7 @@ int config_recall(void)
   memcpy(dst, src, sizeof(config_t));
   return 0;
 }
-#if !defined(ANTENNA_ANALYZER)
-#define SAVEAREA_MAX 5
-#else
-#define SAVEAREA_MAX 4
-#endif
+
 const uint32_t saveareas[] =
   {
 #if !defined(ANTENNA_ANALYZER)
