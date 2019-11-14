@@ -179,8 +179,8 @@ extern void tlv320aic3204_select(int channel);
 #define GRIDY (LCD_HEIGHT/8-1)
 #define OFFSETX 15
 #define OFFSETY 0
-#define WIDTH LCD_WIDTH-GRIDY
-#define HEIGHT LCD_HEIGHT-7
+#define WIDTH (LCD_WIDTH-GRIDY)
+#define HEIGHT (LCD_HEIGHT-7)
 
 #define CELLOFFSETX 5
 #define AREA_WIDTH_NORMAL (WIDTH + CELLOFFSETX*2)
