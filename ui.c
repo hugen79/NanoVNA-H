@@ -1713,13 +1713,18 @@ static void ui_process_menu(void)
       menu_invoke(selection);
     } else {
       do {
-        if (status & EVT_UP
-            && menu_stack[menu_current_level][selection+1].type != MT_NONE) {
-          selection++;
+        if (status & EVT_UP){
+            if (menu_stack[menu_current_level][selection+1].type == MT_NONE) {
+            	ui_mode_normal();
+            	return;
+            }
+            	selection++;
           draw_menu();
         }
-        if (status & EVT_DOWN
-            && selection > 0) {
+        if (status & EVT_DOWN){
+        		if (selection == 0){
+        			ui_mode_normal();
+        			return;}
           selection--;
           draw_menu();
         }
