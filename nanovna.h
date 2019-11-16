@@ -254,6 +254,7 @@ float get_trace_scale(int t);
 float get_trace_refpos(int t);
 const char *get_trace_typename(int t);
 void draw_battery_status(void);
+void draw_pll_lock_error(void);
 
 void set_electrical_delay(float picoseconds);
 float get_electrical_delay(void);
@@ -301,11 +302,15 @@ extern uint16_t redraw_request;
 #define REDRAW_MARKER     (1<<3)
 
 extern int16_t vbat;
+extern bool pll_lock_failed;
+
 
 /*
  * ili9341.c
  */
 #define RGB565(b,r,g)     ( (((b)<<8)&0xfc00) | (((r)<<2)&0x03e0) | (((g)>>3)&0x001f) )
+#define RGB(r,g,b)  ( (((g)&0x1c)<<11) | (((b)&0xf8)<<5) | ((r)&0xf8) | (((g)&0xe0)>>5) )
+#define RGBHEX(hex) ( (((hex)&0x001c00)<<3) | (((hex)&0x0000f8)<<5) | (((hex)&0xf80000)>>16) | (((hex)&0x00e000)>>13) )
 
 typedef struct {
 	uint16_t width;

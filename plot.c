@@ -1748,8 +1748,21 @@ draw_battery_status(void)
     ili9341_bulk(0, 1, w, h);
 }
 
-void
-request_to_redraw_grid(void)
+void draw_pll_lock_error(void)
+{
+    int y = 1+7*2;
+    ili9341_fill(0, y, 10, 4*7, RGBHEX(0x000000));
+    y += 4;
+    ili9341_fill(1, y, 8, 3*7+4, RGBHEX(0xff0000));
+    y += 2;
+    ili9341_drawchar_5x7('P', 3, y, RGBHEX(0x000000), RGBHEX(0xff0000));
+    y+=7;
+    ili9341_drawchar_5x7('L', 3, y, RGBHEX(0x000000), RGBHEX(0xff0000));
+    y+=7;
+    ili9341_drawchar_5x7('L', 3, y, RGBHEX(0x000000), RGBHEX(0xff0000));
+}
+
+void request_to_redraw_grid(void)
 {
   force_set_markmap();
   redraw_request |= REDRAW_CELLS;

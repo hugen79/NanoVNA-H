@@ -23,27 +23,36 @@
 
 #define SI5351_I2C_ADDR   	(0x60<<1)
 
-static void
-si5351_write(uint8_t reg, uint8_t dat)
+static bool si5351_bulk_read(uint8_t reg, uint8_t* buf, int len)
+{
+    int addr = SI5351_I2C_ADDR>>1;
+    i2cAcquireBus(&I2CD1);
+    msg_t mr = i2cMasterTransmitTimeout(&I2CD1, addr, &reg, 1, buf, len, 1000);
+    i2cReleaseBus(&I2CD1);
+    return mr == MSG_OK;
+}
+
+static bool si5351_write(uint8_t reg, uint8_t dat)
 {
   int addr = SI5351_I2C_ADDR>>1;
   uint8_t buf[] = { reg, dat };
   i2cAcquireBus(&I2CD1);
-  (void)i2cMasterTransmitTimeout(&I2CD1, addr, buf, 2, NULL, 0, 1000);
+  msg_t mr = i2cMasterTransmitTimeout(&I2CD1, addr, buf, 2, NULL, 0, 1000);
   i2cReleaseBus(&I2CD1);
+  return mr == MSG_OK;
 }
 
-static void
-si5351_bulk_write(const uint8_t *buf, int len)
+static bool si5351_bulk_write(const uint8_t *buf, int len)
 {
   int addr = SI5351_I2C_ADDR>>1;
   i2cAcquireBus(&I2CD1);
-  (void)i2cMasterTransmitTimeout(&I2CD1, addr, buf, len, NULL, 0, 1000);
+  msg_t mr = i2cMasterTransmitTimeout(&I2CD1, addr, buf, len, NULL, 0, 1000);
   i2cReleaseBus(&I2CD1);
+  return mr == MSG_OK;
 }
 
 // register addr, length, data, ...
-const uint8_t si5351_configs[] = {
+static const uint8_t si5351_configs[] = {
   2, SI5351_REG_3_OUTPUT_ENABLE_CONTROL, 0xff,
   4, SI5351_REG_16_CLK0_CONTROL, SI5351_CLK_POWERDOWN, SI5351_CLK_POWERDOWN, SI5351_CLK_POWERDOWN,
   2, SI5351_REG_183_CRYSTAL_LOAD, SI5351_CRYSTAL_LOAD_8PF,
@@ -58,15 +67,53 @@ const uint8_t si5351_configs[] = {
   0 // sentinel
 };
 
-void
-si5351_init(void)
+static bool si5351_wait_ready(void)
 {
+    uint8_t status = 0xff;
+    systime_t start = chVTGetSystemTime();
+    systime_t end = start + MS2ST(1000);     // 1000 ms timeout
+    while (chVTIsSystemTimeWithin(start, end))
+    {
+        if(!si5351_bulk_read(0, &status, 1))
+            status = 0xff;  // comm timeout
+        if ((status & 0x80) == 0) 
+            return true;
+    }
+    return false;
+}
+
+static void si5351_wait_pll_lock(void)
+{
+    systime_t start = chVTGetSystemTime();
+    uint8_t status = 0xff;
+    if(!si5351_bulk_read(0, &status, 1))
+        status = 0xff;  // comm timeout
+    if ((status & 0x60) == 0)
+        return;
+    systime_t end = start + MS2ST(100);     // 100 ms timeout
+    while (chVTIsSystemTimeWithin(start, end))
+    {
+        if(!si5351_bulk_read(0, &status, 1))
+            status = 0xff;  // comm timeout
+        if ((status & 0x60) == 0)
+            return;
+	chThdSleepMilliseconds(10);
+    }
+    pll_lock_failed = true;
+}
+
+bool si5351_init(void)
+{
+  if (!si5351_wait_ready())
+      return false;
   const uint8_t *p = si5351_configs;
   while (*p) {
     uint8_t len = *p++;
-    si5351_bulk_write(p, len);
+    if (!si5351_bulk_write(p, len))
+        return false;
     p += len;
   }
+  return true;
 }
 
 void si5351_disable_output(void)
@@ -291,14 +338,15 @@ si5351_set_frequency(int channel, int freq, uint8_t drive_strength)
   } else {
     si5351_set_frequency_fixeddiv(channel, SI5351_PLL_B, freq, 4, drive_strength);
   }
+  si5351_wait_pll_lock();
 }
 
 
-int current_band = -1;
+static int current_band = -1;
 
 #define DELAY_NORMAL 3
-#define DELAY_BANDCHANGE 2
-#define DELAY_LOWBAND 1
+#define DELAY_BANDCHANGE 10
+#define DELAY_LOWBAND 2
 
 /*
  * configure output as follows:
@@ -390,13 +438,15 @@ si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_streng
 
   if (current_band != band) {
     si5351_reset_pll();
+    si5351_reset_pll();
+    si5351_wait_pll_lock();
 #if 1
     si5351_enable_output();
 #endif
     delay += DELAY_BANDCHANGE;
-  }
-  if (band == 0)
-    delay += DELAY_LOWBAND;
+  }    
+  //if (band == 0)
+  //  delay += DELAY_LOWBAND;
 
   current_band = band;
   return delay;
