@@ -672,7 +672,9 @@ bool sweep(bool break_on_operation)
     wait_dsp(delay);
 
     // blink LED while scanning
+    #if !defined(LED_OFF)
     palClearPad(GPIOC, GPIOC_LED);
+    #endif
 
     /* calculate reflection coeficient */
     (*sample_func)(measured[0][i]);
@@ -683,9 +685,11 @@ bool sweep(bool break_on_operation)
     /* calculate transmission coeficient */
     (*sample_func)(measured[1][i]);
 
+    #if !defined(LED_OFF)
     // blink LED while scanning
     palSetPad(GPIOC, GPIOC_LED);
-
+    #endif
+    
     if (cal_status & CALSTAT_APPLY)
       apply_error_term_at(i);
 
@@ -2037,6 +2041,7 @@ int main(void)
     halInit();
     chSysInit();
 
+    palClearPad(GPIOC, GPIOC_LED);
     chMtxObjectInit(&mutex);
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);

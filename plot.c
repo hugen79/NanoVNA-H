@@ -103,7 +103,7 @@ circle_inout(int x, int y, int r)
 }
 
 
-#define P_CENTER_X (LCD_WIDTH/2-14)
+#define P_CENTER_X (LCD_WIDTH/2-OFFSETX-CELLOFFSETX)
 #define P_CENTER_Y (LCD_HEIGHT/2-4)
 #define P_RADIUS P_CENTER_Y
 
