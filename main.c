@@ -392,6 +392,7 @@ static void cmd_clearconfig(BaseSequentialStream *chp, int argc, char *argv[])
 
   clear_all_config_prop_data();
   chprintf(chp, "Config and all cal data cleared.\r\n");
+  chprintf(chp, "Do reset manually to take effect. Then do touch cal and save.\r\n");
 }
 
 static struct {
@@ -658,7 +659,7 @@ ensure_edit_config(void)
   cal_status = 0;
 }
 
-#define DELAY_CHANNEL_CHANGE 1
+#define DELAY_CHANNEL_CHANGE 3
 
 // main loop for measurement
 bool sweep(bool break_on_operation)
@@ -677,7 +678,7 @@ bool sweep(bool break_on_operation)
     (*sample_func)(measured[0][i]);
 
     tlv320aic3204_select(1); // CH1:TRANSMISSION
-    wait_dsp(delay + DELAY_CHANNEL_CHANGE);
+    wait_dsp(DELAY_CHANNEL_CHANGE);
 
     /* calculate transmission coeficient */
     (*sample_func)(measured[1][i]);
