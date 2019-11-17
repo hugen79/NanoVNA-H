@@ -15,7 +15,7 @@ void markmap_all_markers(void);
 //uint16_t grid_color = 0x1084;
 
 /* indicate dirty cells */
-uint16_t markmap[2][8];
+uint16_t markmap[2][10];
 uint16_t current_mappage = 0;
 
 int32_t fgrid = 50000000;
@@ -753,7 +753,7 @@ static float distance_of_index(int idx) {
 static inline void
 mark_map(int x, int y)
 {
-  if (y >= 0 && y < 8 && x >= 0 && x < 16)
+  if (y >= 0 && y < 10 && x >= 0 && x < 16)
     markmap[current_mappage][y] |= 1<<x;
 }
 
@@ -1424,7 +1424,7 @@ void
 request_to_draw_cells_behind_menu(void)
 {
   int n, m;
-  for (m = 7; m <= 9; m++)
+  for (m = LCD_WIDTH/32-3; m <= LCD_WIDTH/32-1; m++)
     for (n = 0; n < 8; n++)
       mark_map(m, n);
   redraw_request |= REDRAW_CELLS;
