@@ -2052,7 +2052,7 @@ int main(void)
 
     // SPI LCD Initialize
     ili9341_init();
-    ili9341_fill(0, 0, 320, 240, 0x0000);
+    ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0x0000);
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
