@@ -620,7 +620,8 @@ config_t config = {
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,
   .trace_color =       { RGB565(0,255,255), RGB565(255,0,40), RGB565(0,0,255), RGB565(50,255,0) },
-  .touch_cal =         { 693, 605, 124, 171 },  //{ 620, 600, 160, 190 },
+//  .touch_cal =         { 693, 605, 124, 171 },  // 2.4 inch LCD panel
+  .touch_cal =         { 338, 522, 153, 192 },  // 2.8 inch LCD panel
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
   .checksum =          0
@@ -850,6 +851,9 @@ void
 set_sweep_frequency(int type, int32_t freq)
 {
   int cal_applied = cal_status & CALSTAT_APPLY;
+  // negative value indicate overflow, do nothing
+  if (freq < 0)
+    return;
   switch (type) {
   case ST_START:
     freq_mode_startstop();
@@ -1792,6 +1796,7 @@ set_domain_mode(int mode) // accept DOMAIN_FREQ or DOMAIN_TIME
   if (mode != (domain_mode & DOMAIN_MODE)) {
     domain_mode = (domain_mode & ~DOMAIN_MODE) | (mode & DOMAIN_MODE);
     redraw_request |= REDRAW_FREQUENCY;
+    uistat.lever_mode = LM_MARKER;
   }
 }
 
