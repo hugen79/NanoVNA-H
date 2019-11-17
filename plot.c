@@ -1424,7 +1424,7 @@ void
 request_to_draw_cells_behind_menu(void)
 {
   int n, m;
-  for (m = LCD_HEIGHT/32-3; m <= LCD_HEIGHT/32-1; m++)
+  for (m = LCD_WIDTH/32-3; m <= LCD_WIDTH/32-1; m++)
     for (n = 0; n < 8; n++)
       mark_map(m, n);
   redraw_request |= REDRAW_CELLS;
