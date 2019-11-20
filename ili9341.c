@@ -463,6 +463,7 @@ ili9341_read_memory_continue(int len, uint16_t* out)
     ili9341_read_memory_raw(0x3E, len, out);
 }
 
+#if !defined(ST7796S)
 void
 ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
@@ -470,12 +471,12 @@ ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
   ili9341_drawchar_size(ch, x, y, fg, bg, 1);
   #else
   uint16_t *buf = spi_buffer;
-  uint8_t bits;
+  uint16_t bits;
   int c, r;
   for(c = 0; c < 7; c++) {
     bits = x5x7_bits[(ch * 7) + c];
     for (r = 0; r < 5; r++) {
-      *buf++ = (0x80 & bits) ? fg : bg;
+      *buf++ = (0x8000 & bits) ? fg : bg;
       bits <<= 1;
     }
   }
@@ -506,12 +507,12 @@ void
 ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
   uint16_t *buf = spi_buffer;
-  uint8_t bits;
+  uint16_t bits;
   int c, r;
   for(c = 0; c < 7*size; c++) {
     bits = x5x7_bits[(ch * 7) + (c / size)];
     for (r = 0; r < 5*size; r++) {
-      *buf++ = (0x80 & bits) ? fg : bg;
+      *buf++ = (0x8000 & bits) ? fg : bg;
       if (r % size == (size-1)) {
           bits <<= 1;
       }
@@ -529,6 +530,73 @@ ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg,
     str++;
   }
 }
+
+#else
+void
+ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
+{
+  uint16_t *buf = spi_buffer;
+  uint16_t bits;
+  int c, r;
+  for(c = 0; c < 13; c++) {
+    bits = x7x13b_bits[(ch * 13) + c];
+    for (r = 0; r < 7; r++) {
+      *buf++ = (0x8000 & bits) ? fg : bg;
+      bits <<= 1;
+    }
+  }
+  ili9341_bulk(x, y, 7, 13);
+}
+
+void
+ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg)
+{
+  while (*str) {
+    ili9341_drawchar_7x13(*str, x, y, fg, bg);
+    x += 7;
+    str++;
+  }
+}
+
+void
+ili9341_drawstring_7x13_inv(const char *str, int x, int y, uint16_t fg, uint16_t bg, bool invert)
+{
+  if (invert)
+    ili9341_drawstring_7x13(str, x, y, bg, fg);
+  else
+    ili9341_drawstring_7x13(str, x, y, fg, bg);
+}
+
+
+void
+ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+{
+  uint16_t *buf = spi_buffer;
+  uint16_t bits;
+  int c, r;
+  for(c = 0; c < 13*size; c++) {
+    bits = x7x13b_bits[(ch * 13) + (c / size)];
+    for (r = 0; r < 7*size; r++) {
+      *buf++ = (0x8000 & bits) ? fg : bg;
+      if (r % size == (size-1)) {
+          bits <<= 1;
+      }
+    }
+  }
+  ili9341_bulk(x, y, 7*size, 13*size);
+}
+
+void
+ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+{
+  while (*str) {
+    ili9341_drawchar_size(*str, x, y, fg, bg, size);
+    x += 7 * size;
+    str++;
+  }
+}
+#endif
+
 
 #define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
 
@@ -614,7 +682,7 @@ ili9341_test(int mode)
   int i;
   uint16_t x0, x1, y0, y1;
   int c;
-  int r;
+  // int r;
   switch (mode) {
   default:
 #if 1
@@ -656,14 +724,14 @@ ili9341_test(int mode)
     ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
     x0 = (uint16_t) my_rand() % LCD_WIDTH;
     y0 = (uint16_t) my_rand() % LCD_HEIGHT-4;
-    if ((x0>=LCD_WIDTH) || (y0>=LCD_HEIGHT) || (x0<0) || (y0<0)) {
+    if ((x0>=LCD_WIDTH) || (y0>=LCD_HEIGHT)) {
       return;
     }
-    r  = (int) my_rand() % 100;
+    //r  = (int) my_rand() % 100;
     for (i=0; i<100; i++) {
       x1 = (uint16_t) my_rand() % LCD_WIDTH;
       y1 = (uint16_t) my_rand() % LCD_HEIGHT-4;
-      if ((x1>=LCD_WIDTH) || (y1>=LCD_HEIGHT) || (x1<0) || (y1<0)) {
+      if ((x1>=LCD_WIDTH) || (y1>=LCD_HEIGHT)) {
 	return;
       }
       //c = RGB565(255,255,255);

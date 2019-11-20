@@ -40,7 +40,7 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #define LCD_WIDTH 480
 #define LCD_HEIGHT 320
 //#define SWEEP_POINTS 201
-#define LINE_SPACE 10
+#define LINE_SPACE 15
 #define X_SPACE 5
 #define YSTEP LINE_SPACE
 //#define SPI_BUFFER_SIZE 2048
@@ -182,7 +182,12 @@ extern void tlv320aic3204_select(int channel);
 #define OFFSETX 15
 #define OFFSETY 0
 #define WIDTH (LCD_WIDTH-GRIDY)
-#define HEIGHT (LCD_HEIGHT-7)
+#if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
+#define FONT_HEIGHT 13
+#else
+#define FONT_HEIGHT 7
+#endif
+#define HEIGHT (LCD_HEIGHT-FONT_HEIGHT)
 
 #define CELLOFFSETX 5
 #define AREA_WIDTH_NORMAL (WIDTH + CELLOFFSETX*2)
@@ -191,8 +196,11 @@ extern int area_width;
 extern int area_height;
 
 // font
-
+#if !defined(ST7796S)
 extern const uint8_t x5x7_bits [];
+#else
+extern const uint16_t x7x13b_bits [];
+#endif
 extern const uint8_t numfont20x22[][22 * 3];
 
 #define S_PI    "\034"
@@ -328,9 +336,15 @@ void ili9341_init(void);
 void ili9341_test(int mode);
 void ili9341_bulk(int x, int y, int w, int h);
 void ili9341_fill(int x, int y, int w, int h, int color);
+#if !defined(ST7796S)
 void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_drawstring_5x7_inv(const char *str, int x, int y, uint16_t fg, uint16_t bg, bool inv);
+#else
+void ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
+void ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg);
+void ili9341_drawstring_7x13_inv(const char *str, int x, int y, uint16_t fg, uint16_t bg, bool inv);
+#endif
 void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg);
