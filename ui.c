@@ -31,7 +31,8 @@
 
 uistat_t uistat = {
  digit: 6,
- current_trace: 0
+ current_trace: 0,
+ lever_mode: LM_MARKER
 };
 
 
@@ -47,7 +48,7 @@ uistat_t uistat = {
 #define BUTTON_DOWN_LONG_TICKS		5000  /* 1sec */
 #define BUTTON_DOUBLE_TICKS			5000   /* 500ms */
 #define BUTTON_REPEAT_TICKS			1000   /* 100ms */
-#define BUTTON_DEBOUNCE_TICKS		200
+#define BUTTON_DEBOUNCE_TICKS		80
 
 /* lever switch assignment */
 #define BIT_UP1 	3
@@ -320,7 +321,11 @@ touch_cal_exec(void)
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
   ili9341_line(0, 0, 0, 32, 0xffff);
   ili9341_line(0, 0, 32, 0, 0xffff);
+  #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
+#else
+ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
+ #endif
 
   do {
     status = touch_check();
@@ -331,8 +336,11 @@ touch_cal_exec(void)
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-1, LCD_HEIGHT-32, 0xffff);
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-32, LCD_HEIGHT-1, 0xffff);
+   #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH LOWER RIGHT", 230, 220, 0xffff, 0x0000);
-
+  #else
+ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 356, 254, 0xffff, 0x0000);
+ #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_RELEASED);
@@ -358,8 +366,11 @@ touch_draw_test(void)
   adc_stop(ADC1);
 
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+     #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH TEST: DRAG PANEL", OFFSETX, 233, 0xffff, 0x0000);
-
+ #else
+ili9341_drawstring_7x13("TOUCH TEST: DRAG PANEL", OFFSETX, 267, 0xffff, 0x0000);
+ #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_PRESSED);
@@ -390,23 +401,28 @@ void
 show_version(void)
 {
   int x = 5, y = 5;
+  typedef void (*drawstring_function_t)(const char *, int , int , uint16_t , uint16_t );
+  drawstring_function_t drawstring_function;
+  #if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
+  drawstring_function = ili9341_drawstring_7x13;
+  #else
+  drawstring_function = ili9341_drawstring_5x7;
+  #endif  
   adc_stop(ADC1);
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
-
   ili9341_drawstring_size(BOARD_NAME, x, y, 0xffff, 0x0000, 4);
-  y += 25;
-
-  ili9341_drawstring_5x7("2016-2019 Copyright @edy555", x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Version: " VERSION, x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Build Time: " __DATE__ " - " __TIME__, x, y += LINE_SPACE, 0xffff, 0x0000);
-  y += 5;
-  ili9341_drawstring_5x7("Kernel: " CH_KERNEL_VERSION, x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Compiler: " PORT_COMPILER_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Port Info: " PORT_INFO, x, y += LINE_SPACE, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("Platform: " PLATFORM_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
-
+  y += LINE_SPACE*3;
+  drawstring_function("2016-2019 Copyright @edy555", x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Version: " VERSION, x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Build Time: " __DATE__ " - " __TIME__, x, y += LINE_SPACE, 0xffff, 0x0000);
+  y += LINE_SPACE;
+  drawstring_function("Kernel: " CH_KERNEL_VERSION, x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Compiler: " PORT_COMPILER_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Port Info: " PORT_INFO, x, y += LINE_SPACE, 0xffff, 0x0000);
+  drawstring_function("Platform: " PLATFORM_NAME, x, y += LINE_SPACE, 0xffff, 0x0000);
+  
   while (true) {
     if (touch_check() == EVT_TOUCH_PRESSED)
       break;
@@ -426,8 +442,13 @@ enter_dfu(void)
 
   // leave a last message 
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+#if !defined(ST7796S)
   ili9341_drawstring_5x7("DFU: Device Firmware Update Mode", x, y += LINE_SPACE, 0xffff, 0x0000);
   ili9341_drawstring_5x7("To exit DFU mode, please reset device yourself.", x, y += LINE_SPACE, 0xffff, 0x0000);
+#else
+  ili9341_drawstring_7x13("DFU: Device Firmware Update Mode", x, y += LINE_SPACE, 0xffff, 0x0000);
+   ili9341_drawstring_7x13("To exit DFU mode, please reset device yourself.", x, y += LINE_SPACE, 0xffff, 0x0000);
+#endif
 
   // see __early_init in ./NANOVNA_STM32_F072/board.c
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
@@ -700,6 +721,7 @@ menu_transform_cb(int item)
       } else {
           domain_mode = (domain_mode & ~DOMAIN_MODE) | DOMAIN_TIME;
       }
+      uistat.lever_mode = LM_MARKER;
       draw_frequencies();
       ui_mode_normal();
       break;
@@ -768,6 +790,7 @@ menu_stimulus_cb(int item)
   case 2: /* CENTER */
   case 3: /* SPAN */
   case 4: /* CW */
+    uistat.lever_mode = item == 3 ? LM_SPAN : LM_CENTER;
     status = btn_wait_release();
     if (status & EVT_BUTTON_DOWN_LONG) {
       ui_mode_numeric(item);
@@ -816,22 +839,22 @@ menu_marker_op_cb(int item)
     break;
   case 3: /* MARKERS->SPAN */
     {
-      if (previous_marker == active_marker)
-        return;
-      int32_t freq2 = get_marker_frequency(previous_marker);
-      if (freq2 < 0)
-        return;
-      if (freq > freq2) {
-        freq2 = freq;
-        freq = get_marker_frequency(previous_marker);
+      if (previous_marker == -1 || active_marker == previous_marker) {
+        int32_t center = get_sweep_frequency(ST_CENTER);
+        int32_t span = center - freq;
+        if (span < 0) span = -span;
+        set_sweep_frequency(ST_SPAN, span * 2);
+      } else {
+        int32_t freq2 = get_marker_frequency(previous_marker);
+        if (freq2 < 0)
+          return;
+        if (freq > freq2) {
+          freq2 = freq;
+          freq = get_marker_frequency(previous_marker);
+        }
+        set_sweep_frequency(ST_START, freq);
+        set_sweep_frequency(ST_STOP, freq2);
       }
-      set_sweep_frequency(ST_START, freq);
-      set_sweep_frequency(ST_STOP, freq2);
-#if 0
-      int32_t span = (freq - freq2) * 2;
-      if (span < 0) span = -span;
-      set_sweep_frequency(ST_SPAN, span);
-#endif
     }
     break;
   }
@@ -869,6 +892,7 @@ menu_marker_search_cb(int item)
     break;
   }
   redraw_marker(active_marker, TRUE);
+  uistat.lever_mode = LM_SEARCH;
 }
 
 void 
@@ -913,6 +937,7 @@ menu_marker_sel_cb(int item)
   }
   redraw_marker(active_marker, TRUE);
   draw_menu();
+  uistat.lever_mode = LM_MARKER;
 }
 
 const menuitem_t menu_calop[] = {
@@ -1186,8 +1211,12 @@ void menu_invoke(int item)
     break;
   }
 }
+#if !defined(ST7796S)
 
 #define KP_X(x) (48*(x) + 2 + (LCD_WIDTH-64-192))
+#else
+#define KP_X(x) (48*(x) + 2 + (LCD_WIDTH-72-192))
+#endif
 #define KP_Y(y) (48*(y) + 2)
 
 #define KP_PERIOD 10
@@ -1303,7 +1332,11 @@ void
 draw_numeric_area_frame(void)
 {
   ili9341_fill(0, LCD_HEIGHT*0.9, LCD_WIDTH, 32, 0xffff);
+#if !defined(ST7796S)
   ili9341_drawstring_5x7(keypad_mode_label[keypad_mode], 10, 220, 0x0000, 0xffff);
+#else
+  ili9341_drawstring_7x13(keypad_mode_label[keypad_mode], 10, 220, 0x0000, 0xffff);
+#endif
   ili9341_drawfont(KP_KEYPAD, &NF20x22, LCD_WIDTH-20, LCD_HEIGHT*0.9, 0x0000, 0xffff);
 }
 
@@ -1431,6 +1464,7 @@ draw_menu_buttons(const menuitem_t *menu)
     // focus only in MENU mode but not in KEYPAD mode
     if (ui_mode == UI_MENU && i == selection)
       bg = config.menu_active_color;
+#if !defined(ST7796S)
     ili9341_fill(LCD_WIDTH-60, y, 60, 30, bg);
     
     menu_item_modify_attribute(menu, i, &fg, &bg);
@@ -1440,6 +1474,18 @@ draw_menu_buttons(const menuitem_t *menu)
     } else {
       ili9341_drawstring_5x7(menu[i].label, LCD_WIDTH-54, y+12, fg, bg);
     }
+
+#else
+    ili9341_fill(LCD_WIDTH-72, y, 72, 30, bg);
+
+        menu_item_modify_attribute(menu, i, &fg, &bg);
+        if (menu_is_multiline(menu[i].label, &l1, &l2)) {
+          ili9341_drawstring_7x13(l1, LCD_WIDTH-70, y+3, fg, bg);
+          ili9341_drawstring_7x13(l2, LCD_WIDTH-70, y+16, fg, bg);
+        } else {
+          ili9341_drawstring_7x13(menu[i].label, LCD_WIDTH-70, y+9, fg, bg);
+        }
+#endif
   }
 }
 
@@ -1467,8 +1513,13 @@ menu_apply_touch(void)
     if (menu[i].type == MT_BLANK) 
       continue;
     int y = 32*i;
+		#if !defined(ST7796S)
     if (y-2 < touch_y && touch_y < y+30+2
         && LCD_WIDTH-60 < touch_x) {
+		#else
+	if (y-2 < touch_y && touch_y < y+30+2
+		&& LCD_WIDTH-72 < touch_x) {
+#endif
       menu_select_touch(i);
       return;
     }
@@ -1488,7 +1539,12 @@ void
 erase_menu_buttons(void)
 {
   uint16_t bg = 0;
+  #if !defined(ST7796S)
   ili9341_fill(LCD_WIDTH-60, 0, 60, 32*7, bg);
+  #else
+   ili9341_fill(LCD_WIDTH-72, 0, 72, 32*7, bg);
+#endif
+
 }
 
 void
@@ -1607,7 +1663,11 @@ ui_mode_menu(void)
 
   ui_mode = UI_MENU;
   /* narrowen plotting area */
+  #if !defined(ST7796S)
   area_width = AREA_WIDTH_NORMAL - (64-8);
+  #else
+   area_width = AREA_WIDTH_NORMAL - 72;
+  #endif
   area_height = HEIGHT;
   ensure_selection();
   draw_menu();
@@ -1668,6 +1728,92 @@ ui_mode_normal(void)
 }
 
 static void
+lever_move_marker(int status)
+{
+  do {
+    if (active_marker >= 0 && markers[active_marker].enabled) {
+      if ((status & EVT_DOWN) && markers[active_marker].index > 0) {
+        markers[active_marker].index--;
+        markers[active_marker].frequency = frequencies[markers[active_marker].index];
+        redraw_marker(active_marker, FALSE);
+      }
+      if ((status & EVT_UP) && markers[active_marker].index < 100) {
+        markers[active_marker].index++;
+        markers[active_marker].frequency = frequencies[markers[active_marker].index];
+        redraw_marker(active_marker, FALSE);
+      }
+    }
+    status = btn_wait_release();
+  } while (status != 0);
+  if (active_marker >= 0)
+    redraw_marker(active_marker, TRUE);
+}
+
+static void
+lever_search_marker(int status)
+{
+  if (active_marker >= 0) {
+    if (status & EVT_DOWN) {
+      int i = marker_search_left(markers[active_marker].index);
+      if (i != -1)
+        markers[active_marker].index = i;
+    } else if (status & EVT_UP) {
+      int i = marker_search_right(markers[active_marker].index);
+      if (i != -1)
+        markers[active_marker].index = i;
+    }
+    redraw_marker(active_marker, TRUE);
+  }
+}
+
+// ex. 10942 -> 10000
+//      6791 ->  5000
+//       341 ->   200
+static uint32_t
+step_round(uint32_t v)
+{
+  // decade step
+  uint32_t x = 1;
+  for (x = 1; x*10 < v; x *= 10)
+    ;
+  
+  // 1-2-5 step
+  if (x * 2 > v)
+    return x;
+  else if (x * 5 > v)
+    return x * 2;
+  else 
+    return x * 5;
+}
+
+static void
+lever_zoom_span(int status)
+{
+  uint32_t span = get_sweep_frequency(ST_SPAN);
+  if (status & EVT_UP) {
+    span = step_round(span - 1);
+    set_sweep_frequency(ST_SPAN, span);
+  } else if (status & EVT_DOWN) {
+    span = step_round(span + 1);
+    span = step_round(span * 3);
+    set_sweep_frequency(ST_SPAN, span);
+  }
+}
+
+static void
+lever_move_center(int status)
+{
+  uint32_t center = get_sweep_frequency(ST_CENTER);
+  uint32_t span = get_sweep_frequency(ST_SPAN);
+  span = step_round(span / 3);
+  if (status & EVT_UP) {
+    set_sweep_frequency(ST_CENTER, center + span);
+  } else if (status & EVT_DOWN) {
+    set_sweep_frequency(ST_CENTER, center - span);
+  }
+}
+
+static void
 ui_process_normal(void)
 {
   int status = btn_check();
@@ -1675,23 +1821,12 @@ ui_process_normal(void)
     if (status & EVT_BUTTON_SINGLE_CLICK) {
       ui_mode_menu();
     } else {
-      do {
-        if (active_marker >= 0 && markers[active_marker].enabled) {
-          if ((status & EVT_DOWN) && markers[active_marker].index > 0) {
-            markers[active_marker].index--;
-            markers[active_marker].frequency = frequencies[markers[active_marker].index];
-            redraw_marker(active_marker, FALSE);
-          }
-          if ((status & EVT_UP) && markers[active_marker].index < 100) {
-            markers[active_marker].index++;
-            markers[active_marker].frequency = frequencies[markers[active_marker].index];
-            redraw_marker(active_marker, FALSE);
-          }
-        }
-        status = btn_wait_release();
-      } while (status != 0);
-      if (active_marker >= 0)
-        redraw_marker(active_marker, TRUE);
+      switch (uistat.lever_mode) {
+      case LM_MARKER: lever_move_marker(status);   break;
+      case LM_SEARCH: lever_search_marker(status); break;
+      case LM_CENTER: lever_move_center(status);   break;
+      case LM_SPAN:   lever_zoom_span(status);     break;      
+      }
     }
   }
 }
