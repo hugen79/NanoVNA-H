@@ -51,7 +51,7 @@ mutex_t mutex_ili9341;
 
 static int32_t frequency_offset = 5000;
 static uint32_t frequency = 10000000;
-static int8_t drive_strength = DRIVE_STRENGTH_AUTO;
+static int8_t drive_strength = SI5351_CLK_DRIVE_STRENGTH_8MA;
 int8_t sweep_enabled = TRUE;
 static int8_t sweep_once = FALSE;
 static int8_t cal_auto_interpolate = TRUE;
@@ -272,7 +272,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
 }
 
 static const int8_t gain_table[][2] = {
-    {  5,  5 },     // 1st: 0 ~ 300MHz
+    {  0,  0 },     // 1st: 0 ~ 300MHz
     { 42, 40 },     // 2nd: 300 ~ 600MHz
     { 52, 50 },     // 3rd: 600 ~ 900MHz
     { 80, 78 },     // 4th: 900 ~ 1200MHz

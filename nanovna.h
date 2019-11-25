@@ -31,11 +31,11 @@
  */
 #define POINT_COUNT     101
 #define MARKER_COUNT    4
-#if !defined(ANTENNA_ANALYZER)
+//#if !defined(ANTENNA_ANALYZER)
 #define TRACE_COUNT     4
-#else
-#define TRACE_COUNT     2
-#endif
+//#else
+//#define TRACE_COUNT     2
+//#endif
      
 extern float measured[2][POINT_COUNT][2];
 
@@ -340,7 +340,7 @@ typedef struct {
 #if !defined(ANTENNA_ANALYZER)
 #define CONFIG_MAGIC 0x434f4e48 /* 'CONF FRE900' */
 #else
-#define CONFIG_MAGIC 0x434f4e49 /* 'CONF AA_FRE900' */
+#define CONFIG_MAGIC 0x434f4e4a /* 'CONF AA_FRE900' */
 #endif
 
 extern int16_t lastsaveid;

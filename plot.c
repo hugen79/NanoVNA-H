@@ -465,7 +465,7 @@ static float group_delay(float gamma[POINT_COUNT][2], uint32_t* freq, int count,
  */
 static float linear(float *v)
 {
-  return - sqrtf(v[0]*v[0] + v[1]*v[1]);
+  return  sqrtf(v[0]*v[0] + v[1]*v[1]);
 }
 
 /*
@@ -1044,15 +1044,15 @@ static void draw_marker(int w, int h, int x, int y, int c, int ch)
 		   cc = 0;
       }
 #else
-for (j = 16; j >= 0; j--) {
+for (j = 17; j >= 0; j--) {
     int j0 = j / 2;
     for (i = -j0; i <= j0; i++) {
       int x0 = x + i;
       int y0 = y - j;
       int cc = c;
- if (j <= 15 && j > 2 && i >= -1 && i <= 3) {
-        uint16_t bits = x7x13b_bits[(ch * 13) + (15-j)];
-		  if (bits & (0x8000>>(i+1)))
+ if (j <= 17 && j > 3 && i >= -2 && i <= 4) {
+        uint16_t bits = x7x13b_bits[(ch * 13) + (17-j)];
+		  if (bits & (0x8000>>(i+2)))
 		     cc = 0;
       }
  #endif
@@ -1653,7 +1653,7 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
 {
   char buf[24];
   int t;
-  if (n != 0)
+  if (n > 1)
     return;
   if (active_marker < 0)
     return;
@@ -1679,27 +1679,28 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     j++;
   }
 
-  if (electrical_delay != 0 && j < 2) {
-    // draw electrical delay, displayed only when there is a free space on the screen.
-    int xpos = 29;
-    int ypos = 1 + 13;
-    xpos -= m * CELLWIDTH -CELLOFFSETX;
+  int ypos = 1 + (j)*13;
     ypos -= n * CELLHEIGHT;
-    chsnprintf(buf, sizeof buf, "Edelay");
-    cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
-    xpos += 7 * 7;
-    int n = string_value_with_prefix(buf, sizeof buf, electrical_delay * 1e-12, 's');
-    cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
-    xpos += n * 7 + 5;
-    float light_speed_ps = 299792458e-12; //(m/ps)
-    string_value_with_prefix(buf, sizeof buf, electrical_delay * light_speed_ps * velocity_factor / 100.0, 'm');
-    cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
+    if (electrical_delay != 0) {
+      // draw electrical delay
+      int xpos = 8;
+      xpos -= m * CELLWIDTH -CELLOFFSETX;
+     chsnprintf(buf, sizeof buf, "Edelay");
+     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
+     xpos += 7 * 7;
+     int n = string_value_with_prefix(buf, sizeof buf, electrical_delay * 1e-12, 's');
+     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
+     xpos += n * 7 + 5;
+     float light_speed_ps = 299792458e-12; //(m/ps)
+     string_value_with_prefix(buf, sizeof buf, electrical_delay * light_speed_ps * velocity_factor / 100.0, 'm');
+     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
 
-  }
+   }
+
 
   // draw marker frequency
   int xpos = 196;
-  int ypos = 1;
+  ypos = 1;
   xpos -= m * CELLWIDTH -CELLOFFSETX;
   ypos -= n * CELLHEIGHT;
   chsnprintf(buf, sizeof buf, "%d:", active_marker + 1);
@@ -1735,6 +1736,8 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     }
     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
   }
+  mark_map(m, n);
+
 }
 
 static void frequency_string(char *buf, size_t len, int32_t freq)

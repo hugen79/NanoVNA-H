@@ -193,10 +193,10 @@ static const menuitem_t menu_cal[] = {
 static const menuitem_t menu_trace[] = {
   MENUITEM_FUNC("TRACE 0",      menu_trace_cb),
   MENUITEM_FUNC("TRACE 1",      menu_trace_cb),
-   #if !defined(ANTENNA_ANALYZER)
+//   #if !defined(ANTENNA_ANALYZER)
   MENUITEM_FUNC("TRACE 2",      menu_trace_cb),
   MENUITEM_FUNC("TRACE 3",      menu_trace_cb),
-    #endif
+//    #endif
   MENUITEM_BACK,
   MENUITEM_END
 };
