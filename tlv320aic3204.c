@@ -79,15 +79,14 @@ static const uint8_t conf_data_routing[] = {
   0 // sentinel
 };
 
-const uint8_t conf_data_unmute[] = {
+static const uint8_t conf_data_unmute[] = {
   2, 0x00, 0x00, /* Select Page 0 */
   2, 0x51, 0xc0, /* Power up Left and Right ADC Channels */
   2, 0x52, 0x00, /* Unmute Left and Right ADC Digital Volume Control */    
   0 // sentinel
 };
 
-static void
-tlv320aic3204_bulk_write(const uint8_t *buf, int len)
+static void tlv320aic3204_bulk_write(const uint8_t *buf, int len)
 {
   int addr = AIC3204_ADDR;
   i2cAcquireBus(&I2CD1);
@@ -96,8 +95,7 @@ tlv320aic3204_bulk_write(const uint8_t *buf, int len)
 }
 
 #if 0
-static int
-tlv320aic3204_read(uint8_t d0)
+static int tlv320aic3204_read(uint8_t d0)
 {
   int addr = AIC3204_ADDR;
   uint8_t buf[] = { d0 };
@@ -108,8 +106,7 @@ tlv320aic3204_read(uint8_t d0)
 }
 #endif
 
-static void
-tlv320aic3204_config(const uint8_t *data)
+static void tlv320aic3204_config(const uint8_t *data)
 {
   const uint8_t *p = data;
   while (*p) {

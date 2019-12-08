@@ -126,7 +126,7 @@ void adc_init(void)
 
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
-  /* ADC setup */
+	/* ADC setup */
 #ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgXY.sqr[0] = ADC_SQR1_SQ1_N(chsel);
@@ -148,12 +148,12 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 
   return adc->DR;
 #endif  
+  (void)adc;
 }
 
 int16_t adc_vbat_read(ADC_TypeDef *adc)
 {
 #define ADC_FULL_SCALE 3300
-#define VBAT_DIODE_VF 160
 #define VREFINT_CAL (*((uint16_t*)0x1FFFF7BA))
 	float vbat = 0;
 	float vrefint = 0;
@@ -177,13 +177,13 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
 		return -1;
 	}
 	
-	return vbat_raw + VBAT_DIODE_VF;
-
+	return vbat_raw + config.vbat_offset;
+(void)adc;
 }
 
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 {
-  uint32_t cfgr1;
+ // uint32_t cfgr1;
 
 #ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
@@ -213,6 +213,7 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
   /* ADC conversion start.*/
   adc->CR |= ADC_CR_ADSTART;
 #endif
+  (void)adc;
 }
 
 void adc_stop(ADC_TypeDef *adc)
@@ -242,6 +243,7 @@ void adc_stop(ADC_TypeDef *adc)
     ;*/
   }
 #endif
+  (void)adc;
 }
 
 void adc_interrupt(ADC_TypeDef *adc)
@@ -272,6 +274,7 @@ void adc_interrupt(ADC_TypeDef *adc)
     handle_touch_interrupt();
   }
  #endif
+  (void)adc;
 }
 
 OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)

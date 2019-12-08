@@ -30,30 +30,26 @@
 
 uint16_t spi_buffer[SPI_BUFFER_SIZE];
 
-void
-ssp_wait(void)
-{
-  while (SPI1->SR & SPI_SR_BSY)
-    ;
-}
+//static void ssp_wait(void)
+//{
+//  while (SPI1->SR & SPI_SR_BSY)
+//    ;
+//}
 
-void
-ssp_wait_slot(void)
+static void ssp_wait_slot(void)
 {
   while ((SPI1->SR & 0x1800) == 0x1800)
     ;
 }
 
-void
-ssp_senddata(uint8_t x)
+static void ssp_senddata(uint8_t x)
 {
   *(uint8_t*)(&SPI1->DR) = x;
   while (SPI1->SR & SPI_SR_BSY)
     ;
 }
 
-uint8_t
-ssp_sendrecvdata(uint8_t x)
+static uint8_t ssp_sendrecvdata(uint8_t x)
 {
     while (!(SPI1->SR & SPI_SR_TXE));
     // clear OVR
@@ -64,8 +60,7 @@ ssp_sendrecvdata(uint8_t x)
     return SPI1->DR;
 }
 
-void
-ssp_senddata16(uint16_t x)
+static void ssp_senddata16(uint16_t x)
 {
   ssp_wait_slot();
   SPI1->DR = x;
@@ -73,8 +68,8 @@ ssp_senddata16(uint16_t x)
   //  ;
 }
 
-static inline void
-ssp_senddata16RGB(uint16_t x)
+ #ifdef ILI9488
+static inline void ssp_senddata16RGB(uint16_t x)
 {
   uint8_t r = (x & 0xF800) >> 8;
   uint8_t g = (x & 0x07E0) >> 3;
@@ -83,32 +78,30 @@ ssp_senddata16RGB(uint16_t x)
   ssp_senddata(g);
   ssp_senddata(b);
 }
+#endif
 
-void
-ssp_databit8(void)
+static void ssp_databit8(void)
 {
   SPI1->CR2 = (SPI1->CR2 & 0xf0ff) | 0x0700;
 //LPC_SSP1->CR0 = (LPC_SSP1->CR0 & 0xf0) | SSP_DATABIT_8;
 }
 
-void
-ssp_databit16(void)
-{
-  SPI1->CR2 = (SPI1->CR2 & 0xf0ff) | 0x0f00;
-  //LPC_SSP1->CR0 = (LPC_SSP1->CR0 & 0xf0) | SSP_DATABIT_16;
-}
+//static void ssp_databit16(void)
+//{
+//  SPI1->CR2 = (SPI1->CR2 & 0xf0ff) | 0x0f00;
+//  //LPC_SSP1->CR0 = (LPC_SSP1->CR0 & 0xf0) | SSP_DATABIT_16;
+//}
 
 
-const stm32_dma_stream_t  *dmatx;
-uint32_t txdmamode;
+static const stm32_dma_stream_t  *dmatx;
+static uint32_t txdmamode;
 
 static void spi_lld_serve_tx_interrupt(SPIDriver *spip, uint32_t flags) {
   (void)spip;
   (void)flags;
 }
 
-void
-spi_init(void)
+static void spi_init(void)
 {
   rccEnableSPI1(FALSE);
 
@@ -127,15 +120,12 @@ spi_init(void)
   dmaStreamSetPeripheral(dmatx, &SPI1->DR);
 
   SPI1->CR1 = 0;
-  //  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI; // | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
-  //SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_BR_2 | SPI_CR1_BR_1 | SPI_CR1_BR_0; // | SPI_CR1_BR_0 ;// | SPI_CR1_BR_1; fPCLK/4
-  SPI1->CR1 = SPI_CR1_MSTR  | SPI_CR1_SSM | SPI_CR1_SSI ;
+  SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;// | SPI_CR1_BR_1;
   SPI1->CR2 = 0x0700 | SPI_CR2_TXDMAEN | SPI_CR2_FRXTH;
   SPI1->CR1 |= SPI_CR1_SPE;  
 }
 
-void
-send_command(uint8_t cmd, int len, const uint8_t *data)
+static void send_command(uint8_t cmd, int len, const uint8_t *data)
 {
   CS_LOW;
   DC_CMD;
@@ -165,20 +155,19 @@ send_command(uint8_t cmd, int len, const uint8_t *data)
   //CS_HIGH;
 }
 
-void
-send_command16(uint8_t cmd, int data)
-{
-  CS_LOW;
-  DC_CMD;
-  ssp_databit8();
-  ssp_senddata(cmd);
-  DC_DATA;
-  ssp_databit16();
-  ssp_senddata16(data);
-  CS_HIGH;
-}
+//static void send_command16(uint8_t cmd, int data)
+//{
+//	CS_LOW;
+//	DC_CMD;
+//    ssp_databit8();
+//	ssp_senddata(cmd);
+//	DC_DATA;
+//    ssp_databit16();
+//	ssp_senddata16(data);
+//	CS_HIGH;
+//}
 
-const uint8_t ili9341_init_seq[] = {
+static const uint8_t ili9341_init_seq[] = {
 		// cmd, len, data...,
 		// Power control B
 		0xCF, 3, 0x00, 0x83, 0x30,
@@ -295,10 +284,11 @@ const uint8_t ili9488_init_seq[] = {
 };
 
 
-void
-ili9341_init(void)
+
+void ili9341_init(void)
 {
-  spi_init();
+    chMtxLock(&mutex_ili9341);
+    spi_init();
 
   DC_DATA;
   RESET_ASSERT;
@@ -322,6 +312,7 @@ ili9341_init(void)
 
   chThdSleepMilliseconds(100);
   send_command(0x29, 0, NULL); // display on
+  chMtxUnlock(&mutex_ili9341);
 }
 
 void ili9341_pixel(int x, int y, int color)
@@ -340,6 +331,7 @@ void ili9341_pixel(int x, int y, int color)
 #if defined(ILI9488) 
 void ili9341_fill(int x, int y, int w, int h, int color)
 {
+  chMtxLock(&mutex_ili9341);
   if (((x+w)>LCD_WIDTH) || ((y+h)>LCD_HEIGHT)) {
     return;
   }
@@ -361,10 +353,12 @@ void ili9341_fill(int x, int y, int w, int h, int color)
     ssp_senddata16(gb);
     len -= 2;
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 #else
 void ili9341_fill(int x, int y, int w, int h, int color)
 {
+	chMtxLock(&mutex_ili9341);
 	uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
 	uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
     int len = w * h;
@@ -373,12 +367,14 @@ void ili9341_fill(int x, int y, int w, int h, int color)
     send_command(0x2C, 0, NULL);
     while (len-- > 0)
       ssp_senddata16(color);
+	chMtxUnlock(&mutex_ili9341);
 }
 #endif
 
 #if 0
 void ili9341_bulk(int x, int y, int w, int h)
 {
+    chMtxLock(&mutex_ili9341);
 	uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
 	uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
 	uint16_t *buf = spi_buffer;
@@ -388,10 +384,12 @@ void ili9341_bulk(int x, int y, int w, int h)
 	send_command(0x2C, 0, NULL);
     while (len-- > 0) 
       ssp_senddata16(*buf++);
+    chMtxUnlock(&mutex_ili9341);
 }
 #else
 void ili9341_bulk(int x, int y, int w, int h)
 {
+    chMtxLock(&mutex_ili9341);
 	uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
 	uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
     int len = w * h;
@@ -412,11 +410,11 @@ void ili9341_bulk(int x, int y, int w, int h)
     dmaStreamEnable(dmatx);
     dmaWaitCompletion(dmatx);
     #endif
+	chMtxUnlock(&mutex_ili9341);
 }
 #endif
 
-void
-ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
+static void ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
 {
     uint8_t r, g, b;
     send_command(cmd, 0, NULL);
@@ -445,9 +443,9 @@ ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
     CS_HIGH;
 }
 
-void
-ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t *out)
+void ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t *out)
 {
+    chMtxLock(&mutex_ili9341);
     uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
     uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
 
@@ -455,85 +453,78 @@ ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t *out)
     send_command(0x2B, 4, yy);
 
     ili9341_read_memory_raw(0x2E, len, out);
+    chMtxUnlock(&mutex_ili9341);
 }
 
-void
-ili9341_read_memory_continue(int len, uint16_t* out)
+void ili9341_read_memory_continue(int len, uint16_t* out)
 {
+    chMtxLock(&mutex_ili9341);
     ili9341_read_memory_raw(0x3E, len, out);
+    chMtxUnlock(&mutex_ili9341);
 }
 
 #if !defined(ST7796S)
-void
-ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
+void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
-  #if defined(ILI9488) 
-  ili9341_drawchar_size(ch, x, y, fg, bg, 1);
-  #else
-  uint16_t *buf = spi_buffer;
-  uint16_t bits;
-  int c, r;
-  for(c = 0; c < 7; c++) {
-    bits = x5x7_bits[(ch * 7) + c];
-    for (r = 0; r < 5; r++) {
-      *buf++ = (0x8000 & bits) ? fg : bg;
-      bits <<= 1;
+    chMtxLock(&mutex_ili9341);
+    uint16_t *buf = spi_buffer;
+    uint8_t bits;
+    int c, r;
+    for(c = 0; c < 7; c++) {
+        bits = x5x7_bits[(ch * 7) + c];
+        for (r = 0; r < 5; r++) {
+            *buf++ = (0x80 & bits) ? fg : bg;
+            bits <<= 1;
+        }
     }
-  }
-  ili9341_bulk(x, y, 5, 7);
-  #endif
+    ili9341_bulk(x, y, 5, 7);
+    chMtxUnlock(&mutex_ili9341);
 }
 
-void
-ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg)
+void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg)
 {
-  while (*str) {
-    ili9341_drawchar_5x7(*str, x, y, fg, bg);
-    x += X_SPACE;
-    str++;
-  }
-}
-
-void
-ili9341_drawstring_5x7_inv(const char *str, int x, int y, uint16_t fg, uint16_t bg, bool invert)
-{
-  if (invert)
-    ili9341_drawstring_5x7(str, x, y, bg, fg);
-  else
-    ili9341_drawstring_5x7(str, x, y, fg, bg);
-}
-
-void
-ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
-{
-  uint16_t *buf = spi_buffer;
-  uint16_t bits;
-  int c, r;
-  for(c = 0; c < 7*size; c++) {
-    bits = x5x7_bits[(ch * 7) + (c / size)];
-    for (r = 0; r < 5*size; r++) {
-      *buf++ = (0x8000 & bits) ? fg : bg;
-      if (r % size == (size-1)) {
-          bits <<= 1;
-      }
+    chMtxLock(&mutex_ili9341);
+    while (*str) {
+        ili9341_drawchar_5x7(*str, x, y, fg, bg);
+        x += 5;
+        str++;
     }
-  }
-  ili9341_bulk(x, y, 5*size, 7*size);
+    chMtxUnlock(&mutex_ili9341);
 }
 
-void
-ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
-  while (*str) {
-    ili9341_drawchar_size(*str, x, y, fg, bg, size);
-    x += 5 * size;
-    str++;
-  }
+    chMtxLock(&mutex_ili9341);
+    uint16_t *buf = spi_buffer;
+    uint8_t bits;
+    int c, r;
+    for(c = 0; c < 7*size; c++) {
+        bits = x5x7_bits[(ch * 7) + (c / size)];
+        for (r = 0; r < 5*size; r++) {
+            *buf++ = (0x80 & bits) ? fg : bg;
+            if (r % size == (size-1)) {
+                bits <<= 1;
+            }
+        }
+    }
+    ili9341_bulk(x, y, 5*size, 7*size);
+    chMtxUnlock(&mutex_ili9341);
+}
+
+void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
+{
+    chMtxLock(&mutex_ili9341);
+    while (*str) {
+        ili9341_drawchar_size(*str, x, y, fg, bg, size);
+        x += 5 * size;
+        str++;
+    }
+    chMtxUnlock(&mutex_ili9341);
 }
 
 #else
-void
-ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
+
+void ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
   uint16_t *buf = spi_buffer;
   uint16_t bits;
@@ -551,26 +542,20 @@ ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 void
 ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg)
 {
+chMtxLock(&mutex_ili9341);
   while (*str) {
     ili9341_drawchar_7x13(*str, x, y, fg, bg);
     x += 7;
     str++;
   }
-}
-
-void
-ili9341_drawstring_7x13_inv(const char *str, int x, int y, uint16_t fg, uint16_t bg, bool invert)
-{
-  if (invert)
-    ili9341_drawstring_7x13(str, x, y, bg, fg);
-  else
-    ili9341_drawstring_7x13(str, x, y, fg, bg);
+chMtxUnlock(&mutex_ili9341);
 }
 
 
 void
 ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
+  chMtxLock(&mutex_ili9341);
   uint16_t *buf = spi_buffer;
   uint16_t bits;
   int c, r;
@@ -584,129 +569,130 @@ ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_
     }
   }
   ili9341_bulk(x, y, 7*size, 13*size);
+chMtxUnlock(&mutex_ili9341);
 }
 
 void
 ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
 {
+    chMtxLock(&mutex_ili9341);
   while (*str) {
     ili9341_drawchar_size(*str, x, y, fg, bg, size);
     x += 7 * size;
     str++;
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 #endif
 
 
-#define SWAP(x,y) do { int z=x; x = y; y = z; } while(0)
+#define SWAP(x,y) { int z=x; x = y; y = z; }
 
-void
-ili9341_line(int x0, int y0, int x1, int y1, uint16_t fg)
+void ili9341_line(int x0, int y0, int x1, int y1, uint16_t fg)
 {
-  if (x0 > x1) {
-    SWAP(x0, x1);
-    SWAP(y0, y1);
-  }
-
-  while (x0 <= x1) {
-    int dx = x1 - x0 + 1;
-    int dy = y1 - y0;
-    if (dy >= 0) {
-      dy++;
-      if (dy > dx) {
-        dy /= dx; dx = 1;
-      } else {
-        dx /= dy; dy = 1;
-      }
-    } else {
-      dy--;
-      if (-dy > dx) {
-        dy /= dx; dx = 1;
-      } else {
-        dx /= -dy; dy = -1;
-      }
+    chMtxLock(&mutex_ili9341);
+    if (x0 > x1) {
+        SWAP(x0, x1);
+        SWAP(y0, y1);
     }
-    if (dy > 0)
-      ili9341_fill(x0, y0, dx, dy, fg);
-    else
-      ili9341_fill(x0, y0+dy, dx, -dy, fg);
-    x0 += dx;
-    y0 += dy;
-  }
+
+    while (x0 <= x1) {
+        int dx = x1 - x0 + 1;
+        int dy = y1 - y0;
+        if (dy >= 0) {
+            dy++;
+            if (dy > dx) {
+                dy /= dx; dx = 1;
+            } else {
+                dx /= dy; dy = 1;
+            }
+        } else {
+            dy--;
+            if (-dy > dx) {
+                    dy /= dx; dx = 1;
+            } else {
+                dx /= -dy; dy = -1;
+            }
+        }
+        if (dy > 0)
+            ili9341_fill(x0, y0, dx, dy, fg);
+        else
+            ili9341_fill(x0, y0+dy, dx, -dy, fg);
+        x0 += dx;
+        y0 += dy;
+    }
+    chMtxUnlock(&mutex_ili9341);
 }
 
 
 const font_t NF20x22 = { 20, 22, 1, 3*22, (const uint8_t *)numfont20x22 };
 
-void
-ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg)
+void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg)
 {
-	uint16_t *buf = spi_buffer;
-	const uint8_t *bitmap = &font->bitmap[font->slide * ch];
-	int c, r;
+    chMtxLock(&mutex_ili9341);
+    uint16_t *buf = spi_buffer;
+    const uint8_t *bitmap = &font->bitmap[font->slide * ch];
+    int c, r;
 
-	for (c = 0; c < font->height; c++) {
-    uint8_t bits = *bitmap++;
-    uint8_t m = 0x80;
-    for (r = 0; r < font->width; r++) {
-      *buf++ = (bits & m) ? fg : bg;
-      m >>= 1;
+    for (c = 0; c < font->height; c++) {
+        uint8_t bits = *bitmap++;
+        uint8_t m = 0x80;
+        for (r = 0; r < font->width; r++) {
+            *buf++ = (bits & m) ? fg : bg;
+            m >>= 1;
 
-      if (m == 0) {
-        bits = *bitmap++;
-        m = 0x80;
-      }
+            if (m == 0) {
+                bits = *bitmap++;
+                m = 0x80;
+            }
+        }
     }
-  }
     ili9341_bulk(x, y, font->width, font->height);
+    chMtxUnlock(&mutex_ili9341);
 }
 
-#if 1
-
-static long rands = 654321;
-uint16_t my_rand () {
-  rands = (54321123457 * rands) % 31459;
-  return rands;                   
-}
-
-#if 1
-const uint16_t colormap[] = {
-  RGB565(255,0,0), RGB565(0,255,0), RGB565(0,0,255),
-  RGB565(255,255,0), RGB565(0,255,255), RGB565(255,0,255)
+#if 0
+static const uint16_t colormap[] = {
+    RGBHEX(0x00ff00), RGBHEX(0x0000ff), RGBHEX(0xff0000),
+    RGBHEX(0x00ffff), RGBHEX(0xff00ff), RGBHEX(0xffff00)
 };
 
-void
-ili9341_test(int mode)
+static void ili9341_pixel(int x, int y, int color)
 {
-  int x, y;
-  int i;
-  uint16_t x0, x1, y0, y1;
-  int c;
-  // int r;
-  switch (mode) {
-  default:
+    uint8_t xx[4] = { x >> 8, x, (x+1) >> 8, (x+1) };
+    uint8_t yy[4] = { y >> 8, y, (y+1) >> 8, (y+1) };
+    uint8_t cc[2] = { color >> 8, color };
+    send_command(0x2A, 4, xx);
+    send_command(0x2B, 4, yy);
+    send_command(0x2C, 2, cc);
+    //send_command16(0x2C, color);
+}
+
+void ili9341_test(int mode)
+{
+    chMtxLock(&mutex_ili9341);
+    int x, y;
+    int i;
+    switch (mode) {
+        default:
 #if 1
-    //ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
-    for (y = 0; y < LCD_HEIGHT; y++) {
-      ili9341_fill(0, y, LCD_WIDTH, 1, RGB565(y, (y + 120) % 256, LCD_HEIGHT-y));
-    }
-    break;
-  case 1:
-    ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
-    for (y = 0; y < LCD_HEIGHT; y++) {
-      for (x = 0; x < LCD_WIDTH; x++) {
-        ili9341_pixel(x, y, (y<<8)|x);
-      }
-    }
-    break;
-  case 2:
-    //send_command16(0x55, 0xff00);
-    for (y = 0; y < LCD_HEIGHT; y++) {
-      for (x = 0; x < LCD_WIDTH; x++) {
-        ili9341_pixel(x, y, my_rand()%65536);
-      }
-    }
-    break;
+            ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+            for (y = 0; y < LCD_HEIGHT; y++) {
+                ili9341_fill(0, y, LCD_WIDTH, 1, RGB(LCD_HEIGHT-y, y, (y + 120) % 256));
+            }
+            break;
+        case 1:
+            ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+            for (y = 0; y < LCD_HEIGHT; y++) {
+                for (x = 0; x < LCD_WIDTH; x++) {
+                    ili9341_pixel(x, y, (y<<8)|x);
+                }
+            }
+            break;
+        case 2:
+            //send_command16(0x55, 0xff00);
+            ili9341_pixel(64, 64, 0xaa55);
+            break;
 #endif
 #if 1
   case 3:
@@ -719,34 +705,13 @@ ili9341_test(int mode)
     draw_grid(10, 8, 29, 29, 15, 0, 0xffff, 0);
     break;
 #endif
-#if 1
-  case 4:
-    ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
-    x0 = (uint16_t) my_rand() % LCD_WIDTH;
-    y0 = (uint16_t) my_rand() % LCD_HEIGHT-4;
-    if ((x0>=LCD_WIDTH) || (y0>=LCD_HEIGHT)) {
-      return;
+        case 4:
+            ili9341_line(0, 0, 15, 100, 0xffff);
+            ili9341_line(0, 0, 100, 100, 0xffff);
+            ili9341_line(0, 15, 100, 0, 0xffff);
+            ili9341_line(0, 100, 100, 0, 0xffff);
+            break;
     }
-    //r  = (int) my_rand() % 100;
-    for (i=0; i<100; i++) {
-      x1 = (uint16_t) my_rand() % LCD_WIDTH;
-      y1 = (uint16_t) my_rand() % LCD_HEIGHT-4;
-      if ((x1>=LCD_WIDTH) || (y1>=LCD_HEIGHT)) {
-	return;
-      }
-      //c = RGB565(255,255,255);
-      //c = colormap[i % 6];
-      c = (uint16_t) my_rand() % 65536;
-      ili9341_line(x0, y0,   x1, y1,   c);
-      ili9341_line(x0, y0+1, x1, y1+1, c);
-      //ili9341_line(x0, y0+2, x1, y1+2, c);
-      //ili9341_line(x0, y0+3, x1, y1+3, c);
-      x0 = x1;
-      y0 = y1;
-    }
-    break;
-#endif
-  }
+    chMtxUnlock(&mutex_ili9341);
 }
-#endif
 #endif
