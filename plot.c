@@ -1408,11 +1408,7 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     cell_drawstring_5x7(w, h, buf, xpos, ypos, config.trace_color[t]);
     j++;
   }    
-  j += j&1;
-  
-  // LEFT
-  int ypos = 1 + (j/2)*7;
-  ypos -= n * CELLHEIGHT;
+
   if (electrical_delay != 0) {
     // draw electrical delay
     int xpos = 21;
@@ -1648,8 +1644,6 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     j++;
   }
 
-  j += j&1;
-
     // LEFT
     int ypos = 1 + (j/2)*7;
     ypos -= n * CELLHEIGHT;
@@ -1694,7 +1688,7 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
     int idx0 = markers[previous_marker].index;
     xpos = 260;
     xpos -= m * CELLWIDTH -CELLOFFSETX;
-    ypos += 13;
+    ypos += FONT_HEIGHT;
     chsnprintf(buf, sizeof buf, "D%d:", previous_marker+1);
     cell_drawstring_7x13(w, h, buf, xpos, ypos, 0xffff);
     xpos += 23;

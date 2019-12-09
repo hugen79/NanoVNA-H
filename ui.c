@@ -71,7 +71,7 @@ enum {
 };
 
 enum {
-  KM_START, KM_STOP, KM_CENTER, KM_SPAN, KM_CW, KM_SCALE, KM_REFPOS, KM_EDELAY, KM_VELOCITY_FACTOR, KM_SCALEDELAY
+  KM_START, KM_STOP, KM_CENTER, KM_SPAN, KM_CW, KM_SCALE, KM_REFPOS, KM_EDELAY, KM_VELOCITY_FACTOR, KM_SCALEDELAY,KM_BRIGHTNESS
 };
 
 static uint8_t ui_mode = UI_NORMAL;
@@ -328,7 +328,8 @@ static const menuitem_t menu_config[] = {
   MENUITEM_FUNC("TOUCH TEST",   menu_config_cb),
   MENUITEM_FUNC("SAVE",         menu_config_cb),
   MENUITEM_FUNC("VERSION",      menu_config_cb),
-  MENUITEM_MENU(S_RARROW"DFU",  menu_dfu),
+  MENUITEM_FUNC("BRIGHTNESS",   menu_config_cb),
+//  MENUITEM_MENU(S_RARROW"DFU",  menu_dfu),
   MENUITEM_BACK,
   MENUITEM_END
 };
@@ -772,7 +773,8 @@ static void menu_recall_cb(int item)
 
 static void menu_config_cb(int item)
 {
-  switch (item) {
+	int status;
+	switch (item) {
   case 0:
       touch_cal_exec();
       redraw_frame();
@@ -795,6 +797,17 @@ static void menu_config_cb(int item)
       redraw_frame();
       request_to_redraw_grid();
       draw_menu();
+      break;
+  case 4:
+      status = btn_wait_release();
+          if (status & EVT_BUTTON_DOWN_LONG) {
+           ui_mode_numeric(KM_BRIGHTNESS);
+            //ui_process_numeric();
+          } else {
+            ui_mode_keypad(KM_BRIGHTNESS);
+            ui_process_keypad();
+          }
+
   }
 }
 
@@ -1285,11 +1298,12 @@ static const keypads_t * const keypads_mode_tbl[] = {
   keypads_scale, // refpos
   keypads_time, // electrical delay
   keypads_scale, // velocity factor
-  keypads_time // scale of delay
+  keypads_time, // scale of delay
+  keypads_scale // scale of brightness
 };
 
 static const char * const keypad_mode_label[] = {
-  "START", "STOP", "CENTER", "SPAN", "CW FREQ", "SCALE", "REFPOS", "EDELAY", "VELOCITY%", "DELAY"
+  "START", "STOP", "CENTER", "SPAN", "CW FREQ", "SCALE", "REFPOS", "EDELAY", "VELOCITY%", "DELAY", "BRIGHTNESS"
 };
 
 static void draw_keypad(void)
@@ -1319,7 +1333,7 @@ static void draw_numeric_area_frame(void)
 static void draw_numeric_input(const char *buf)
 {
   int i = 0;
-  int x = 64;
+  int x = 10 * FONT_WIDTH + 14;
   int focused = FALSE;
   const uint16_t xsim[] = { 0, 0, 8, 0, 0, 8, 0, 0, 0, 0 };
   for (i = 0; i < 10 && buf[i]; i++) {
@@ -1567,6 +1581,9 @@ static void fetch_numeric_target(void)
   case KM_SCALEDELAY:
     uistat.value = get_trace_scale(uistat.current_trace) * 1e12;
     break;
+  case KM_BRIGHTNESS:
+      uistat.value = config.dac_value;
+      break;
   }
   
   {
@@ -1610,6 +1627,12 @@ static void set_numeric_value(void)
   case KM_VELOCITY_FACTOR:
     velocity_factor = uistat.value;
     break;
+  case KM_BRIGHTNESS:
+      uistat.value = (uistat.value < 800) ? 800: uistat.value;
+      uistat.value = (uistat.value > 3300) ? 3300: uistat.value;
+          	config.dac_value = uistat.value;
+          	dacPutChannelX(&DACD2, 0, uistat.value);
+      break;
   }
 }
 
@@ -1677,7 +1700,9 @@ static void ui_mode_keypad(int _keypad_mode)
   draw_menu();
   draw_keypad();
   draw_numeric_area_frame();
-  draw_numeric_input("");
+  fetch_numeric_target();
+  draw_numeric_area();
+  //draw_numeric_input("");
 }
 
 static void ui_mode_normal(void)
@@ -1792,6 +1817,12 @@ static int keypad_click(int key)
       break;
     case KM_SCALEDELAY:
       set_trace_scale(uistat.current_trace, value * 1e-12); // pico second
+      break;
+    case KM_BRIGHTNESS:
+    	value = (value < 800) ? 800: value;
+    	value = (value > 3300) ? 3300: value;
+    	config.dac_value = value;
+    	dacPutChannelX(&DACD2, 0, value);
       break;
     }
 

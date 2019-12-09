@@ -629,7 +629,7 @@ float cal_data[5][POINT_COUNT][2];
 
 config_t config = {
   .magic =             CONFIG_MAGIC,
-  .dac_value =         1922,
+  .dac_value =         1800,
   .grid_color =        0x1084,
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,

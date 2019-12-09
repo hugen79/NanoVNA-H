@@ -178,9 +178,11 @@ extern void tlv320aic3204_select(int channel);
 #define WIDTH (LCD_WIDTH-GRIDY)
 #if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
 #define FONT_HEIGHT 13
+#define FONT_WIDTH 7
 #define OFFSETX 21
 #else
 #define FONT_HEIGHT 7
+#define FONT_WIDTH 5
 #define OFFSETX 15
 #endif
 #define HEIGHT (GRIDY*8 +1)
