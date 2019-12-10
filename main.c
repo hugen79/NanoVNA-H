@@ -642,7 +642,7 @@ config_t config = {
 #endif
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
-  .vbat_offset =       100,
+  .vbat_offset =       470,
   .checksum =          0
 };
 
@@ -833,7 +833,7 @@ static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
   }
 
   pause_sweep();
-  dacPutChannelX(&DACD2, 0, 600);
+  dacPutChannelX(&DACD2, 0, 800);
   chMtxLock(&mutex_sweep);
   set_frequencies(start, stop, points);
   if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))

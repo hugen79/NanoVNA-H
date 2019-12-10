@@ -33,14 +33,16 @@ static adcsample_t samples[2];
 #define ADC_GRP_NUM_CHANNELS_VBAT   2
 #define ADC_GRP_BUF_DEPTH_VBAT      1
 static const ADCConversionGroup adcgrpcfgVBAT = {
-  FALSE,
+		FALSE,
   ADC_GRP_NUM_CHANNELS_VBAT,
   NULL,
   NULL,
-  //  ADC_CFGR_CONT | ADC_CFGR1_RES_12BIT,  /* CFGR1 */
+//   ADC_CFGR_CONT | ADC_CFGR1_RES_12BIT,  /* CFGR1 */
   0,                            /* CFGR1 */
   ADC_TR(0, 4095),              /* TR */
-  {0,0},                        /* SMPR */
+  {ADC_SMPR2_SMP_AN17(ADC_SMPR_SMP_61P5)
+		    | ADC_SMPR2_SMP_AN18(ADC_SMPR_SMP_61P5)
+,0},                        /* SMPR */
   {ADC_SQR1_SQ1_N(ADC_CHANNEL_IN17) | ADC_SQR1_SQ2_N(ADC_CHANNEL_IN18),
    0,0,0}                       /* CHSELR */
 };
@@ -153,7 +155,7 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 
 int16_t adc_vbat_read(ADC_TypeDef *adc)
 {
-#define ADC_FULL_SCALE 3300
+#define ADC_FULL_SCALE  3300
 #define VREFINT_CAL (*((uint16_t*)0x1FFFF7BA))
 	float vbat = 0;
 	float vrefint = 0;
