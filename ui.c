@@ -1632,7 +1632,7 @@ static void set_numeric_value(void)
       uistat.value = (uistat.value > 3300) ? 3300: uistat.value;
           	config.dac_value = uistat.value;
           	dacPutChannelX(&DACD2, 0, uistat.value);
-      break;
+      break
   }
 }
 

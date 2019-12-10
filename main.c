@@ -120,6 +120,7 @@ static void pause_sweep(void)
 static void resume_sweep(void)
 {
     sweep_enabled = TRUE;
+    dacPutChannelX(&DACD2, 0, config.dac_value);
 }
 
 void toggle_sweep(void)
@@ -832,6 +833,7 @@ static void cmd_scan(BaseSequentialStream *chp, int argc, char *argv[])
   }
 
   pause_sweep();
+  dacPutChannelX(&DACD2, 0, 600);
   chMtxLock(&mutex_sweep);
   set_frequencies(start, stop, points);
   if (cal_auto_interpolate && (cal_status & CALSTAT_APPLY))
