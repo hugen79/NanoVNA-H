@@ -428,14 +428,18 @@ static void ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
     // require 8bit dummy clock
     r = ssp_sendrecvdata(0);
 
-    while (len-- > 0) {
-        // read data is always 18bit
+    while (--len > 0) {
+
+
+
+	#ifdef ST7796S  // read data is 16bit
+        r = ssp_sendrecvdata(0);
+        g = ssp_sendrecvdata(0);
+        *out++ = (r << 8) | g ;
+	#else // read data is always 18bit
         r = ssp_sendrecvdata(0);
         g = ssp_sendrecvdata(0);
         b = ssp_sendrecvdata(0);
-	#ifdef ILI9488
-        *out++ = (r << 11) | (g << 5) | b;
-	#else
         *out++ = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 	#endif
     }
@@ -446,8 +450,8 @@ static void ili9341_read_memory_raw(uint8_t cmd, int len, uint16_t* out)
 void ili9341_read_memory(int x, int y, int w, int h, int len, uint16_t *out)
 {
     chMtxLock(&mutex_ili9341);
-    uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
-    uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
+    uint8_t xx[4] = { x >> 8, x, (x+w) >> 8, (x+w) };
+    uint8_t yy[4] = { y >> 8, y, (y+h) >> 8, (y+h) };
 
     send_command(0x2A, 4, xx);
     send_command(0x2B, 4, yy);

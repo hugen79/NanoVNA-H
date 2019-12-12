@@ -206,12 +206,12 @@ class NanoVNA:
     def capture(self):
         from PIL import Image
         self.send_command("capture\r")
-        b = self.serial.read(320 * 240 * 2)
-        x = struct.unpack(">76800H", b)
+        b = self.serial.read(480 * 320 * 2)
+        x = struct.unpack(">153600H", b)
         # convert pixel format from 565(RGB) to 8888(RGBA)
         arr = np.array(x, dtype=np.uint32)
         arr = 0xFF000000 + ((arr & 0xF800) >> 8) + ((arr & 0x07E0) << 5) + ((arr & 0x001F) << 19)
-        return Image.frombuffer('RGBA', (320, 240), arr, 'raw', 'RGBA', 0, 1)
+        return Image.frombuffer('RGBA', (480, 320), arr, 'raw', 'RGBA', 0, 1)
 
     def logmag(self, x):
         pl.grid(True)
