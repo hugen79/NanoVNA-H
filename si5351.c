@@ -366,7 +366,7 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
   }
   if (freq <= 100000000) {
     band = 0;
-  } else if (freq < 150000000) {
+  } else if (freq < 160000000) {
     band = 1;
   } else {
     band = 2;

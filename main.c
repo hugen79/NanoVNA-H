@@ -271,6 +271,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
       ;
 }
 
+# if 0
 static const int8_t gain_table[][2] = {
     {  0,  0 },     // 1st: 0 ~ 300MHz
     { 42, 40 },     // 2nd: 300 ~ 600MHz
@@ -278,6 +279,18 @@ static const int8_t gain_table[][2] = {
     { 80, 78 },     // 4th: 900 ~ 1200MHz
     { 90, 88 },     // 5th: 1200 ~ 1400MHz
     { 95, 93 },     // 6th: 1400MHz ~
+};
+
+# endif
+
+//NanoVNA-H REV3.4
+static const int8_t gain_table[][2] = {
+    {  0,  0 },     // 1st: 0 ~ 300MHz
+    { 40, 40 },     // 2nd: 300 ~ 600MHz
+    { 50, 50 },     // 3rd: 600 ~ 900MHz
+    { 80, 80 },     // 4th: 900 ~ 1200MHz
+    { 90, 90 },     // 5th: 1200 ~ 1400MHz
+    { 95, 95 },     // 6th: 1400MHz ~
 };
 
 static int adjust_gain(int newfreq)
@@ -629,7 +642,7 @@ config_t config = {
   .touch_cal =         { 370, 540, 154, 191 },  //{ 620, 600, 160, 190 },
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
-  .vbat_offset =       100,
+  .vbat_offset =       480,
   .checksum =          0
 };
 
@@ -2104,7 +2117,7 @@ static void cmd_color(BaseSequentialStream *chp, int argc, char *argv[])
 }
 #endif
 
-/*
+
 static void cmd_vbat_offset(BaseSequentialStream *chp, int argc, char *argv[])
 {
     if (argc != 1) {
@@ -2114,7 +2127,7 @@ static void cmd_vbat_offset(BaseSequentialStream *chp, int argc, char *argv[])
     int offset = atoi(argv[0]);
     config.vbat_offset = (int16_t)offset;
 }
-*/
+
 static THD_WORKING_AREA(waThread2, /* cmd_* max stack size + alpha */510 + 32);
 
 static const ShellCommand commands[] =
@@ -2161,7 +2174,7 @@ static const ShellCommand commands[] =
 #ifdef __COLOR_CMD__
     { "color", cmd_color },
 #endif
-//    { "vbat_offset", cmd_vbat_offset },
+   { "vbat_offset", cmd_vbat_offset },
     { NULL, NULL }
 };
 

@@ -74,8 +74,8 @@ static const uint8_t conf_data_routing[] = {
   2, 0x36, 0x10, /* Route IN2R to LEFT_N with 10K */
   2, 0x37, 0x04, /* Route IN3R to RIGHT_P with 10K */
   2, 0x39, 0x04, /* Route IN3L to RIGHT_N with 10K */
-  2, 0x3b, 5, /* Unmute Left MICPGA, Gain selection of 32dB to make channel gain 2.5dB */
-  2, 0x3c, 5, /* Unmute Right MICPGA, Gain selection of 32dB to make channel gain 2.5dB */
+  2, 0x3b, 0, /* Unmute Left MICPGA, Gain selection of 32dB to make channel gain 0dB */
+  2, 0x3c, 0, /* Unmute Right MICPGA, Gain selection of 32dB to make channel gain 0dB */
   0 // sentinel
 };
 
