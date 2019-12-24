@@ -357,10 +357,14 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
   int delay = 3;
   uint32_t ofreq = freq + offset;
   uint32_t rdiv = SI5351_R_DIV_1;
-  if (freq >= config.harmonic_freq_threshold * 3) {
+ /* if (freq > config.harmonic_freq_threshold * 5 ) {
+	    freq /= 7;
+	    ofreq /= 9;
+  }else */
+	  if (freq > config.harmonic_freq_threshold * 3) {
     freq /= 5;
     ofreq /= 7;
-  } else if (freq >= config.harmonic_freq_threshold) {
+  } else if (freq > config.harmonic_freq_threshold) {
     freq /= 3;
     ofreq /= 5;
   }

@@ -286,18 +286,19 @@ static const int8_t gain_table[][2] = {
 //NanoVNA-H REV3.4
 static const int8_t gain_table[][2] = {
     {  0,  0 },     // 1st: 0 ~ 300MHz
-    { 40, 40 },     // 2nd: 300 ~ 600MHz
-    { 50, 50 },     // 3rd: 600 ~ 900MHz
-    { 80, 80 },     // 4th: 900 ~ 1200MHz
-    { 90, 90 },     // 5th: 1200 ~ 1400MHz
-    { 95, 95 },     // 6th: 1400MHz ~
+    { 50, 50 },     // 2nd: 300 ~ 600MHz
+    { 55, 55 },     // 3rd: 600 ~ 900MHz
+    { 75, 75 },     // 4th: 900 ~ 1200MHz
+    { 80, 80 },     // 5th: 1200 ~ 1500MHz
+//  { 90, 90 },     // 6th: 1500MHz ~1800MHz
+//	{ 95, 95 },     // 7th: 1800MHz ~
 };
 
 static int adjust_gain(int newfreq)
 {
   int delay = 0;
-  int new_order = newfreq / FREQ_HARMONICS;
-  int old_order = frequency / FREQ_HARMONICS;
+  int new_order = (newfreq-1) / FREQ_HARMONICS; //Harmonics are switched after an integer multiple, and then the gain needs to be switched after an integer multiple.
+  int old_order = (frequency-1) / FREQ_HARMONICS;
   if (new_order != old_order) {
     tlv320aic3204_set_gain(gain_table[new_order][0], gain_table[new_order][1]);
     delay += 10;
