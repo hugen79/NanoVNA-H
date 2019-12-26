@@ -1,4 +1,0 @@
-[submodule "ChibiOS"]
-	path = ChibiOS
-	url = https://github.com/hugen79/ChibiOS
-	branch = AA6KL
