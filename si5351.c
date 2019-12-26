@@ -364,16 +364,16 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
   }
   else
 #endif
-if (freq >= config.harmonic_freq_threshold * 3) {
+	  if (freq > config.harmonic_freq_threshold * 3) {
     freq /= 5;
     ofreq /= 7;
-  } else if (freq >= config.harmonic_freq_threshold) {
+  } else if (freq > config.harmonic_freq_threshold) {
     freq /= 3;
     ofreq /= 5;
   }
   if (freq <= 100000000) {
     band = 0;
-  } else if (freq < 150000000) {
+  } else if (freq < 160000000) {
     band = 1;
   } else {
     band = 2;
