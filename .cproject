@@ -161,4 +161,5 @@
 			<resource resourceType="PROJECT" workspacePath="/NanoVNA-H4"/>
 		</configuration>
 	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 </cproject>

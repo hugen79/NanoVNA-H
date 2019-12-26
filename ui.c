@@ -564,7 +564,7 @@ ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
    #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH LOWER RIGHT", 230, 220, 0xffff, 0x0000);
   #else
-ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 356, 254, 0xffff, 0x0000);
+ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 350, 300, 0xffff, 0x0000);
  #endif
   do {
     status = touch_check();
