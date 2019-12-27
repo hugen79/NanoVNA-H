@@ -1324,8 +1324,13 @@ void redraw_marker(int marker, int update_info)
 void request_to_draw_cells_behind_menu(void)
 {
   int n, m;
-  for (m = LCD_WIDTH/32-3; m <= LCD_WIDTH/32-1; m++)
-    for (n = 0; n < 8; n++)
+#if !(defined(ILI9488) || defined(ILI9486) || defined(ST7796S))
+  for (m = 7; m <= 9; m++)
+      for (n = 0; n < 8; n++)
+#else
+   for (m = 11; m <= 14; m++)
+	   for (n = 0; n < 9; n++)
+#endif
       mark_map(m, n);
   redraw_request |= REDRAW_CELLS;
 }
@@ -1333,8 +1338,13 @@ void request_to_draw_cells_behind_menu(void)
 void request_to_draw_cells_behind_numeric_input(void)
 {
   int n, m;
+#if !(defined(ILI9488) || defined(ILI9486) || defined(ST7796S))
   for (m = 0; m <= 9; m++)
     for (n = 6; n < 8; n++)
+#else
+   for (m = 0; m <= 14; m++)
+	   for (n = 8; n < 10; n++)
+#endif
       mark_map(m, n);
   redraw_request |= REDRAW_CELLS;
 }
