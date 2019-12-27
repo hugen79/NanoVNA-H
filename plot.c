@@ -1893,7 +1893,7 @@ void draw_frequencies(void)
 
       strcpy(buf, "STOP ");
       chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(POINT_COUNT-1) * 1e9));
-      strcat(buf, "          ");
+      strcat(buf, "            ");
       ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
   }
 }
