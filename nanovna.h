@@ -264,6 +264,7 @@ void draw_pll_lock_error(void);
 void set_electrical_delay(float picoseconds);
 float get_electrical_delay(void);
 
+
 // marker
 
 typedef struct {
@@ -293,6 +294,9 @@ void draw_cal_status(void);
 
 void marker_position(int m, int t, int *x, int *y);
 int search_nearest_index(int x, int y, int t);
+int marker_search(int mode);
+int marker_search_left(int from);
+int marker_search_right(int from);
 
 extern uint16_t redraw_request;
 
@@ -406,12 +410,25 @@ void clear_all_config_prop_data(void);
  * ui.c
  */
 
+// lever_mode
+enum {
+  LM_MARKER, LM_SEARCH, LM_CENTER, LM_SPAN
+};
+
+// marker smith value format
+enum {
+  MS_LIN, MS_LOG, MS_REIM, MS_RX, MS_RLC
+};
+
 typedef struct {
   int8_t digit; /* 0~5 */
   int8_t digit_mode;
   int8_t current_trace; /* 0..3 */
   uint32_t value; // for editing at numeric input area
   uint32_t previous_value;
+  uint8_t lever_mode;
+  bool marker_delta;
+  uint8_t marker_smith_format;
 } uistat_t;
 
 extern uistat_t uistat;

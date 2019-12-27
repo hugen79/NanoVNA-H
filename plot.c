@@ -627,15 +627,44 @@ static void gamma2imp(char *buf, int len, const float coeff[2], uint32_t frequen
   float zi = 2*coeff[1] * d;
   int n;
 
-  n = string_value_with_prefix(buf, len, zr, S_OHM[0]);
-  buf[n++] = ' ';
+  switch (uistat.marker_smith_format) {
+  case MS_LIN:
+    chsnprintf(buf, len, "%.2f %.1f" S_DEGREE, linear(coeff), phase(coeff));
+    break;
 
-  if (zi < 0) {
-    float c = -1 / (PI2 * frequency * zi);
-    string_value_with_prefix(buf+n, len-n, c, 'F');
-  } else {
-    float l = zi / (PI2 * frequency);
-    string_value_with_prefix(buf+n, len-n, l, 'H');
+  case MS_LOG: {
+      float v = logmag(coeff);
+      if (v == -INFINITY)
+        chsnprintf(buf, len, "-INF dB");
+      else
+        chsnprintf(buf, len, "%.1fdB %.1f" S_DEGREE, v, phase(coeff));
+    }
+    break;
+
+  case MS_REIM:
+    n = string_value_with_prefix(buf, len, coeff[0], '\0');
+    if (coeff[1] >= 0) buf[n++] = '+';
+    string_value_with_prefix(buf+n, len-n, coeff[1], 'j');
+    break;  
+
+  case MS_RX:
+    n = string_value_with_prefix(buf, len, zr, S_OHM[0]);
+    buf[n++] = ' ';
+    string_value_with_prefix(buf+n, len-n, zi, 'j');
+    break;
+
+  case MS_RLC:
+    n = string_value_with_prefix(buf, len, zr, S_OHM[0]);
+    buf[n++] = ' ';
+
+    if (zi < 0) {
+      float c = -1 / (PI2 * frequency * zi);
+      string_value_with_prefix(buf+n, len-n, c, 'F');
+    } else {
+      float l = zi / (PI2 * frequency);
+      string_value_with_prefix(buf+n, len-n, l, 'H');
+    }
+    break;
   }
 }
 
@@ -1064,6 +1093,90 @@ void marker_position(int m, int t, int *x, int *y)
   *y = CELL_Y(index);
 }
 
+static int greater(int x, int y) { return x > y; }
+static int lesser(int x, int y) { return x < y; }
+
+static int (*compare)(int x, int y) = lesser;
+
+
+int marker_search(int mode)
+{
+  int i;
+  int found = 0;
+
+  if (mode == 0)
+    compare = greater;
+  else
+    compare = lesser;
+    
+  if (uistat.current_trace == -1)
+    return -1;
+
+  int value = CELL_Y(trace_index[uistat.current_trace][0]);
+  for (i = 0; i < 101; i++) {
+    uint32_t index = trace_index[uistat.current_trace][i];
+    if ((*compare)(value, CELL_Y(index))) {
+      value = CELL_Y(index);
+      found = i;
+    }
+  }
+
+  return found;
+}
+
+int marker_search_left(int from)
+{
+  int i;
+  int found = -1;
+
+  if (uistat.current_trace == -1)
+    return -1;
+
+  int value = CELL_Y(trace_index[uistat.current_trace][from]);
+  for (i = from - 1; i >= 0; i--) {
+    uint32_t index = trace_index[uistat.current_trace][i];
+    if ((*compare)(value, CELL_Y(index)))
+      break;
+    value = CELL_Y(index);
+  }
+
+  for (; i >= 0; i--) {
+    uint32_t index = trace_index[uistat.current_trace][i];
+    if ((*compare)(CELL_Y(index), value)) {
+      break;
+    }
+    found = i;
+    value = CELL_Y(index);
+  }
+  return found;
+}
+
+int marker_search_right(int from)
+{
+  int i;
+  int found = -1;
+
+  if (uistat.current_trace == -1)
+    return -1;
+
+  int value = CELL_Y(trace_index[uistat.current_trace][from]);
+  for (i = from + 1; i < 101; i++) {
+    uint32_t index = trace_index[uistat.current_trace][i];
+    if ((*compare)(value, CELL_Y(index)))
+      break;
+    value = CELL_Y(index);
+  }
+
+  for (; i < 101; i++) {
+    uint32_t index = trace_index[uistat.current_trace][i];
+    if ((*compare)(CELL_Y(index), value)) {
+      break;
+    }
+    found = i;
+    value = CELL_Y(index);
+  }
+  return found;
+}
 int search_nearest_index(int x, int y, int t)
 {
   uint32_t *index = trace_index[t];

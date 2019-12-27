@@ -30,8 +30,11 @@
 #endif
 
 uistat_t uistat = {
- .digit = 6,
- .current_trace = 0
+ digit: 6,
+ current_trace: 0,
+ lever_mode: LM_MARKER,
+ marker_delta: FALSE,
+ marker_smith_format: MS_RLC
 };
 
 
@@ -157,6 +160,8 @@ static void menu_transform_cb(int item);
 static void menu_stimulus_cb(int item);
 static void menu_marker_sel_cb(int item);
 static void menu_marker_op_cb(int item);
+static void menu_marker_smith_cb(int item);
+static void menu_marker_search_cb(int item);
 static void menu_recall_cb(int item);
 static void menu_dfu_cb(int item);
 static void menu_config_cb(int item);
@@ -295,12 +300,43 @@ static const menuitem_t menu_marker_sel[] = {
   MENUITEM_END
 };
 
+const menuitem_t menu_marker_ops[] = {
+	MENUITEM_FUNC( S_RARROW"START", menu_marker_op_cb ),
+	MENUITEM_FUNC( S_RARROW"STOP", menu_marker_op_cb ),
+	MENUITEM_FUNC( S_RARROW"CENTER", menu_marker_op_cb ),
+	MENUITEM_FUNC( S_RARROW"SPAN", menu_marker_op_cb ),
+//	MENUITEM_FUNC( S_RARROW"EDELAY", menu_marker_op_cb ),
+	MENUITEM_BACK,
+	MENUITEM_END
+};
+
+const menuitem_t menu_marker_search[] = {
+  //MENUITEM_FUNC( "OFF", menu_marker_search_cb  ),
+  MENUITEM_FUNC( "MAXIMUM", menu_marker_search_cb  ),
+  MENUITEM_FUNC( "MINIMUM", menu_marker_search_cb ),
+  MENUITEM_FUNC( "\2SEARCH\0" S_LARROW" LEFT", menu_marker_search_cb ),
+  MENUITEM_FUNC( "\2SEARCH\0" S_RARROW" RIGHT", menu_marker_search_cb ),
+  //MENUITEM_FUNC( "TRACKING", menu_marker_search_cb  ),
+  MENUITEM_BACK,
+  MENUITEM_END
+};
+
+const menuitem_t menu_marker_smith[] = {
+  MENUITEM_FUNC("LIN", menu_marker_smith_cb),
+  MENUITEM_FUNC("LOG", menu_marker_smith_cb),
+  MENUITEM_FUNC( "Re+Im", menu_marker_smith_cb),
+  MENUITEM_FUNC("R+Xj", menu_marker_smith_cb),
+  MENUITEM_FUNC("R+L/C", menu_marker_smith_cb),
+  MENUITEM_BACK,
+  MENUITEM_END
+};
+
+
 static const menuitem_t menu_marker[] = {
-  MENUITEM_MENU("\2SELECT\0MARKER",     menu_marker_sel),
-  MENUITEM_FUNC(S_RARROW"START",        menu_marker_op_cb),
-  MENUITEM_FUNC(S_RARROW"STOP",         menu_marker_op_cb),
-  MENUITEM_FUNC(S_RARROW"CENTER",       menu_marker_op_cb),
-  MENUITEM_FUNC(S_RARROW"SPAN",         menu_marker_op_cb),
+	MENUITEM_MENU( "\2SELECT\0MARKER", menu_marker_sel),
+	MENUITEM_MENU( "SEARCH", menu_marker_search),
+	MENUITEM_MENU( "OPERATIONS", menu_marker_ops),
+	MENUITEM_MENU("\2SMITH\0VALUE", menu_marker_smith),
   MENUITEM_BACK,
   MENUITEM_END
 };
@@ -344,6 +380,8 @@ static const menuitem_t menu_top[] = {
  // MENUITEM_CLOSE,
   MENUITEM_END
 };
+
+
 
 #define MENU_STACK_DEPTH_MAX 4
 static uint8_t menu_current_level = 0;
@@ -1047,46 +1085,100 @@ static int32_t get_marker_frequency(int marker)
   return frequencies[markers[marker].index];
 }
 
-static void menu_marker_op_cb(int item)
+static void
+menu_marker_op_cb(int item)
 {
   int32_t freq = get_marker_frequency(active_marker);
   if (freq < 0)
     return; // no active marker
 
   switch (item) {
-  case 1: /* MARKER->START */
+  case 0: /* MARKER->START */
     set_sweep_frequency(ST_START, freq);
     break;
-  case 2: /* MARKER->STOP */
+  case 1: /* MARKER->STOP */
     set_sweep_frequency(ST_STOP, freq);
     break;
-  case 3: /* MARKER->CENTER */
+  case 2: /* MARKER->CENTER */
     set_sweep_frequency(ST_CENTER, freq);
     break;
-  case 4: /* MARKERS->SPAN */
+  case 3: /* MARKERS->SPAN */
     {
-      if (previous_marker == active_marker)
-        return;
-      int32_t freq2 = get_marker_frequency(previous_marker);
-      if (freq2 < 0)
-        return;
-      if (freq > freq2) {
-        freq2 = freq;
-        freq = get_marker_frequency(previous_marker);
+      if (previous_marker == -1 || active_marker == previous_marker) {
+        // if only 1 marker is active, keep center freq and make span the marker comes to the edge
+        int32_t center = get_sweep_frequency(ST_CENTER);
+        int32_t span = center - freq;
+        if (span < 0) span = -span;
+        set_sweep_frequency(ST_SPAN, span * 2);
+      } else {
+        // if 2 or more marker active, set start and stop freq to each marker
+        int32_t freq2 = get_marker_frequency(previous_marker);
+        if (freq2 < 0)
+          return;
+        if (freq > freq2) {
+          freq2 = freq;
+          freq = get_marker_frequency(previous_marker);
+        }
+        set_sweep_frequency(ST_START, freq);
+        set_sweep_frequency(ST_STOP, freq2);
       }
-      set_sweep_frequency(ST_START, freq);
-      set_sweep_frequency(ST_STOP, freq2);
-#if 0
-      int32_t span = (freq - freq2) * 2;
-      if (span < 0) span = -span;
-      set_sweep_frequency(ST_SPAN, span);
-#endif
     }
     break;
+#if 0
+  case 4: /* MARKERS->EDELAY */
+    {
+      if (uistat.current_trace == -1)
+        break;
+      float (*array)[2] = measured[trace[uistat.current_trace].channel];
+      float v =group_delay(coeff, freq, point_count, i);
+      set_electrical_delay(electrical_delay + (v / 1e-12));
+    }
+    break;
+#endif
   }
   ui_mode_normal();
   draw_cal_status();
   //redraw_all();
+}
+
+static void
+menu_marker_search_cb(int item)
+{
+  int i;
+  if (active_marker == -1)
+    return;
+
+  switch (item) {
+  case 0: /* maximum */
+  case 1: /* minimum */
+    i = marker_search(item);
+    if (i != -1)
+      markers[active_marker].index = i;
+    draw_menu();
+    break;
+  case 2: /* search Left */
+    i = marker_search_left(markers[active_marker].index);
+    if (i != -1)
+      markers[active_marker].index = i;
+    draw_menu();
+    break;
+  case 3: /* search right */
+    i = marker_search_right(markers[active_marker].index);
+    if (i != -1)
+      markers[active_marker].index = i;
+    draw_menu();
+    break;
+  }
+  redraw_marker(active_marker, TRUE);
+  uistat.lever_mode = LM_SEARCH;
+}
+
+static void
+menu_marker_smith_cb(int item)
+{
+  uistat.marker_smith_format = item;
+  redraw_marker(active_marker, TRUE);
+  draw_menu();
 }
 
 static void active_marker_select(int item)
@@ -1669,7 +1761,7 @@ static void ui_mode_menu(void)
   #if !defined(ST7796S)
   area_width = AREA_WIDTH_NORMAL - (64-8);
   #else
-   area_width = AREA_WIDTH_NORMAL - 90;
+   area_width = AREA_WIDTH_NORMAL - (90-7);
   #endif
   area_height = HEIGHT;
   ensure_selection();
