@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
+ * Copyright (c) 2014-2020, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
  * This is free software; you can redistribute it and/or modify
@@ -689,7 +689,7 @@ show_logo(void)
   ili9341_drawstring_size("NANOVNA.COM", x+100, y += 10, 0xffff, 0x0000, 2);
   ili9341_drawstring_5x7("https://github.com/hugen79/NanoVNA-H", x, y += 20, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Based on edy555 design", x, y += 10, 0xffff, 0x0000);
-  ili9341_drawstring_5x7("2016-2019 Copyright @edy555", x, y += 10, 0xffff, 0x0000);
+  ili9341_drawstring_5x7("2016-2020 Copyright @edy555", x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Version: " VERSION, x, y += 10, 0xffff, 0x0000);
   ili9341_drawstring_5x7("Build Time: " __DATE__ " - " __TIME__, x, y += 10, 0xffff, 0x0000);
@@ -709,7 +709,7 @@ show_logo(void)
       ili9341_drawstring_size("NANOVNA.COM", x+150, y += 15, 0xffff, 0x0000, 2);
       ili9341_drawstring_7x13("https://github.com/hugen79/NanoVNA-H", x, y += 30, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Based on edy555 design, MCU and LCD adaptation by AA6KL.", x, y += 15, 0xffff, 0x0000);
-      ili9341_drawstring_7x13("2016-2019 Copyright @edy555", x, y += 15, 0xffff, 0x0000);
+      ili9341_drawstring_7x13("2016-2020 Copyright @edy555", x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Version: " VERSION, x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Build Time: " __DATE__ " - " __TIME__, x, y += 15, 0xffff, 0x0000);

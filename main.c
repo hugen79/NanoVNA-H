@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2017, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
+ * Copyright (c) 2016-2020, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
  * This is free software; you can redistribute it and/or modify
@@ -2200,7 +2200,14 @@ static const ShellConfig shell_cfg1 =
 };
 
 static const I2CConfig i2ccfg = {
+#ifdef NANOVNA_F303
+	.timingr  = STM32_TIMINGR_PRESC(8U)  |            /* 72MHz/9 = 8MHz I2CCLK.           */
+  STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |
+  STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U),
+#else
   .timingr  = 0x00300506, //voodoo magic 400kHz @ HSI 8MHz
+#endif
+
   .cr1      = 0,
   .cr2      = 0
 };

@@ -134,18 +134,19 @@
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
 		<project id="NanoVNA-H4.null.1894201338" name="NanoVNA-H4"/>
 	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
+	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="Default">
+			<resource resourceType="PROJECT" workspacePath="/NanoVNA-H4"/>
+		</configuration>
+	</storageModule>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.2091697209;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.2091697209.2093357513;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.1052814262;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.input.824805338">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1046840496;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1046840496.1562627939;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.2145427477;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.input.1020705065">
-			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1401978191;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1401978191.1864056240;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.698050456;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input.1703162380">
-			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1401978191;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1401978191.1864056240;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.2084381398;ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.input.933221157">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1407967715;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1407967715.1774548380;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.416557717;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input.2118229058">
@@ -160,12 +161,5 @@
 		<scannerConfigBuildInfo instanceId="ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1046840496;ilg.gnuarmeclipse.managedbuild.cross.toolchain.base.1046840496.1562627939;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.855683034;ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input.1693728727">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
-	</storageModule>
-	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
-	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
-	<storageModule moduleId="refreshScope" versionNumber="2">
-		<configuration configurationName="Default">
-			<resource resourceType="PROJECT" workspacePath="/NanoVNA-H4"/>
-		</configuration>
 	</storageModule>
 </cproject>
