@@ -2231,6 +2231,15 @@ int main(void)
       */
      ili9341_init();
      show_logo();
+     /* restore config */
+       config_recall();
+
+       dac1cfg1.init = config.dac_value;
+       /*
+        * Starting DAC1 driver, setting up the output pin as analog as suggested
+        * by the Reference Manual.
+        */
+       dacStart(&DACD2, &dac1cfg1);
 
     //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
     //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
@@ -2262,15 +2271,7 @@ int main(void)
    */
   plot_init();
 
-  /* restore config */
-  config_recall();
 
-  dac1cfg1.init = config.dac_value;
-  /*
-   * Starting DAC1 driver, setting up the output pin as analog as suggested
-   * by the Reference Manual.
-   */
-  dacStart(&DACD2, &dac1cfg1);
 
   /* initial frequencies */
   update_frequencies();

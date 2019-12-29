@@ -392,11 +392,10 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
   switch (band) {
   case 0:
     // fractional divider mode. only PLL A is used.
-    if (current_band == 1 || current_band == 2)
-      si5351_setupPLL(SI5351_PLL_A, 32, 0, 1);
-    // Set PLL twice on changing from band 2
-    if (current_band == 2) 
-      si5351_setupPLL(SI5351_PLL_A, 32, 0, 1);
+    if (current_band == 1 || current_band == 2){
+    	si5351_reset_pll();
+    	si5351_setupPLL(SI5351_PLL_A, 32, 0, 1);
+    }
 
     if (rdiv == SI5351_R_DIV_8) {
       freq *= 8;

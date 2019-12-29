@@ -708,7 +708,7 @@ show_logo(void)
 
       ili9341_drawstring_size("NANOVNA.COM", x+150, y += 15, 0xffff, 0x0000, 2);
       ili9341_drawstring_7x13("https://github.com/hugen79/NanoVNA-H", x, y += 30, 0xffff, 0x0000);
-      ili9341_drawstring_7x13("Based on edy555 design, MCU and LCD adaptation by AA6KL.", x, y += 15, 0xffff, 0x0000);
+      ili9341_drawstring_7x13("Based on edy555 design, the MCU and LCD were ported by AA6KL.", x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("2016-2020 Copyright @edy555", x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Licensed under GPL. See: https://github.com/ttrftech/NanoVNA", x, y += 15, 0xffff, 0x0000);
       ili9341_drawstring_7x13("Version: " VERSION, x, y += 15, 0xffff, 0x0000);
