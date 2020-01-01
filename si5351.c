@@ -62,8 +62,13 @@ static const uint8_t si5351_configs[] = {
   2, SI5351_REG_177_PLL_RESET, SI5351_PLL_RESET_A | SI5351_PLL_RESET_B,
   // setup multisynth (832MHz / 104 = 8MHz, 104/2-2=50)
   9, SI5351_REG_58_MULTISYNTH2, /*P3*/0, 1, /*P1*/0, 50, 0, /*P2|P3*/0, 0, 0,
+#ifdef __ENABLE_CLK2__
   2, SI5351_REG_18_CLK2_CONTROL, SI5351_CLK_DRIVE_STRENGTH_2MA | SI5351_CLK_INPUT_MULTISYNTH_N | SI5351_CLK_INTEGER_MODE,
   2, SI5351_REG_3_OUTPUT_ENABLE_CONTROL, 0,
+#else
+  2, SI5351_REG_18_CLK2_CONTROL,SI5351_CLK_POWERDOWN,
+  2, SI5351_REG_3_OUTPUT_ENABLE_CONTROL, 0x04,
+#endif
   0 // sentinel
 };
 
@@ -131,7 +136,11 @@ static void si5351_disable_output(void)
 
 static void si5351_enable_output(void)
 {
+#ifdef __ENABLE_CLK2__
   si5351_write(SI5351_REG_3_OUTPUT_ENABLE_CONTROL, 0x00);
+#else
+  si5351_write(SI5351_REG_3_OUTPUT_ENABLE_CONTROL, 0x04);
+#endif
 }
 
 static void si5351_reset_pll(void)
@@ -357,13 +366,10 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
   int delay = 3;
   uint32_t ofreq = freq + offset;
   uint32_t rdiv = SI5351_R_DIV_1;
-#if 0
-  if (freq >= config.harmonic_freq_threshold * 5) {
-    freq /= 7;
-    ofreq /= 9;
-  }
-  else
-#endif
+ /* if (freq > config.harmonic_freq_threshold * 5 ) {
+	    freq /= 7;
+	    ofreq /= 9;
+  }else */
 	  if (freq > config.harmonic_freq_threshold * 3) {
     freq /= 5;
     ofreq /= 7;
@@ -410,8 +416,10 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
     si5351_set_frequency_fixedpll(1, SI5351_PLL_A, PLLFREQ, freq,
                                   rdiv, drive_strength);
     //if (current_band != 0)
+#ifdef __ENABLE_CLK2__
       si5351_set_frequency_fixedpll(2, SI5351_PLL_A, PLLFREQ, CLK2_FREQUENCY,
                                     SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
+#endif
     break;
 
   case 1:
@@ -424,16 +432,20 @@ int si5351_set_frequency_with_offset(uint32_t freq, int offset, uint8_t drive_st
     // div by 6 mode. both PLL A and B are dedicated for CLK0, CLK1
     si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 6, drive_strength);
     si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 6, drive_strength);
+#ifdef __ENABLE_CLK2__
     si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq * 6, CLK2_FREQUENCY,
                                   SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
+#endif
     break;
 
   case 2:
     // div by 4 mode. both PLL A and B are dedicated for CLK0, CLK1
     si5351_set_frequency_fixeddiv(0, SI5351_PLL_A, ofreq, 4, drive_strength);
     si5351_set_frequency_fixeddiv(1, SI5351_PLL_B, freq, 4, drive_strength);
+#ifdef __ENABLE_CLK2__
     si5351_set_frequency_fixedpll(2, SI5351_PLL_B, freq * 4, CLK2_FREQUENCY,
                                   SI5351_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_2MA);
+#endif
     break;
   }
 
