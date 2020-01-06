@@ -26,6 +26,8 @@
 //#define __SCANRAW_CMD__
 //#define __COLOR_CMD__
 //#define __USE_STDIO__
+//#define __DAC__
+//#define __CMD_TIME__
 /*
  * main.c
  */
@@ -198,7 +200,9 @@ typedef struct {
 
 typedef struct {
     int32_t magic;
+#ifdef __DAC__
     uint16_t dac_value;
+#endif
     uint16_t grid_color;
     uint16_t menu_normal_color;
     uint16_t menu_active_color;

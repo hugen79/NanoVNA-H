@@ -362,6 +362,7 @@ static void cmd_power(BaseSequentialStream *chp, int argc, char *argv[])
     chMtxUnlock(&mutex_sweep);
 }
 
+#ifdef __CMD_TIME__
 static void cmd_time(BaseSequentialStream *chp, int argc, char *argv[])
 {
     RTCDateTime timespec;
@@ -370,8 +371,9 @@ static void cmd_time(BaseSequentialStream *chp, int argc, char *argv[])
     rtcGetTime(&RTCD1, &timespec);
     chprintf(chp, "%d/%d/%d %d\r\n", timespec.year+1980, timespec.month, timespec.day, timespec.millisecond);
 }
+#endif
 
-
+#ifdef __DAC__
 static void cmd_dac(BaseSequentialStream *chp, int argc, char *argv[])
 {
     int value;
@@ -384,6 +386,8 @@ static void cmd_dac(BaseSequentialStream *chp, int argc, char *argv[])
     config.dac_value = value;
     dacPutChannelX(&DACD2, 0, value);
 }
+#endif
+
 
 static void cmd_threshold(BaseSequentialStream *chp, int argc, char *argv[])
 {
@@ -635,7 +639,9 @@ float cal_data[5][POINT_COUNT][2];
 
 config_t config = {
   .magic =             CONFIG_MAGIC,
+#ifdef __DAC__
   .dac_value =         1922,
+#endif
   .grid_color =        0x1084,
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,
@@ -2137,8 +2143,12 @@ static const ShellCommand commands[] =
     { "reset", cmd_reset },
     { "freq", cmd_freq },
     { "offset", cmd_offset },
+#ifdef __CMD_TIME__
     { "time", cmd_time },
+#endif
+#ifdef __DAC__
     { "dac", cmd_dac },
+#endif
     { "saveconfig", cmd_saveconfig },
     { "clearconfig", cmd_clearconfig },
     { "data", cmd_data },
@@ -2191,11 +2201,13 @@ static const I2CConfig i2ccfg = {
   .cr2      = 0
 };
 
+#ifdef __DAC__
 static DACConfig dac1cfg1 = {
   //.init =         2047U,
   .init =         1922U,
   .datamode =     DAC_DHRM_12BIT_RIGHT
 };
+#endif
 
 int main(void)
 {
@@ -2245,12 +2257,15 @@ int main(void)
   /* restore config */
   config_recall();
 
+
+#ifdef __DAC__
   dac1cfg1.init = config.dac_value;
   /*
    * Starting DAC1 driver, setting up the output pin as analog as suggested
    * by the Reference Manual.
    */
   dacStart(&DACD2, &dac1cfg1);
+#endif
 
   /* initial frequencies */
   update_frequencies();
