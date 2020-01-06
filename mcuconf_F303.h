@@ -39,7 +39,7 @@
 #define STM32_NO_INIT                       FALSE
 #define STM32_PVD_ENABLE                    FALSE
 #define STM32_PLS                           STM32_PLS_LEV0
-#define STM32_HSI_ENABLED                   TRUE
+#define STM32_HSI_ENABLED                   FALSE
 #define STM32_LSI_ENABLED                   TRUE
 #define STM32_HSE_ENABLED                   TRUE
 #define STM32_LSE_ENABLED                   FALSE
@@ -56,7 +56,7 @@
 #define STM32_USART1SW                      STM32_USART1SW_PCLK
 //#define STM32_USART2SW                      STM32_USART2SW_PCLK
 //#define STM32_USART3SW                      STM32_USART3SW_PCLK
-#define STM32_I2C1SW                        STM32_I2C1SW_HSI
+#define STM32_I2C1SW                        STM32_I2C1SW_SYSCLK
 //#define STM32_I2C2SW                        STM32_I2C2SW_SYSCLK
 #define STM32_TIM1SW                        STM32_TIM1SW_PCLK2
 #define STM32_TIM8SW                        STM32_TIM8SW_PCLK2

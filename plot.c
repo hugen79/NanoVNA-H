@@ -1442,7 +1442,7 @@ void request_to_draw_cells_behind_menu(void)
       for (n = 0; n < 8; n++)
 #else
    for (m = 11; m <= 14; m++)
-	   for (n = 0; n < 9; n++)
+	   for (n = 0; n < 10; n++)
 #endif
       mark_map(m, n);
   redraw_request |= REDRAW_CELLS;
