@@ -529,7 +529,7 @@ static uint32_t trace_into_index(
     v = refpos - group_delay(coeff, freq, point_count, i) * scale;
     break;
   case TRC_LINEAR:
-    v = refpos + linear(coeff[i]) * scale;
+    v = refpos - linear(coeff[i]) * scale;
     break;
   case TRC_SWR:
     v = refpos+ (1 - swr(coeff[i])) * scale;
