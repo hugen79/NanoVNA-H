@@ -71,7 +71,7 @@ void dsp_process(int16_t *capture, size_t length)
     ref_s += ref * s / 16;
     ref_c += ref * c / 16;
 #if 0
-    uint32_t sc = *(uint32_t)&sincos_tbl[i];
+    uint32_t sc = (uint32_t*)&sincos_tbl[i];
     samp_s = __SMLABB(sr, sc, samp_s);
     samp_c = __SMLABT(sr, sc, samp_c);
     ref_s = __SMLATB(sr, sc, ref_s);

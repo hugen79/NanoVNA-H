@@ -1977,10 +1977,6 @@ static int keypad_apply_touch(void)
     }
     i++;
   }
-  if (touch_y > 48 * 4) {
-    // exit keypad mode
-    return -2;
-  }
   return -1;
 }
 
@@ -2134,10 +2130,6 @@ static void ui_process_keypad(void)
       if (key >= 0 && keypad_click(key))
         /* exit loop on done or cancel */
         break;
-      else if (key == -2) {
-        //xxx;
- //       return;
-      }
     }
   }
 
@@ -2315,7 +2307,8 @@ static const EXTConfig extcfg = {
 };
 
 static const GPTConfig gpt3cfg = {
-  1000,    /* 1kHz timer clock.*/
+//  1000,    /* 1kHz timer clock.*/
+  2000,    /* 2kHz timer clock.*/
   NULL,   /* Timer callback.*/
   0x0020, /* CR2:MMS=02 to output TRGO */
   0

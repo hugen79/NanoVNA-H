@@ -74,7 +74,7 @@ static THD_FUNCTION(Thread1, arg)
         if (sweep_enabled || sweep_once) {
             chMtxLock(&mutex_sweep);
             palClearPad(GPIOC, GPIOC_LED);  // disable led and wait for voltage stabilization
-            chThdSleepMilliseconds(10);
+            chThdSleepMilliseconds(5);
         
             completed = sweep(true);
             sweep_once = FALSE;
@@ -652,7 +652,7 @@ config_t config = {
 #if !defined(ST7796S)
   .touch_cal =         { 370, 540, 154, 191 },  //{ 620, 600, 160, 190 },
 #else
-  .touch_cal =         { 274, 320, 110, 158 },  //4.0" LCD
+  .touch_cal =         { 252, 450, 111, 150 },  //4.0" LCD
 #endif
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
