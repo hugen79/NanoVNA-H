@@ -269,6 +269,9 @@ flash: build/ch.bin
 dfu:
 	-@printf "reset dfu\r" >/dev/cu.usbmodem401
 
+gen_release: 
+	./gen_dfu.sh
+
 TAGS: Makefile
 ifeq ($(TARGET),F303)
 	@etags *.[ch] NANOVNA_STM32_F303/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F3xx ChibiOS/os -name \*.\[ch\] -print) 
