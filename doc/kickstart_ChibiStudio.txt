@@ -1,0 +1,32 @@
+Here are some links to kick start on ChibiStudio IDE.
+
+The best resources for ChibiOS are
+- http://www.chibios.org/
+- https://www.playembedded.org/blog/category/articles/chibios-stm32/
+
+The ChibiOS IDE is ChibiStudio, which is based on Eclipse and has Linux and Windows versions.  Linux Mint Virtual Machine is also available.  The download links are at
+https://osdn.net/projects/chibios/releases  
+
+ChibiOS has been evolving for the past years.  Edy folked out version 3 around 2016.  Now is version 19 already.  Many IO drivers' APIs have changed.  For Edy's ChibiOS, the basic debug features are working, just some debugding and performance tracking features cannot be used.   
+
+ChibiOS needs OpenOCD as debugger interface. Below is for Ubuntu environment.
+
+First, please refer to the file below.
+- https://github.com/AA6KL/NanoVNA-F303/blob/master/my_note.txt 
+OpenOCD needs to read the MCU board information.  For F303, I use the following configuration file from ChibiStudio installation.
+- ChibiStudio_Linux_Preview2/ChibiStudio/tools/openocd/scripts/board/stm32f3discovery.cfg
+
+A good reference video to setup ChibiStudio.
+http://www.chibios.org/dokuwiki/doku.php?id=chibios:product:chibistudio:start 
+or
+https://www.youtube.com/watch?v=MeP8oBUYjcw&feature=youtu.be
+
+To jump start on ChibiOS, the best resource would be its plethora of examples.  
+The shell example can be found at the link below, which is self-explanatory.
+- ChibiOS/testhal/STM32/STM32F4xx/USB_CDC/main.c 
+The user defined shell commands can be defined at
+static const ShellCommand commands[] = {
+  {"write", cmd_write},
+  {NULL, NULL}
+};
+Here, "write" is the command, and "cmd_write" is the C function to be called.
