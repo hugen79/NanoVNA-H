@@ -34,12 +34,22 @@
  */
 
 #ifdef NANOVNA_F303
+#define STM32F303xC_SYSTEM_MEMORY 0x1FFFD800
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20009FF0
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
+//#define SYSTEM_BOOT_MSP *(uint32_t *)0  // 0x20001258
+#define SYSTEM_BOOT_MSP 0x20001258
+
 void adc_init(void);
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #define POINT_COUNT     101
 #define SPI_BUFFER_SIZE 2048
 #else
+#define STM32F072xB_SYSTEM_MEMORY 0x1FFFC800
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20003FF0
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
+#define SYSTEM_BOOT_MSP 0x20002250
 #define POINT_COUNT     101
 #define SPI_BUFFER_SIZE 1024
 #endif
@@ -451,7 +461,7 @@ void touch_start_watchdog(void);
 void touch_position(int *x, int *y);
 void handle_touch_interrupt(void);
 
-#define TOUCH_THRESHOLD 2000
+#define TOUCH_THRESHOLD 500
 
 void touch_cal_exec(void);
 void touch_draw_test(void);

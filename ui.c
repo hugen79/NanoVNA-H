@@ -39,31 +39,32 @@ uistat_t uistat = {
 
 
 
-#define NO_EVENT					0
-#define EVT_BUTTON_SINGLE_CLICK		0x01
-#define EVT_BUTTON_DOUBLE_CLICK		0x02
-#define EVT_BUTTON_DOWN_LONG		0x04
-#define EVT_UP					0x10
-#define EVT_DOWN				0x20
-#define EVT_REPEAT				0x40
+#define NO_EVENT          0
+#define EVT_BUTTON_SINGLE_CLICK    0x01
+#define EVT_BUTTON_DOUBLE_CLICK    0x02
+#define EVT_BUTTON_DOWN_LONG       0x04
+#define EVT_UP                     0x10
+#define EVT_DOWN                   0x20
+#define EVT_REPEAT                 0x40
 
-#define BUTTON_DOWN_LONG_TICKS		5000  /* 1sec */
-#define BUTTON_DOUBLE_TICKS			5000   /* 500ms */
-#define BUTTON_REPEAT_TICKS			1000   /* 100ms */
-#define BUTTON_DEBOUNCE_TICKS		200
+#define BUTTON_DOWN_LONG_TICKS     5000  /* 500ms */
+#define BUTTON_DOUBLE_TICKS        5000  /* 500ms */
+#define BUTTON_REPEAT_TICKS        1000  /* 100ms */
+#define BUTTON_DEBOUNCE_TICKS       100  /*  10ms */
 
 /* lever switch assignment */
-#define BIT_UP1 	3
-#define BIT_PUSH	2
-#define BIT_DOWN1	1
+// Need to adjust board.h file to algn with the code here!
+#define BIT_UP1   3
+#define BIT_PUSH  2
+#define BIT_DOWN1 1
 
 #define READ_PORT() palReadPort(GPIOA)
 #define BUTTON_MASK (0x0f)
 
-static uint16_t last_button = 0;
-static uint32_t last_button_down_ticks;
-static uint32_t last_button_repeat_ticks;
-static int8_t inhibit_until_release = FALSE;
+static volatile uint16_t last_button = 0;
+static volatile systime_t last_button_down_ticks;
+static volatile systime_t last_button_repeat_ticks;
+static volatile int8_t inhibit_until_release = FALSE;
 
 uint8_t operation_requested = OP_NONE;
 
@@ -111,9 +112,9 @@ enum {
 #define MENUITEM_END { .type=MT_NONE, .label=NULL, .pMenu=NULL } /* sentinel */
 
 
-static int8_t last_touch_status = FALSE;
-static int16_t last_touch_x;
-static int16_t last_touch_y;
+static volatile int8_t last_touch_status = FALSE;
+static volatile int16_t last_touch_x;
+static volatile int16_t last_touch_y;
 //int16_t touch_cal[4] = { 1000, 1000, 10*16, 12*16 };
 //int16_t touch_cal[4] = { 620, 600, 130, 180 };
 #define EVT_TOUCH_NONE 0
@@ -301,13 +302,13 @@ static const menuitem_t menu_marker_sel[] = {
 };
 
 const menuitem_t menu_marker_ops[] = {
-	MENUITEM_FUNC( S_RARROW"START", menu_marker_op_cb ),
-	MENUITEM_FUNC( S_RARROW"STOP", menu_marker_op_cb ),
-	MENUITEM_FUNC( S_RARROW"CENTER", menu_marker_op_cb ),
-	MENUITEM_FUNC( S_RARROW"SPAN", menu_marker_op_cb ),
-//	MENUITEM_FUNC( S_RARROW"EDELAY", menu_marker_op_cb ),
-	MENUITEM_BACK,
-	MENUITEM_END
+  MENUITEM_FUNC( S_RARROW"START", menu_marker_op_cb ),
+  MENUITEM_FUNC( S_RARROW"STOP", menu_marker_op_cb ),
+  MENUITEM_FUNC( S_RARROW"CENTER", menu_marker_op_cb ),
+  MENUITEM_FUNC( S_RARROW"SPAN", menu_marker_op_cb ),
+//  MENUITEM_FUNC( S_RARROW"EDELAY", menu_marker_op_cb ),
+  MENUITEM_BACK,
+  MENUITEM_END
 };
 
 const menuitem_t menu_marker_search[] = {
@@ -333,10 +334,10 @@ const menuitem_t menu_marker_smith[] = {
 
 
 static const menuitem_t menu_marker[] = {
-	MENUITEM_MENU( "\2SELECT\0MARKER", menu_marker_sel),
-	MENUITEM_MENU( "SEARCH", menu_marker_search),
-	MENUITEM_MENU( "OPERATIONS", menu_marker_ops),
-	MENUITEM_MENU("\2SMITH\0VALUE", menu_marker_smith),
+  MENUITEM_MENU( "\2SELECT\0MARKER", menu_marker_sel),
+  MENUITEM_MENU( "SEARCH", menu_marker_search),
+  MENUITEM_MENU( "OPERATIONS", menu_marker_ops),
+  MENUITEM_MENU("\2SMITH\0VALUE", menu_marker_smith),
   MENUITEM_BACK,
   MENUITEM_END
 };
@@ -400,7 +401,7 @@ static int btn_check(void)
     int status = 0;
     uint32_t ticks = chVTGetSystemTime();
     if (changed & (1<<BIT_PUSH)) {
-      if (ticks - last_button_down_ticks >= BUTTON_DEBOUNCE_TICKS) {
+      if (chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DEBOUNCE_TICKS) {
         if (cur_button & (1<<BIT_PUSH)) {
           // button released
           status |= EVT_BUTTON_SINGLE_CLICK;
@@ -415,14 +416,14 @@ static int btn_check(void)
     
     if (changed & (1<<BIT_UP1)) {
       if ((cur_button & (1<<BIT_UP1))
-          && (ticks >= last_button_down_ticks + BUTTON_DEBOUNCE_TICKS)) {
+          && (chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DEBOUNCE_TICKS)) {
         status |= EVT_UP;
       }
       last_button_down_ticks = ticks;
     }
     if (changed & (1<<BIT_DOWN1)) {
       if ((cur_button & (1<<BIT_DOWN1))
-          && (ticks >= last_button_down_ticks + BUTTON_DEBOUNCE_TICKS)) {
+          && (chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DEBOUNCE_TICKS)) {
         status |= EVT_DOWN;
       }
       last_button_down_ticks = ticks;
@@ -442,12 +443,12 @@ static int btn_wait_release(void)
 
     if (!inhibit_until_release) {
       if ((cur_button & (1<<BIT_PUSH))
-          && ticks - last_button_down_ticks >= BUTTON_DOWN_LONG_TICKS) {
+          && (chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DOWN_LONG_TICKS)) {
         inhibit_until_release = TRUE;
         return EVT_BUTTON_DOWN_LONG;
       }
       if ((changed & (1<<BIT_PUSH))
-          && ticks - last_button_down_ticks < BUTTON_DOWN_LONG_TICKS) {
+          && (chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DOWN_LONG_TICKS)) {
         return EVT_BUTTON_SINGLE_CLICK;
       }
     }
@@ -460,8 +461,8 @@ static int btn_wait_release(void)
       return 0;
     }
 
-    if (ticks - last_button_down_ticks >= BUTTON_DOWN_LONG_TICKS
-        && ticks - last_button_repeat_ticks >= BUTTON_REPEAT_TICKS) {
+    if ((chTimeDiffX(last_button_down_ticks, ticks) >= BUTTON_DOWN_LONG_TICKS)
+        && (chTimeDiffX(last_button_repeat_ticks, ticks) >= BUTTON_REPEAT_TICKS)) {
       if (cur_button & (1<<BIT_DOWN1)) {
         status |= EVT_DOWN | EVT_REPEAT;
       }
@@ -478,13 +479,13 @@ static int touch_measure_y(void)
 {
   int v;
   // open Y line
-  palSetPadMode(GPIOB, 1, PAL_MODE_INPUT_PULLDOWN );
-  palSetPadMode(GPIOA, 7, PAL_MODE_INPUT_PULLDOWN );
+  palSetLineMode(LINE_YN, PAL_MODE_INPUT_PULLDOWN );
+  palSetLineMode(LINE_YP, PAL_MODE_INPUT_PULLDOWN );
   // drive low to high on X line
-  palSetPadMode(GPIOB, 0, PAL_MODE_OUTPUT_PUSHPULL );
-  palClearPad(GPIOB, 0);
-  palSetPadMode(GPIOA, 6, PAL_MODE_OUTPUT_PUSHPULL );
-  palSetPad(GPIOA, 6);
+  palSetLineMode(LINE_XN, PAL_MODE_OUTPUT_PUSHPULL );
+  palClearLine(LINE_XN);
+  palSetLineMode(LINE_XP, PAL_MODE_OUTPUT_PUSHPULL );
+  palSetLine(LINE_XP);
 
   chThdSleepMilliseconds(2);
   v = adc_single_read(ADC1, ADC_CHSELR_CHSEL7);
@@ -497,13 +498,13 @@ static int touch_measure_x(void)
 {
   int v;
   // open X line
-  palSetPadMode(GPIOB, 0, PAL_MODE_INPUT_PULLDOWN );
-  palSetPadMode(GPIOA, 6, PAL_MODE_INPUT_PULLDOWN );
+  palSetLineMode(LINE_XN, PAL_MODE_INPUT_PULLDOWN );
+  palSetLineMode(LINE_XP, PAL_MODE_INPUT_PULLDOWN );
   // drive low to high on Y line
-  palSetPadMode(GPIOB, 1, PAL_MODE_OUTPUT_PUSHPULL );
-  palSetPad(GPIOB, 1);
-  palSetPadMode(GPIOA, 7, PAL_MODE_OUTPUT_PUSHPULL );
-  palClearPad(GPIOA, 7);
+  palSetLineMode(LINE_YN, PAL_MODE_OUTPUT_PUSHPULL );
+  palSetLine(LINE_YN);
+  palSetLineMode(LINE_YP, PAL_MODE_OUTPUT_PUSHPULL );
+  palClearLine(LINE_YP);
 
   chThdSleepMilliseconds(2);
   v = adc_single_read(ADC1, ADC_CHSELR_CHSEL6);
@@ -515,13 +516,14 @@ static int touch_measure_x(void)
 static void touch_prepare_sense(void)
 {
   // open Y line
-  palSetPadMode(GPIOB, 1, PAL_MODE_INPUT_PULLDOWN );
-  palSetPadMode(GPIOA, 7, PAL_MODE_INPUT_PULLDOWN );
-  // force high X line
-  palSetPadMode(GPIOB, 0, PAL_MODE_OUTPUT_PUSHPULL );
-  palSetPad(GPIOB, 0);
-  palSetPadMode(GPIOA, 6, PAL_MODE_OUTPUT_PUSHPULL );
-  palSetPad(GPIOA, 6);
+  palSetLineMode(LINE_YN, PAL_MODE_INPUT_PULLDOWN );
+  palSetLineMode(LINE_YP, PAL_MODE_INPUT_PULLDOWN );
+  // force X line high
+  palSetLineMode(LINE_XN, PAL_MODE_OUTPUT_PUSHPULL );
+  palSetLine(LINE_XN);
+  palSetLineMode(LINE_XP, PAL_MODE_OUTPUT_PUSHPULL );
+  palSetLine(LINE_XP);
+  chThdSleepMilliseconds(2);  // This is needed to ensure enough time for wire to settle.
 }
 
 void touch_start_watchdog(void)
@@ -540,7 +542,7 @@ static int touch_check(void)
 {
   int stat = touch_status();
   if (stat) {
-    chThdSleepMilliseconds(10);
+    chThdSleepMilliseconds(2);
     int x = touch_measure_x();
     int y = touch_measure_y();
     if (touch_status()) {
@@ -586,10 +588,9 @@ void touch_cal_exec(void)
   ili9341_line(0, 0, 32, 0, 0xffff);
   #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
-#else
-ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
- #endif
-
+  #else
+  ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
+  #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_RELEASED);
@@ -599,11 +600,11 @@ ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10, 0xffff, 0x0000);
   ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-1, LCD_HEIGHT-32, 0xffff);
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-32, LCD_HEIGHT-1, 0xffff);
-   #if !defined(ST7796S)
+  #if !defined(ST7796S)
   ili9341_drawstring_5x7("TOUCH LOWER RIGHT", 230, 220, 0xffff, 0x0000);
   #else
-ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 350, 300, 0xffff, 0x0000);
- #endif
+  ili9341_drawstring_7x13("TOUCH LOWER RIGHT", 350, 300, 0xffff, 0x0000);
+  #endif
   do {
     status = touch_check();
   } while(status != EVT_TOUCH_RELEASED);
@@ -681,8 +682,8 @@ show_logo(void)
 {
 
 #if !defined(ST7796S)
-	int x = 15, y = 30;
-	ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
+  int x = 15, y = 30;
+  ili9341_fill(0, 0, LCD_WIDTH, LCD_HEIGHT, 0);
   ili9341_drawstring_size(BOARD_NAME, x+60, y, RGBHEX(0x0000FF), 0x0000, 4);
   y += 25;
 
@@ -723,7 +724,8 @@ show_logo(void)
 }
 
 
-
+#if 1
+// Not available for F303
 void enter_dfu(void)
 {
   adc_stop(ADC1);
@@ -744,7 +746,7 @@ void enter_dfu(void)
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
   NVIC_SystemReset();
 }
-
+#endif
 
 
 static void menu_calop_cb(int item)
@@ -774,7 +776,7 @@ static void menu_calop_cb(int item)
 static void menu_caldone_cb(int item)
 {
   (void) item;
-	cal_done();
+  cal_done();
   draw_cal_status();
   menu_move_back();
   menu_push_submenu(menu_save);
@@ -799,6 +801,7 @@ static void menu_cal2_cb(int item)
 
 static void menu_recall_cb(int item)
 {
+  // item == RECALL number
   if (item < 0 || item >= 5)
     return;
   if (caldata_recall(item) == 0) {
@@ -811,32 +814,32 @@ static void menu_recall_cb(int item)
 
 static void menu_config_cb(int item)
 {
-	int status;
-	switch (item) {
-  case 0:
+  int status;
+  switch (item) {
+  case 0: // TOUCH CAL
       touch_cal_exec();
       redraw_frame();
       request_to_redraw_grid();
       draw_menu();
       break;
-  case 1:
+  case 1: // TOUCH TEST
       touch_draw_test();
       redraw_frame();
       request_to_redraw_grid();
       draw_menu();
       break;
-  case 2:
+  case 2: // SAVE
       config_save();
       menu_move_back();
       ui_mode_normal();
       break;
-  case 3:
+  case 3: // VERSION
       show_version();
       redraw_frame();
       request_to_redraw_grid();
       draw_menu();
       break;
-  case 4:
+  case 4: // BRIGHTNESS
       status = btn_wait_release();
           if (status & EVT_BUTTON_DOWN_LONG) {
            ui_mode_numeric(KM_BRIGHTNESS);
@@ -849,6 +852,8 @@ static void menu_config_cb(int item)
   }
 }
 
+// Not available for F303
+#if 1
 static void menu_dfu_cb(int item)
 {
   switch (item) {
@@ -856,9 +861,11 @@ static void menu_dfu_cb(int item)
       enter_dfu();
   }
 }
+#endif
 
 static void menu_save_cb(int item)
 {
+  // item == RECALL number
   if (item < 0 || item >= 5)
     return;
   if (caldata_save(item) == 0) {
@@ -883,6 +890,7 @@ static void choose_active_trace(void)
 
 static void menu_trace_cb(int item)
 {
+  // item == TRACE number
   if (item < 0 || item >= TRACE_COUNT )
     return;
   if (trace[item].enabled) {
@@ -905,19 +913,19 @@ static void menu_trace_cb(int item)
 static void menu_format_cb(int item)
 {
   switch (item) {
-  case 0:
+  case 0: // LOGMAG
     set_trace_type(uistat.current_trace, TRC_LOGMAG);
     break;
-  case 1:
+  case 1: // PHASE
     set_trace_type(uistat.current_trace, TRC_PHASE);
     break;
-  case 2:
+  case 2: // DELAY
     set_trace_type(uistat.current_trace, TRC_DELAY);
     break;
-  case 3:
+  case 3: // SMITH
     set_trace_type(uistat.current_trace, TRC_SMITH);
     break;
-  case 4:
+  case 4: // SWR
     set_trace_type(uistat.current_trace, TRC_SWR);
     break;
   }
@@ -930,22 +938,22 @@ static void menu_format_cb(int item)
 static void menu_format2_cb(int item)
 {
   switch (item) {
-  case 0:
+  case 0: // POLAR
     set_trace_type(uistat.current_trace, TRC_POLAR);
     break;
-  case 1:
+  case 1: // LINEAR
     set_trace_type(uistat.current_trace, TRC_LINEAR);
     break;
-  case 2:
+  case 2: // REAL
     set_trace_type(uistat.current_trace, TRC_REAL);
     break;
-  case 3:
+  case 3: // IMAG
     set_trace_type(uistat.current_trace, TRC_IMAG);
     break;
-  case 4:
+  case 4: // RESISTANCE
     set_trace_type(uistat.current_trace, TRC_R);
     break;
-  case 5:
+  case 5: // REACTANCE
     set_trace_type(uistat.current_trace, TRC_X);
     break;
   }
@@ -967,15 +975,15 @@ static void menu_transform_window_cb(int item)
 {
   // TODO
   switch (item) {
-    case 0:
+  case 0: // MININUM
       domain_mode = (domain_mode & ~TD_WINDOW) | TD_WINDOW_MINIMUM;
       ui_mode_normal();
       break;
-    case 1:
+  case 1: // NORMAL
       domain_mode = (domain_mode & ~TD_WINDOW) | TD_WINDOW_NORMAL;
       ui_mode_normal();
       break;
-    case 2:
+  case 2: // MAXUMUM
       domain_mode = (domain_mode & ~TD_WINDOW) | TD_WINDOW_MAXIMUM;
       ui_mode_normal();
       break;
@@ -986,7 +994,7 @@ static void menu_transform_cb(int item)
 {
   int status;
   switch (item) {
-    case 0:
+  case 0: // 2TRANSFORM 0ON
       if ((domain_mode & DOMAIN_MODE) == DOMAIN_TIME) {
           domain_mode = (domain_mode & ~DOMAIN_MODE) | DOMAIN_FREQ;
       } else {
@@ -995,19 +1003,19 @@ static void menu_transform_cb(int item)
       draw_frequencies();
       ui_mode_normal();
       break;
-    case 1:
+  case 1: // 2LOW PASS 0IMPULSE
       domain_mode = (domain_mode & ~TD_FUNC) | TD_FUNC_LOWPASS_IMPULSE;
       ui_mode_normal();
       break;
-    case 2:
+  case 2: // 2LOW PASS 0STEP
       domain_mode = (domain_mode & ~TD_FUNC) | TD_FUNC_LOWPASS_STEP;
       ui_mode_normal();
       break;
-    case 3:
+  case 3: // BANDPASS
       domain_mode = (domain_mode & ~TD_FUNC) | TD_FUNC_BANDPASS;
       ui_mode_normal();
       break;
-    case 5:
+  case 5: // 2VELOCITY 0FACTOR
       status = btn_wait_release();
       if (status & EVT_BUTTON_DOWN_LONG) {
         ui_mode_numeric(KM_VELOCITY_FACTOR);
@@ -1604,10 +1612,10 @@ static void menu_apply_touch(void)
     int y = 32*i;
     if (y-2 < touch_y && touch_y < y+30+2
         && LCD_WIDTH-60 < touch_x) {
-		#else
-    	int y = 42*i;
-	if (y-2 < touch_y && touch_y < y+40+2
-		&& LCD_WIDTH-90 < touch_x) {
+    #else
+      int y = 42*i;
+  if (y-2 < touch_y && touch_y < y+40+2
+    && LCD_WIDTH-90 < touch_x) {
 #endif
       menu_select_touch(i);
       return;
@@ -1733,11 +1741,11 @@ static void set_numeric_value(void)
     velocity_factor = uistat.value;
     break;
   case KM_BRIGHTNESS:
-      uistat.value = (uistat.value < 800) ? 800: uistat.value;
-      uistat.value = (uistat.value > 3300) ? 3300: uistat.value;
-          	config.dac_value = uistat.value;
-          	dacPutChannelX(&DACD2, 0, uistat.value);
-      break
+    uistat.value = (uistat.value < 800) ? 800: uistat.value;
+    uistat.value = (uistat.value > 3300) ? 3300: uistat.value;
+    config.dac_value = uistat.value;
+    dacPutChannelX(&DACD2, 0, uistat.value);
+    break
   }
 }
 
@@ -1859,18 +1867,18 @@ static void ui_process_menu(void)
       do {
         if (status & EVT_UP){
             if (menu_stack[menu_current_level][selection+1].type == MT_NONE) {
-            	ui_mode_normal();
-            	return;
+              ui_mode_normal();
+              return;
             }
-            	selection++;
-          draw_menu();
+            selection++;
+            draw_menu();
         }
-        if (status & EVT_DOWN){
-        		if (selection == 0){
-        			ui_mode_normal();
-        			return;}
-          selection--;
-          draw_menu();
+        else if (status & EVT_DOWN){
+            if (selection == 0){
+              ui_mode_normal();
+              return;}
+            selection--;
+            draw_menu();
         }
         status = btn_wait_release();
       } while (status != 0);
@@ -1924,10 +1932,10 @@ static int keypad_click(int key)
       set_trace_scale(uistat.current_trace, value * 1e-12); // pico second
       break;
     case KM_BRIGHTNESS:
-    	value = (value < 800) ? 800: value;
-    	value = (value > 3300) ? 3300: value;
-    	config.dac_value = value;
-    	dacPutChannelX(&DACD2, 0, value);
+      value = (value < 800) ? 800: value;
+      value = (value > 3300) ? 3300: value;
+      config.dac_value = value;
+      dacPutChannelX(&DACD2, 0, value);
       break;
     }
 
@@ -2278,6 +2286,18 @@ void ui_process(void)
   operation_requested = OP_NONE;
 }
 
+#if defined (PAL_USE_CALLBACKS)
+// Use new pal API snce EXTI has been deprecated.
+palcallback_t switch_cb (void *arg) {
+  (void)arg;
+
+  chSysLockFromISR();
+  operation_requested = OP_LEVER;
+  //cur_button = READ_PORT() & BUTTON_MASK;
+  chSysUnlockFromISR();
+  return(NULL);
+}
+#else
 /* Triggered when the button is pressed or released. The LED4 is set to ON.*/
 static void extcb1(EXTDriver *extp, expchannel_t channel) {
   (void)extp;
@@ -2313,7 +2333,7 @@ static const EXTConfig extcfg = {
     {EXT_CH_MODE_DISABLED, NULL}
   }
 };
-
+#endif
 static const GPTConfig gpt3cfg = {
   1000,    /* 1kHz timer clock.*/
   NULL,   /* Timer callback.*/
@@ -2339,12 +2359,26 @@ void handle_touch_interrupt(void)
 void ui_init()
 {
   adc_init();
-  
+
+#if defined (PAL_USE_CALLBACKS)
+  /* Events initialization and registration.*/
+  //chEvtObjectInit(&button_pressed_event);
+  //chEvtRegister(&button_pressed_event, &el0, 0);
+  /* Enabling events on rising edge of the button lines.*/
+  palEnableLineEvent(LINE_UP, PAL_EVENT_MODE_RISING_EDGE);
+  palEnableLineEvent(LINE_DOWN, PAL_EVENT_MODE_RISING_EDGE);
+  palEnableLineEvent(LINE_PUSH,   PAL_EVENT_MODE_RISING_EDGE);
+  /* Assigning a callback. */
+  palSetLineCallback(LINE_UP, switch_cb, NULL);
+  palSetLineCallback(LINE_DOWN, switch_cb, NULL);
+  palSetLineCallback(LINE_PUSH,   switch_cb, NULL);
+#else
   /*
    * Activates the EXT driver 1.
    */
   extStart(&EXTD1, &extcfg);
-
+#endif
+  
 #if 1
   gptStart(&GPTD3, &gpt3cfg);
   gptPolledDelay(&GPTD3, 10); /* Small delay.*/

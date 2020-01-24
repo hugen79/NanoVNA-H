@@ -18,7 +18,6 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include <arm_math.h>
 #include "nanovna.h"
 
 #ifdef __DUMP_CMD__

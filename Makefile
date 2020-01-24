@@ -5,22 +5,18 @@
 
 #Build target
 ifeq ($(TARGET),)
-  TARGET = F072
+  TARGET = F303
 endif
 TARGET=F303
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
- ifeq ($(TARGET),F303)
-USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
- else
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
- endif
+  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16
 endif
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
-  USE_COPT =
+  USE_COPT = 
 endif
 
 # C++ specific options here (added to USE_OPT).
@@ -35,7 +31,7 @@ endif
 
 # Linker extra options here.
 ifeq ($(USE_LDOPT),)
-  USE_LDOPT =
+  USE_LDOPT = 
 endif
 
 # Enable this if you want link time optimizations (LTO)
@@ -74,19 +70,23 @@ endif
 # Stack size to be allocated to the Cortex-M process stack. This stack is
 # the stack used by the main() thread.
 ifeq ($(USE_PROCESS_STACKSIZE),)
-  USE_PROCESS_STACKSIZE = 0x200
+  USE_PROCESS_STACKSIZE = 0x400
 endif
 
 # Stack size to the allocated to the Cortex-M main/exceptions stack. This
 # stack is used for processing interrupts and exceptions.
 ifeq ($(USE_EXCEPTIONS_STACKSIZE),)
-  USE_EXCEPTIONS_STACKSIZE = 0x200
+  USE_EXCEPTIONS_STACKSIZE = 0x400
 endif
 
-ifeq ($(TARGET),F303)
-  USE_FPU = hard
-  USE_PROCESS_STACKSIZE = 0x400
-  USE_EXCEPTIONS_STACKSIZE = 0x400
+# Enables the use of FPU (no, softfp, hard).
+ifeq ($(USE_FPU),)
+  USE_FPU = no
+endif
+
+# FPU-related options.
+ifeq ($(USE_FPU_OPT),)
+  USE_FPU_OPT = -mfloat-abi=$(USE_FPU) -mfpu=fpv4-sp-d16 -fsingle-precision-constant
 endif
 
 #
@@ -102,32 +102,30 @@ PROJECT = ch
 
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
-CHIBIOS = ChibiOS
-PROJ = .
-# Startup files.
-# HAL-OSAL files (optional).
-ifeq ($(TARGET),F303)
- include $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk/startup_stm32f3xx.mk
- include $(CHIBIOS)/os/hal/hal.mk
- include $(CHIBIOS)/os/hal/ports/STM32/STM32F3xx/platform.mk
- include NANOVNA_STM32_F303/board.mk
-else
- include $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk/startup_stm32f0xx.mk
- include $(CHIBIOS)/os/hal/hal.mk
- include $(CHIBIOS)/os/hal/ports/STM32/STM32F0xx/platform.mk
- include NANOVNA_STM32_F072/board.mk
-endif
+CHIBIOS = ../ChibiOS_18.2.2
 
+PROJ = .
+
+# Licensing files.
+include $(CHIBIOS)/os/license/license.mk
+# Startup files.
+include $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk/startup_stm32f3xx.mk
+# HAL-OSAL files (optional).
+include $(CHIBIOS)/os/hal/hal.mk
+include $(CHIBIOS)/os/hal/ports/STM32/STM32F3xx/platform.mk
+include NANOVNA_STM32_F303/board.mk
+
+#include $(CHIBIOS)/os/hal/osal/rt-nil/osal.mk
 include $(CHIBIOS)/os/hal/osal/rt/osal.mk
 # RTOS files (optional).
 include $(CHIBIOS)/os/rt/rt.mk
-ifeq ($(TARGET),F303)
 include $(CHIBIOS)/os/common/ports/ARMCMx/compilers/GCC/mk/port_v7m.mk
-else
-include $(CHIBIOS)/os/common/ports/ARMCMx/compilers/GCC/mk/port_v6m.mk
-endif
+# Auto-build files in ./source recursively.
+include $(CHIBIOS)/tools/mk/autobuild.mk
 # Other files (optional).
-include $(CHIBIOS)/test/rt/test.mk
+include $(CHIBIOS)/test/lib/test.mk
+include $(CHIBIOS)/test/rt/rt_test.mk
+include $(CHIBIOS)/test/oslib/oslib_test.mk
 include $(CHIBIOS)/os/hal/lib/streams/streams.mk
 include $(CHIBIOS)/os/various/shell/shell.mk
 
@@ -140,23 +138,14 @@ endif
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
-CSRC = $(STARTUPSRC) \
-       $(KERNSRC) \
-       $(PORTSRC) \
-       $(OSALSRC) \
-       $(HALSRC) \
-       $(PLATFORMSRC) \
-       $(BOARDSRC) \
-       $(STREAMSSRC) \
-       $(SHELLSRC) \
+CSRC = $(ALLCSRC) \
+       $(TESTSRC) \
        usbcfg.c \
        main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font7x13b.c Font5x7.c flash.c adc.c
 
-#       $(TESTSRC) \
-
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
-CPPSRC =
+CPPSRC = $(ALLCPPSRC)
 
 # C sources to be compiled in ARM mode regardless of the global setting.
 # NOTE: Mixing ARM and THUMB mode enables the -mthumb-interwork compiler
@@ -179,26 +168,43 @@ TCSRC =
 TCPPSRC =
 
 # List ASM source files here
-ASMSRC = $(STARTUPASM) $(PORTASM) $(OSALASM)
+ASMSRC = $(ALLASMSRC)
+ASMXSRC = $(ALLXASMSRC)
 
-INCDIR = $(STARTUPINC) $(KERNINC) $(PORTINC) $(OSALINC) \
-         $(HALINC) $(PLATFORMINC) $(BOARDINC)  \
-         $(STREAMSINC) $(SHELLINC)
-# $(TESTINC)
+INCDIR = $(ALLINC) $(TESTINC)
 
 #
 # Project, sources and paths
 ##############################################################################
 
 ##############################################################################
+# Start of user section
+#
+
+# List all user C define here, like -D_DEBUG=1
+UDEFS =
+
+# Define ASM defines here
+UADEFS =
+
+# List all user directories here
+UINCDIR =
+
+# List the user directory to look for the libraries here
+ULIBDIR =
+
+# List all user libraries here
+ULIBS =
+
+#
+# End of user section
+##############################################################################
+
+##############################################################################
 # Compiler settings
 #
 
-ifeq ($(TARGET),F303)
- MCU  = cortex-m4
-else
- MCU  = cortex-m0
-endif
+MCU  = cortex-m4
 
 #TRGT = arm-elf-
 TRGT = arm-none-eabi-
@@ -240,23 +246,11 @@ CPPWARN = -Wall -Wextra -Wundef
 
 # List all user C define here, like -D_DEBUG=1
 ifeq ($(TARGET),F303)
- UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM4 -DVERSION=\"$(VERSION)\" -DNANOVNA_F303 -D__FPU_PRESENT -D__FPU_USED -DST7796S -DLED_OFF
-#-DILI9488
-#-DST7796S
+ UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DVERSION=\"$(VERSION)\" -DNANOVNA_F303 -DST7796S -DLED_OFF
 #-DLED_OFF
-#-DCH_DBG_STATISTICS 
 else
  UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0 -DVERSION=\"$(VERSION)\" 
 endif
-
-# Define ASM defines here
-UADEFS =
-
-# List all user directories here
-UINCDIR =
-
-# List the user directory to look for the libraries here
-ULIBDIR =
 
 # List all user libraries here
 ULIBS = -lm
@@ -265,6 +259,7 @@ ULIBS = -lm
 # End of user defines
 ##############################################################################
 
+#RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC
 include $(RULESPATH)/rules.mk
 

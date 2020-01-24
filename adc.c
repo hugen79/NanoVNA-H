@@ -47,11 +47,13 @@ static const ADCConversionGroup adcgrpcfgVBAT = {
    0,0,0}                       /* CHSELR */
 };
 
+adcerrorcallback_t adcerrorcallback(ADCDriver *adcp, adcerror_t err);
+
 static ADCConversionGroup adcgrpcfgTouch = {
   FALSE,
   1,
   NULL,                         /* adccallback_touch */
-  NULL,                         /* adcerrorcallback_touch */
+  adcerrorcallback,             /* adcerrorcallback_touch */
                                 /* CFGR    */
   ADC_CFGR_EXTEN_0     // rising edge of external trigger
   | ADC_CFGR_EXTSEL_2  // TIM3_TRGO
@@ -68,7 +70,7 @@ static ADCConversionGroup adcgrpcfgTouch = {
   }
 };
 
-static ADCConversionGroup adcgrpcfgXY = {
+static volatile ADCConversionGroup adcgrpcfgXY = {
   FALSE,
   1,
   NULL,                         /*adccallback_touch */
@@ -133,7 +135,7 @@ void adc_init(void)
 
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
-	/* ADC setup */
+  /* ADC setup */
 #ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgXY.sqr[0] = ADC_SQR1_SQ1_N(chsel);
@@ -207,9 +209,8 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
   if (vbat_raw < 100) {
     // maybe D2 is not installed
     return -1;
-  }
-	
-	return vbat_raw + config.vbat_offset;
+  }	
+  return vbat_raw + config.vbat_offset;
 }
 
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
@@ -275,6 +276,16 @@ void adc_stop(ADC_TypeDef *adc)
 #endif
 }
 
+adcerrorcallback_t adcerrorcallback(ADCDriver *adcp, adcerror_t err)
+{
+  (void)adcp;
+  if (err == ADC_ERR_AWD1) {
+    /* Analog watchdog1 error.*/
+    handle_touch_interrupt();
+  }
+  return(NULL);
+}
+
 void adc_interrupt(ADC_TypeDef *adc)
 {
  #ifdef NANOVNA_F303
@@ -305,6 +316,7 @@ void adc_interrupt(ADC_TypeDef *adc)
  #endif
 }
 
+#if 0
 OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
 {
   OSAL_IRQ_PROLOGUE();
@@ -313,3 +325,4 @@ OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
 
   OSAL_IRQ_EPILOGUE();
 }
+#endif

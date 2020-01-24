@@ -76,7 +76,7 @@ static bool si5351_wait_ready(void)
 {
     uint8_t status = 0xff;
     systime_t start = chVTGetSystemTime();
-    systime_t end = start + MS2ST(1000);     // 1000 ms timeout
+    systime_t end = chTimeAddX(start, TIME_MS2I(1000));     // 1000 ms timeout
     while (chVTIsSystemTimeWithin(start, end))
     {
         if(!si5351_bulk_read(0, &status, 1))
@@ -96,7 +96,7 @@ static void si5351_wait_pll_lock(void)
         status = 0xff;  // comm timeout
     if ((status & 0x60) == 0)
         return;
-    systime_t end = start + MS2ST(100);     // 100 ms timeout
+    systime_t end = chTimeAddX(start, TIME_MS2I(100));     // 100 ms timeout
     while (chVTIsSystemTimeWithin(start, end))
     {
         if(!si5351_bulk_read(0, &status, 1))

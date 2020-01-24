@@ -20,13 +20,14 @@
 #include "ch.h"
 #include "hal.h"
 #include "nanovna.h"
+#include "stm32_dma.h"
 
-#define RESET_ASSERT	palClearPad(GPIOA, 15)
-#define RESET_NEGATE	palSetPad(GPIOA, 15)
-#define CS_LOW			palClearPad(GPIOB, 6)
-#define CS_HIGH			palSetPad(GPIOB, 6)
-#define DC_CMD			palClearPad(GPIOB, 7)
-#define DC_DATA			palSetPad(GPIOB, 7)
+#define RESET_ASSERT	        palClearLine(LINE_LCD_RESET)
+#define RESET_NEGATE	        palSetLine(LINE_LCD_RESET)
+#define CS_LOW			palClearLine(LINE_LCD_CS)
+#define CS_HIGH			palSetLine(LINE_LCD_CS)
+#define DC_CMD			palClearLine(LINE_LCD_CD)
+#define DC_DATA			palSetLine(LINE_LCD_CD)
 
 uint16_t spi_buffer[SPI_BUFFER_SIZE];
 

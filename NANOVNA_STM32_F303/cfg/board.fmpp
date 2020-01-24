@@ -1,0 +1,16 @@
+sourceRoot: /home/kuohsing/Downloads/ChibiOS_18.2.2/tools/ftl/processors/boards/stm32f3xx/templates
+
+outputRoot: ..
+dataRoot: .
+
+freemarkerLinks: {
+    lib: /home/kuohsing/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/chibios_stable-18.2.x/tools/ftl/libs
+}
+
+data : {
+  doc1:xml (
+    board.chcfg.fixed
+    {
+    }
+  )
+}

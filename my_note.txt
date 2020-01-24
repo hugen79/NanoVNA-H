@@ -1,15 +1,21 @@
 # Launch OpenOCD
-cd ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/tools/openocd/scripts
-~/opt/xPacks/@gnu-mcu-eclipse/openocd/0.10.0-12.1/.content/bin/openocd -f board/stm32f3discovery.cfg
+#cd ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/tools/openocd/scripts
+#~/opt/xPacks/@gnu-mcu-eclipse/openocd/0.10.0-12.1/.content/bin/openocd -f board/stm32f3discovery.cfg
+
+~/opt/xPacks/@gnu-mcu-eclipse/openocd/0.10.0-12.1/.content/bin/openocd -f ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/tools/openocd/scripts/board/stm32f3discovery.cfg
 
 # Launch ChibiStudio
-cd ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio
-./ChibiStudio-GCC7.3.1 &
+#cd ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio
+#./ChibiStudio-GCC7.3.1 &
+~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/ChibiStudio-GCC7.3.1 &
 
 #Launch STM32CubeMX
 cd /usr/local/STMicroelectronics/STM32Cube/STM32CubeMX
 ./STM32CubeMX &
+/usr/local/STMicroelectronics/STM32Cube/STM32CubeMX/STM32CubeMX &
 
+# How to use ChibiSTudio
+https://www.playembedded.org/blog/debugging-stm32-chibistudio/
 cp hal_adc_lld.c.fixed ./ChibiOS/os/hal/ports/STM32/LLD/ADCv3/hal_adc_lld.c
 
 #Merge with upstream 

@@ -18,8 +18,14 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#include <stdio.h>
+#include <string.h>
 #include "ch.h"
 #include "hal.h"
+//#include "portab.h"
+
+#include "shell.h"
+#include "chprintf.h"
 #include "usbcfg.h"
 #include "si5351.h"
 #include "nanovna.h"
@@ -256,6 +262,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    #if 0
     if (argc == 1) {
         if (strcmp(argv[0], "dfu") == 0) {
             chprintf(chp, "Performing reset to DFU mode\r\n");
@@ -263,6 +270,7 @@ static void cmd_reset(BaseSequentialStream *chp, int argc, char *argv[])
             return;
         }
     }
+    #endif
 
     chprintf(chp, "Performing reset\r\n");
 
@@ -501,8 +509,9 @@ static const I2SConfig i2sconfig = {
   .tx_buffer    = NULL,                 // TX Buffer
   .rx_buffer    = rx_buffer,            // RX Buffer
   .size         = AUDIO_BUFFER_LEN * 2,
-  .tx_end_cb    = NULL,                 // tx callback
-  .rx_end_cb    = i2s_end_callback,     // rx callback
+  //  .tx_end_cb    = NULL,                 // tx callback
+  //  .rx_end_cb    = i2s_end_callback,     // rx callback
+  .end_cb       = i2s_end_callback,     // callback
   .i2scfgr      = 0,                    // i2scfgr
   .i2spr        = 2                     // i2spr
 };
@@ -2271,7 +2280,11 @@ int main(void)
    */
   plot_init();
 
+    chMtxObjectInit(&mutex_sweep);
+    chMtxObjectInit(&mutex_ili9341);
 
+    // MCO on PA8
+    //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
 
   /* initial frequencies */
   update_frequencies();
@@ -2280,8 +2293,24 @@ int main(void)
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
 
+    //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
+    //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
+    i2cStart(&I2CD1, &i2ccfg);
+    while (!si5351_init()) {
+        ili9341_drawstring_size("error: si5351_init failed", 0, 0, RGBHEX(0xff0000), 0x0000, 2);
+    }
 
+    /*
+    * Initialize graph plotting
+    */
+    plot_init();
 
+    /* initial frequencies */
+    update_frequencies();
+
+    /* restore frequencies and calibration properties from flash memory */
+    if (config.default_loadcal >= 0)
+      caldata_recall(config.default_loadcal);
 
   /*
    * I2S Initialize
