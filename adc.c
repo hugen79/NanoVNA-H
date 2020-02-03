@@ -48,7 +48,7 @@ static const ADCConversionGroup adcgrpcfgVBAT = {
 };
 
 static ADCConversionGroup adcgrpcfgTouch = {
-  FALSE,
+  TRUE,
   1,
   NULL,                         /* adccallback_touch */
   NULL,                         /* adcerrorcallback_touch */
@@ -219,12 +219,11 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 #ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
-  adcConvert(&ADCD2, &adcgrpcfgTouch, samples, 1);
-  chThdSleepMilliseconds(100);
+  chThdSleepMilliseconds(10);
   ADC2->ISR    = ADC_ISR_ADRDY;
-  ADC2->IER    = (ADC_IER_AWD1IE | ADC_IER_EOSMPIE);
+  ADC2->IER    = ADC_IER_AWD1IE;
   ADC2->CFGR  &= ~ADC_CFGR_DMAEN;
-  ADC2->CR |= ADC_CR_ADSTART;
+  adcStartConversion(&ADCD2, &adcgrpcfgTouch, samples, 1);
 #else
   cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
     | ADC_CFGR1_EXTEN_0 // rising edge of external trigger
@@ -250,7 +249,7 @@ void adc_stop(ADC_TypeDef *adc)
 {
 #ifdef NANOVNA_F303
  #if 1
-  adcStop(&ADCD2);
+  adcStopConversion(&ADCD2);
  #else
   if (ADC2->CR & ADC_CR_ADEN) {
     if (ADC2->CR & ADC_CR_ADSTART) {
