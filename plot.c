@@ -1464,6 +1464,33 @@ void request_to_draw_cells_behind_numeric_input(void)
   redraw_request |= REDRAW_CELLS;
 }
 
+static void frequency_string(char *buf, size_t len, int32_t freq)
+{
+  int l, i;
+  if (freq < 0) {
+    freq = -freq;
+    *buf++ = '-';
+    len -= 1;
+  }
+  if (freq < 1000) {
+    chsnprintf(buf, len, "%d Hz", (int)freq);
+  } else if (freq < 1000000) {
+    chsnprintf(buf, len, "%d.%03d kHz",
+             (int)(freq / 1000),
+             (int)(freq % 1000));
+  } else {
+    chsnprintf(buf, len, "%d.%03d %03d MHz",
+             (int)(freq / 1000000),
+             (int)((freq / 1000) % 1000),
+             (int)(freq % 1000));
+  }
+  l = strlen(buf);
+  for (i=l; i<len-1; i++) {
+    buf[i]=' ';
+  }
+  buf[len-1]=0;
+  return(0);
+}
 
 #if !(defined(ILI9488) || defined(ILI9486) || defined(ST7796S))
 static  void cell_drawchar_5x7(int w, int h, uint8_t ch, int x, int y, uint16_t fg, int invert)
@@ -1592,27 +1619,6 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
   }
 }
 
-static void frequency_string(char *buf, size_t len, int32_t freq)
-{
-  if (freq < 0) {
-    freq = -freq;
-    *buf++ = '-';
-    len -= 1;
-  }
-  if (freq < 1000) {
-    chsnprintf(buf, len, "%d Hz", (int)freq);
-  } else if (freq < 1000000) {
-    chsnprintf(buf, len, "%d.%03d kHz",
-             (int)(freq / 1000),
-             (int)(freq % 1000));
-  } else {
-    chsnprintf(buf, len, "%d.%03d %03d MHz",
-             (int)(freq / 1000000),
-             (int)((freq / 1000) % 1000),
-             (int)(freq % 1000));
-  }
-}
-
 void draw_frequencies(void)
 {
   char buf[24];
@@ -1622,22 +1628,22 @@ void draw_frequencies(void)
         int stop = frequency1;
         strcpy(buf, "START ");
         frequency_string(buf+6, 24-6, start);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
         frequency_string(buf+5, 24-5, stop);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
         frequency_string(buf+7, 24-7, fcenter);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "SPAN ");
         frequency_string(buf+5, 24-5, fspan);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
@@ -1832,6 +1838,7 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
 
 }
 
+#if 0
 static void frequency_string(char *buf, size_t len, int32_t freq)
 {
   if (freq < 0) {
@@ -1852,6 +1859,7 @@ static void frequency_string(char *buf, size_t len, int32_t freq)
              (int)(freq % 1000));
   }
 }
+#endif
 
 void draw_frequencies(void)
 {
@@ -1862,22 +1870,23 @@ void draw_frequencies(void)
         int stop = frequency1;
         strcpy(buf, "START ");
         frequency_string(buf+6, 24-6, start);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
         frequency_string(buf+5, 24-5, stop);
-        strcat(buf, "    ");
+        //strcat(buf, "    ");
         ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
         frequency_string(buf+7, 24-7, fcenter);
-        strcat(buf, "    ");
+        //strcat(buf, "  ");
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
+        strcpy(buf, "                       ");
         strcpy(buf, "SPAN ");
         frequency_string(buf+5, 24-5, fspan);
-        strcat(buf, "    ");
+        //strcat(buf, "  ");
         ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
@@ -1954,8 +1963,8 @@ void draw_battery_status(void)
     uint8_t vbati = vbat2bati(vbat);
     uint16_t col = vbati == 0 ? RGBHEX(0xff0000)  : RGBHEX(0x1fe300);
     if (palReadPort(GPIOA) & 0x0010) {
-       	col = RGBHEX(0xffff00);
-   	}
+      col = RGBHEX(0xffff00);
+    }
     memset(spi_buffer, 0, w * h * 2);
 
     // battery head
