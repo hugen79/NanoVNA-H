@@ -10,8 +10,8 @@
 ~/Downloads/ChibiStudio_Linux_Preview2/ChibiStudio/ChibiStudio-GCC7.3.1 &
 
 #Launch STM32CubeMX
-cd /usr/local/STMicroelectronics/STM32Cube/STM32CubeMX
-./STM32CubeMX &
+#cd /usr/local/STMicroelectronics/STM32Cube/STM32CubeMX
+#./STM32CubeMX &
 /usr/local/STMicroelectronics/STM32Cube/STM32CubeMX/STM32CubeMX &
 
 # How to use ChibiSTudio
@@ -35,6 +35,9 @@ Special ADC channels
 - VOPAMP2 connected to ADC2 channel 17
 - VREFOPAMP3 connected to ADC3 channel 17
 - VREFOPAMP4 connected to ADC4 channel 17
+
+ADC Analog Watchdog reference:
+http://www.chibios.com/forum/viewtopic.php?t=3959
 
 ~/Downloads/ChibiOS_18.2.2/testhal/STM32/STM32F3xx/ADC
 

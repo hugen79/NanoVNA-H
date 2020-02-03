@@ -33,7 +33,7 @@ static adcsample_t samplesVBAT[ADC_GRP_NUM_CHANNELS_VBAT*ADC_GRP_BUF_DEPTH_VBAT]
 static adcsample_t samples[2];
 
 static const ADCConversionGroup adcgrpcfgVBAT = {
-		FALSE,
+  FALSE,
   ADC_GRP_NUM_CHANNELS_VBAT,
   NULL,
   NULL,
@@ -49,9 +49,13 @@ static const ADCConversionGroup adcgrpcfgVBAT = {
 
 adcerrorcallback_t adcerrorcallback(ADCDriver *adcp, adcerror_t err);
 
+#define ADC_GRP_NUM_CHANNELS_TOUCH  1
+#define ADC_GRP_BUF_DEPTH_TOUCH     1
+static adcsample_t samplesTouch[ADC_GRP_NUM_CHANNELS_TOUCH*ADC_GRP_BUF_DEPTH_TOUCH];
+
 static ADCConversionGroup adcgrpcfgTouch = {
-  FALSE,
-  1,
+  TRUE,
+  ADC_GRP_NUM_CHANNELS_TOUCH,
   NULL,                         /* adccallback_touch */
   adcerrorcallback,             /* adcerrorcallback_touch */
                                 /* CFGR    */
@@ -220,12 +224,8 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 #ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
-  adcConvert(&ADCD2, &adcgrpcfgTouch, samples, 1);
-  chThdSleepMilliseconds(100);
-  ADC2->ISR    = ADC_ISR_ADRDY;
-  ADC2->IER    = (ADC_IER_AWD1IE | ADC_IER_EOSMPIE);
-  ADC2->CFGR  &= ~ADC_CFGR_DMAEN;
-  ADC2->CR |= ADC_CR_ADSTART;
+  ADC2->CFGR  &= ~ADC_CFGR_DMAEN; // No need to do DMA
+  adcStartConversion(&ADCD2, &adcgrpcfgTouch, samplesTouch, ADC_GRP_BUF_DEPTH_TOUCH);
 #else
   cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
     | ADC_CFGR1_EXTEN_0 // rising edge of external trigger
@@ -251,7 +251,7 @@ void adc_stop(ADC_TypeDef *adc)
 {
 #ifdef NANOVNA_F303
  #if 1
-  adcStop(&ADCD2);
+  adcStopConversion(&ADCD2);
  #else
   if (ADC2->CR & ADC_CR_ADEN) {
     if (ADC2->CR & ADC_CR_ADSTART) {
