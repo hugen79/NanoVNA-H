@@ -1629,22 +1629,18 @@ void draw_frequencies(void)
         int stop = frequency1;
         strcpy(buf, "START ");
         frequency_string(buf+6, BUF_LEN-6, start);
-        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
         frequency_string(buf+5, BUF_LEN-5, stop);
-        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
         frequency_string(buf+7, BUF_LEN-7, fcenter);
-        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "SPAN ");
         frequency_string(buf+5, BUF_LEN-5, fspan);
-        //strcat(buf, "    ");
         ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
@@ -1849,22 +1845,18 @@ void draw_frequencies(void)
         int stop = frequency1;
         strcpy(buf, "START ");
         frequency_string(buf+6, BUF_LEN-6, start);
-        //strcat(buf, "    ");
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
         frequency_string(buf+5, BUF_LEN-5, stop);
-        //strcat(buf, "    ");
         ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
         frequency_string(buf+7, BUF_LEN-7, fcenter);
-        //strcat(buf, "  ");
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
         strcpy(buf, "SPAN ");
         frequency_string(buf+5, BUF_LEN-5, fspan);
-        //strcat(buf, "  ");
         ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
