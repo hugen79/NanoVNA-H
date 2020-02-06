@@ -1485,11 +1485,11 @@ static void frequency_string(char *buf, size_t len, int32_t freq)
              (int)(freq % 1000));
   }
   l = strlen(buf);
-  for (i=l; i<len-1; i++) {
+  for (i=l; i<(int)len-1; i++) {
     buf[i]=' ';
   }
   buf[len-1]=0;
-  return(0);
+  return;
 }
 
 #if !(defined(ILI9488) || defined(ILI9486) || defined(ST7796S))
@@ -1621,48 +1621,45 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
 
 void draw_frequencies(void)
 {
-  char buf[24];
+  const int BUF_LEN=28;
+  char buf[28];
   if ((domain_mode & DOMAIN_MODE) == DOMAIN_FREQ) {
       if (frequency1 > 0) {
         int start = frequency0;
         int stop = frequency1;
         strcpy(buf, "START ");
-        frequency_string(buf+6, 24-6, start);
-        //strcat(buf, "    ");
+        frequency_string(buf+6, BUF_LEN-6, start);
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
-        frequency_string(buf+5, 24-5, stop);
-        //strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
+        frequency_string(buf+5, BUF_LEN-5, stop);
+        ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
-        frequency_string(buf+7, 24-7, fcenter);
-        //strcat(buf, "    ");
+        frequency_string(buf+7, BUF_LEN-7, fcenter);
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
         strcpy(buf, "SPAN ");
-        frequency_string(buf+5, 24-5, fspan);
-        //strcat(buf, "    ");
-        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
+        frequency_string(buf+5, BUF_LEN-5, fspan);
+        ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
-        chsnprintf(buf, 24, "CW %d.%03d %03d MHz    ",
+        chsnprintf(buf, BUF_LEN, "CW %d.%03d %03d MHz    ",
                    (int)(fcenter / 1000000),
                    (int)((fcenter / 1000) % 1000),
                    (int)(fcenter % 1000));
         ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
-        chsnprintf(buf, 24, "                             ");
-        ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
+        chsnprintf(buf, BUF_LEN, "                             ");
+        ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
       }
   } else {
       strcpy(buf, "START 0s        ");
       ili9341_drawstring_5x7(buf, OFFSETX, HEIGHT, 0xffff, 0x0000);
 
       strcpy(buf, "STOP ");
-      chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(POINT_COUNT-1) * 1e9));
+      chsnprintf(buf+5, BUF_LEN-5, "%d ns", (uint16_t)(time_of_index(POINT_COUNT-1) * 1e9));
       strcat(buf, "          ");
-      ili9341_drawstring_5x7(buf, 205, HEIGHT, 0xffff, 0x0000);
+      ili9341_drawstring_5x7(buf, 195, HEIGHT, 0xffff, 0x0000);
   }
 }
 
@@ -1838,74 +1835,47 @@ static void cell_draw_marker_info(int m, int n, int w, int h)
 
 }
 
-#if 0
-static void frequency_string(char *buf, size_t len, int32_t freq)
-{
-  if (freq < 0) {
-    freq = -freq;
-    *buf++ = '-';
-    len -= 1;
-  }
-  if (freq < 1000) {
-    chsnprintf(buf, len, "%d Hz", (int)freq);
-  } else if (freq < 1000000) {
-    chsnprintf(buf, len, "%d.%03d kHz",
-             (int)(freq / 1000),
-             (int)(freq % 1000));
-  } else {
-    chsnprintf(buf, len, "%d.%03d %03d MHz",
-             (int)(freq / 1000000),
-             (int)((freq / 1000) % 1000),
-             (int)(freq % 1000));
-  }
-}
-#endif
-
 void draw_frequencies(void)
 {
-  char buf[24];
+  const int BUF_LEN=28;
+  char buf[28];
   if ((domain_mode & DOMAIN_MODE) == DOMAIN_FREQ) {
       if (frequency1 > 0) {
         int start = frequency0;
         int stop = frequency1;
         strcpy(buf, "START ");
-        frequency_string(buf+6, 24-6, start);
-        //strcat(buf, "    ");
+        frequency_string(buf+6, BUF_LEN-6, start);
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
         strcpy(buf, "STOP ");
-        frequency_string(buf+5, 24-5, stop);
-        //strcat(buf, "    ");
-        ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
+        frequency_string(buf+5, BUF_LEN-5, stop);
+        ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
       } else if (frequency1 < 0) {
         int fcenter = frequency0;
         int fspan = -frequency1;
         strcpy(buf, "CENTER ");
-        frequency_string(buf+7, 24-7, fcenter);
-        //strcat(buf, "  ");
+        frequency_string(buf+7, BUF_LEN-7, fcenter);
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
-        strcpy(buf, "                       ");
         strcpy(buf, "SPAN ");
-        frequency_string(buf+5, 24-5, fspan);
-        //strcat(buf, "  ");
-        ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
+        frequency_string(buf+5, BUF_LEN-5, fspan);
+        ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
       } else {
         int fcenter = frequency0;
-        chsnprintf(buf, 24, "CW %d.%03d %03d MHz    ",
+        chsnprintf(buf, BUF_LEN, "CW %d.%03d %03d MHz    ",
                    (int)(fcenter / 1000000),
                    (int)((fcenter / 1000) % 1000),
                    (int)(fcenter % 1000));
         ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
-        chsnprintf(buf, 24, "                             ");
-        ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
+        chsnprintf(buf, BUF_LEN, "                             ");
+        ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
       }
   } else {
       strcpy(buf, "START 0s        ");
       ili9341_drawstring_7x13(buf, OFFSETX, HEIGHT+1, 0xffff, 0x0000);
 
       strcpy(buf, "STOP ");
-      chsnprintf(buf+5, 24-5, "%d ns", (uint16_t)(time_of_index(POINT_COUNT-1) * 1e9));
+      chsnprintf(buf+5, BUF_LEN-5, "%d ns", (uint16_t)(time_of_index(POINT_COUNT-1) * 1e9));
       strcat(buf, "            ");
-      ili9341_drawstring_7x13(buf, 310, HEIGHT+1, 0xffff, 0x0000);
+      ili9341_drawstring_7x13(buf, 280, HEIGHT+1, 0xffff, 0x0000);
   }
 }
 

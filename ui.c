@@ -1434,7 +1434,7 @@ static void draw_numeric_input(const char *buf)
   int i = 0;
   int x = 10 * FONT_WIDTH + 14;
   int focused = FALSE;
-  const uint16_t xsim[] = { 0, 0, 8, 0, 0, 8, 0, 0, 0, 0 };
+  const uint16_t xsim[] = { 8, 0, 0, 8, 0, 0, 8, 0, 0, 0 };
   for (i = 0; i < 10 && buf[i]; i++) {
     uint16_t fg = 0x0000;
     uint16_t bg = 0xffff;
@@ -1448,7 +1448,7 @@ static void draw_numeric_input(const char *buf)
     else
       c = -1;
 
-    if (uistat.digit == 8-i) {
+    if (uistat.digit == 9-i) {
       fg = RGBHEX(0xf7131f);
       focused = TRUE;
       if (uistat.digit_mode)
@@ -1745,8 +1745,8 @@ static void set_numeric_value(void)
 
 static void draw_numeric_area(void)
 {
-  char buf[10];
-  chsnprintf(buf, sizeof buf, "%9d", uistat.value);
+  char buf[11];
+  chsnprintf(buf, sizeof buf, "%10d", uistat.value);
   draw_numeric_input(buf);
 }
 
