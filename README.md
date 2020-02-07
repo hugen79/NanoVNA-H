@@ -1,29 +1,3 @@
-## About
-
-This is the fork-out of hugen79's NanoVNA-H branch F303 to support latest ChibiOS for his NanoVNA-H 4 board.  This will help develop support of new peripherals like UART, Bluetooth, SDC file system, etc, and enable developers to use the latest ChibiStudio features.  Later, I will add support for other STM32F4 and STM32L4 series MCUs.
-
-## Setups
-
-For ChibiOS, download the stable ChibiOS 18.2.x release from http://www.chibios.org download page listed below, then modify the Makefile to point to the location of your CHIBIOS path.
-
-```
-https://osdn.net/projects/chibios/downloads/70738/ChibiOS_18.2.2.7z/
-```
-
-Regarding the MCU board files for other MCus, refer to
-
-```
-https://github.com/AA6KL/NanoVNA-H4/blob/master/NANOVNA_STM32_F303/cfg/readme.txt
-```
-
-## Below is the original description.
-
-==========================================================
-
-
-NanoVNA-H 4 - handheld Vector Network Analyzer 
-==========================================================
-
 
 ## About
 
@@ -86,7 +60,7 @@ $ make
 
 ### Windows
 
-Follow [these instructions](https://gnu-mcu-eclipse.github.io/install/)to install gnu-mcu-eclipse.
+Follow [these instructions](https://gnu-mcu-eclipse.github.io/install/) to install gnu-mcu-eclipse.
 
 Existing Code as Makefile Projiect. Project > Properties > C/C++ Build > Setting: Confirm that Toolchains is "GNU MCU Eclipse ARM Embedded GCC (arm-none-eabi-gcc)"
 

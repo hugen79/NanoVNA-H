@@ -102,7 +102,7 @@ PROJECT = ch
 
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
-CHIBIOS = ../ChibiOS_18.2.2
+CHIBIOS = ChibiOS
 
 PROJ = .
 
