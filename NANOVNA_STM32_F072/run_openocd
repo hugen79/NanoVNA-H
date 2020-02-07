@@ -1,1 +1,0 @@
-~/opt/xPacks/@gnu-mcu-eclipse/openocd/0.10.0-12.1/.content/bin/openocd -f board/stm32f0discovery.cfg

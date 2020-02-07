@@ -33,7 +33,6 @@
  * main.c
  */
 
-#ifdef NANOVNA_F303
 #define STM32F303xC_SYSTEM_MEMORY 0x1FFFD800
 #define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20009FF0
 #define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
@@ -45,16 +44,8 @@ uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel);
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #define POINT_COUNT     101
 #define SPI_BUFFER_SIZE 2048
-#else
-#define STM32F072xB_SYSTEM_MEMORY 0x1FFFC800
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20003FF0
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
-#define SYSTEM_BOOT_MSP 0x20002250
-#define POINT_COUNT     101
-#define SPI_BUFFER_SIZE 1024
-#endif
 
-#if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
+
 #define LCD_WIDTH 480
 #define LCD_HEIGHT 320
 //#define SWEEP_POINTS 201
@@ -63,15 +54,6 @@ void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel);
 #define YSTEP LINE_SPACE
 //#define SPI_BUFFER_SIZE 2048
 void ili9341_test(int);
-#else
-#define LCD_WIDTH 320
-#define LCD_HEIGHT 240
-//#define SWEEP_POINTS 101
-#define LINE_SPACE 10
-#define X_SPACE 5
-#define YSTEP 7
-//#define SPI_BUFFER_SIZE 1024
-#endif
 #define MARKER_COUNT    4
 #define TRACE_COUNT     4
 
@@ -117,7 +99,6 @@ extern float measured[2][POINT_COUNT][2];
 
 #define FFT_SIZE 256
 
-#if defined(NANOVNA_F303) 
 #define ADC_ISR_ADRDY_Pos              (0U)                                    
 #define ADC_ISR_ADRDY_Msk              (0x1U << ADC_ISR_ADRDY_Pos)             /*!< 0x00000001 */
 #define ADC_ISR_ADRDY                  ADC_ISR_ADRDY_Msk                       /*!< ADC ready flag */
@@ -133,7 +114,6 @@ extern float measured[2][POINT_COUNT][2];
 #define ADC_IER_EOSMPIE_Pos            (1U)                                    
 #define ADC_IER_EOSMPIE_Msk            (0x1U << ADC_IER_EOSMPIE_Pos)           /*!< 0x00000002 */
 #define ADC_IER_EOSMPIE                ADC_IER_EOSMPIE_Msk                     /*!< ADC group regular end of sampling interrupt */
-#endif
 
 void cal_collect(int type);
 void cal_done(void);
@@ -194,15 +174,9 @@ extern void tlv320aic3204_select(int channel);
 #define GRIDY (LCD_HEIGHT/8-2)
 #define OFFSETY 0
 #define WIDTH (LCD_WIDTH-GRIDY)
-#if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
 #define FONT_HEIGHT 13
 #define FONT_WIDTH 7
 #define OFFSETX 21
-#else
-#define FONT_HEIGHT 7
-#define FONT_WIDTH 5
-#define OFFSETX 15
-#endif
 #define HEIGHT (GRIDY*8 +1)
 
 #define CELLOFFSETX 5
@@ -212,11 +186,7 @@ extern int area_width;
 extern int area_height;
 
 // font
-#if !defined(ST7796S)
-extern const uint8_t x5x7_bits [];
-#else
 extern const uint16_t x7x13b_bits [];
-#endif
 extern const uint8_t numfont20x22[][22 * 3];
 
 #define S_PI    "\034"
@@ -352,13 +322,9 @@ void ili9341_init(void);
 void ili9341_test(int mode);
 void ili9341_bulk(int x, int y, int w, int h);
 void ili9341_fill(int x, int y, int w, int h, int color);
-#if !defined(ST7796S)
-void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
-void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg);
-#else
+
 void ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg);
 void ili9341_drawstring_7x13(const char *str, int x, int y, uint16_t fg, uint16_t bg);
-#endif
 void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size);
 void ili9341_drawfont(uint8_t ch, const font_t *font, int x, int y, uint16_t fg, uint16_t bg);
@@ -479,13 +445,28 @@ void adc_stop(ADC_TypeDef *adc);
 void adc_interrupt(ADC_TypeDef *adc);
 int16_t adc_vbat_read(ADC_TypeDef *adc);
 int16_t adc_tjun_read(ADC_TypeDef *adc);
-#ifdef NANOVNA_F303
 #define ADC_CHSELR_VREFINT      ADC_CHANNEL_IN18
 #define ADC_CHSELR_VBAT         ADC_CHANNEL_IN17
-#else
-#define ADC_CHSELR_VREFINT      ADC_CHSELR_CHSEL17
-#define ADC_CHSELR_VBAT         ADC_CHSELR_CHSEL18
-#endif
+#define ADC_SMPR_SMP_247P5      6   /**< @brief 260 cycles conversion time. */
+#define ADC_SMPR_SMP_24P5       3   /**< @brief 37 cycles conversion time.  */
+
+
+#define rccEnableWWDG(lp) rccEnableAPB1(RCC_APB1ENR_WWDGEN, lp)
+#define ADC_CHSELR_CHSEL6  ADC_CHANNEL_IN3
+#define ADC_CHSELR_CHSEL7  ADC_CHANNEL_IN4
+#define ADC_SMPR_SMP_239P5      7U
+#define ADC_SMPR_SMP_28P5       3U  /**< @brief 41 cycles conversion time.  */
+#define ADC_CFGR_RES_12BIT             (0 << 3)
+/*
+msg_t adcConvert(ADCDriver *adcp,
+                   const ADCConversionGroup *grpp,
+                   adcsample_t *samples,
+                   size_t depth);
+*/
+#define  ADC_CR1_AWDEN                       ((uint32_t)0x00800000)  /*!< Analog watchdog enable on regular channels */
+//ADC_Common_TypeDef        *adcc;
+#define ADC_CHSELR_VREFINT      ADC_CHANNEL_IN18
+#define ADC_CHSELR_VBAT         ADC_CHANNEL_IN17
 
 /*
  * misclinous

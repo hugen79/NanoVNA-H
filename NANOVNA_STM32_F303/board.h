@@ -901,7 +901,6 @@ extern "C" {
 #endif
 #endif /* _FROM_ASM_ */
 
-#ifdef NANOVNA_F303
 /*
  * USB bus activation/de-activation macro, required by the USB driver.
  */
@@ -914,7 +913,6 @@ extern "C" {
 #else // USB_DP connect to VDD by 1.5K R, and USB_DP short with PA10
 #define usb_lld_connect_bus(usbp) palSetPadMode(GPIOA, GPIOA_USB_DISC, PAL_MODE_INPUT)
 #define usb_lld_disconnect_bus(usbp) palClearPad(GPIOA, GPIOA_USB_DISC)
-#endif
 #endif
 
 #endif /* BOARD_H */

@@ -3,12 +3,6 @@
 # NOTE: Can be overridden externally.
 #
 
-#Build target
-ifeq ($(TARGET),)
-  TARGET = F303
-endif
-TARGET=F303
-
 # Compiler options here.
 ifeq ($(USE_OPT),)
   USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16
@@ -130,18 +124,14 @@ include $(CHIBIOS)/os/hal/lib/streams/streams.mk
 include $(CHIBIOS)/os/various/shell/shell.mk
 
 # Define linker script file here
-ifeq ($(TARGET),F303)
  LDSCRIPT= STM32F303xC.ld
-else
- LDSCRIPT= STM32F072xB.ld
-endif
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
 CSRC = $(ALLCSRC) \
        $(TESTSRC) \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font7x13b.c Font5x7.c flash.c adc.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font7x13b.c  flash.c adc.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -245,12 +235,8 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-ifeq ($(TARGET),F303)
  UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DVERSION=\"$(VERSION)\" -DNANOVNA_F303 -DST7796S -DLED_OFF
-#-DLED_OFF
-else
- UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0 -DVERSION=\"$(VERSION)\" 
-endif
+
 
 # List all user libraries here
 ULIBS = -lm
@@ -273,10 +259,7 @@ gen_release:
 	./gen_dfu.sh
 
 TAGS: Makefile
-ifeq ($(TARGET),F303)
 	@etags *.[ch] NANOVNA_STM32_F303/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F3xx ChibiOS/os -name \*.\[ch\] -print) 
-else
-	@etags *.[ch] NANOVNA_STM32_F072/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F0xx ChibiOS/os -name \*.\[ch\] -print) 
-endif
+
 	@ls -l TAGS
 

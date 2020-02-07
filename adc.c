@@ -23,8 +23,27 @@
 #include <stdio.h> 
 #include <string.h> 
 
-#ifdef NANOVNA_F303
-#include "adc_F303.h"
+#define ADC_SMPR_SMP_247P5      6   /**< @brief 260 cycles conversion time. */
+#define ADC_SMPR_SMP_24P5       3   /**< @brief 37 cycles conversion time.  */
+
+
+#define rccEnableWWDG(lp) rccEnableAPB1(RCC_APB1ENR_WWDGEN, lp)
+#define ADC_CHSELR_CHSEL6  ADC_CHANNEL_IN3
+#define ADC_CHSELR_CHSEL7  ADC_CHANNEL_IN4
+#define ADC_SMPR_SMP_239P5      7U
+#define ADC_SMPR_SMP_28P5       3U  /**< @brief 41 cycles conversion time.  */
+#define ADC_CFGR_RES_12BIT             (0 << 3)
+/*
+msg_t adcConvert(ADCDriver *adcp,
+                   const ADCConversionGroup *grpp,
+                   adcsample_t *samples,
+                   size_t depth);
+*/
+#define  ADC_CR1_AWDEN                       ((uint32_t)0x00800000)  /*!< Analog watchdog enable on regular channels */
+//ADC_Common_TypeDef        *adcc;
+#define ADC_CHSELR_VREFINT      ADC_CHANNEL_IN18
+#define ADC_CHSELR_VBAT         ADC_CHANNEL_IN17
+
 
 #define ADC_SMPR_SMP_TIME           ADC_SMPR_SMP_61P5
 #define ADC_GRP_NUM_CHANNELS_VBAT   3
@@ -91,76 +110,25 @@ static volatile ADCConversionGroup adcgrpcfgXY = {
   }
 };
 
-#else
-#define ADC_TR(low, high)               (((uint32_t)(high) << 16U) |        \
-                                         (uint32_t)(low))
-#define ADC_SMPR_SMP_1P5        0U  /**< @brief 14 cycles conversion time   */
-#define ADC_SMPR_SMP_239P5      7U  /**< @brief 252 cycles conversion time. */ 
-#define ADC_CFGR1_RES_12BIT             (0U << 3U)
-#endif
 
 void adc_init(void)
 {
-#ifdef NANOVNA_F303
-  // adcStart(&ADCD2, NULL);
   adcStart(&ADCD1, NULL);
   #ifdef F303_ADC_VREF_ALWAYS_ON
   adcSTM32EnableVBAT(&ADCD1);
   adcSTM32EnableVREF(&ADCD1);
   adcSTM32EnableTS(&ADCD1);
   #endif
-#else
-  rccEnableADC1(FALSE);
-
-  /* Ensure flag states */
-  ADC1->IER = 0;
-
-  /* Calibration procedure.*/
-  ADC->CCR = 0;
-  if (ADC1->CR & ADC_CR_ADEN) {
-      ADC1->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
-  }
-  while (ADC1->CR & ADC_CR_ADEN)
-    ;
-  ADC1->CFGR1 &= ~ADC_CFGR1_DMAEN;
-  ADC1->CR |= ADC_CR_ADCAL;
-  while (ADC1->CR & ADC_CR_ADCAL)
-    ;
-
-  if (ADC1->ISR & ADC_ISR_ADRDY) {
-      ADC1->ISR |= ADC_ISR_ADRDY; /* clear ADRDY */
-  }
-  /* Enable ADC */
-  ADC1->CR |= ADC_CR_ADEN;
-  while (!(ADC1->ISR & ADC_ISR_ADRDY))
-    ;
-#endif
 }
 
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
   /* ADC setup */
-#ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgXY.sqr[0] = ADC_SQR1_SQ1_N(chsel);
   adcConvert(&ADCD2, &adcgrpcfgXY, samples, 1);
   return(samples[0]); 
-#else
-  adc->ISR    = adc->ISR;
-  adc->IER    = 0;
-  adc->TR     = ADC_TR(0, 0);
-  adc->SMPR   = ADC_SMPR_SMP_239P5;
-  adc->CFGR1  = ADC_CFGR1_RES_12BIT;
-  adc->CHSELR = chsel;
 
-  /* ADC conversion start.*/
-  adc->CR |= ADC_CR_ADSTART;
-
-  while (adc->CR & ADC_CR_ADSTART)
-    ;
-
-  return adc->DR;
-#endif  
 }
 
 int16_t adc_vbat_read(ADC_TypeDef *adc)
@@ -182,7 +150,6 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
   float vbat = 0;
   float vrefint = 0;
   float ts = 0;
-#ifdef NANOVNA_F303
  #ifndef F303_ADC_VREF_ALWAYS_ON
   adcSTM32EnableVBAT(&ADCD1);
   adcSTM32EnableVREF(&ADCD1);
@@ -200,15 +167,6 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
   uint16_t vts = (ADC_FULL_SCALE * VREFINT_CAL * ts / (vrefint * ((1<<12)-1)));
   uint16_t TemperatureC2 = (uint16_t)((V25-ts)/Avg_Slope+25);
   uint16_t TemperatureC = (uint16_t)((V25-ts)/avg_slope+25);
-#else
-  ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_VBATEN;
-  // VREFINT == ADC_IN17
-  vrefint = adc_single_read(adc, ADC_CHSELR_VREFINT);
-  // VBAT == ADC_IN18
-  // VBATEN enables resister divider circuit. It consumes vbat power.
-  vbat = adc_single_read(adc, ADC_CHSELR_VBAT);
-  ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_VBATEN);
-#endif
   uint16_t vbat_raw = (ADC_FULL_SCALE * VREFINT_CAL * vbat * 2 / (vrefint * ((1<<12)-1)));
   if (vbat_raw < 100) {
     // maybe D2 is not installed
@@ -220,60 +178,15 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 {
   uint32_t cfgr1;
-
-#ifdef NANOVNA_F303
   adcStart(&ADCD2, NULL);
   adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
   ADC2->CFGR  &= ~ADC_CFGR_DMAEN; // No need to do DMA
   adcStartConversion(&ADCD2, &adcgrpcfgTouch, samplesTouch, ADC_GRP_BUF_DEPTH_TOUCH);
-#else
-  cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
-    | ADC_CFGR1_EXTEN_0 // rising edge of external trigger
-    | ADC_CFGR1_EXTSEL_0 | ADC_CFGR1_EXTSEL_1; // TRG3  , /* CFGR1 */
-
-  /* ADC setup, if it is defined a callback for the analog watch dog then it
-     is enabled.*/
-  adc->ISR    = adc->ISR;
-  adc->IER    = ADC_IER_AWDIE;
-  adc->TR     = ADC_TR(0, TOUCH_THRESHOLD);
-  adc->SMPR   = ADC_SMPR_SMP_1P5;
-  adc->CHSELR = chsel;
-
-  /* ADC configuration and start.*/
-  adc->CFGR1  = cfgr1;
-
-  /* ADC conversion start.*/
-  adc->CR |= ADC_CR_ADSTART;
-#endif
 }
 
 void adc_stop(ADC_TypeDef *adc)
 {
-#ifdef NANOVNA_F303
- #if 1
   adcStopConversion(&ADCD2);
- #else
-  if (ADC2->CR & ADC_CR_ADEN) {
-    if (ADC2->CR & ADC_CR_ADSTART) {
-      ADC2->CR |= ADC_CR_ADSTP;
-      while (ADC2->CR & ADC_CR_ADSTP)
-        ;
-    }
-  }
- #endif
-#else
-  if (adc->CR & ADC_CR_ADEN) {
-    if (adc->CR & ADC_CR_ADSTART) {
-      adc->CR |= ADC_CR_ADSTP;
-      while (adc->CR & ADC_CR_ADSTP)
-        ;
-    }
-
-    /*    adc->CR |= ADC_CR_ADDIS;
-    while (adc->CR & ADC_CR_ADDIS)
-    ;*/
-  }
-#endif
 }
 
 adcerrorcallback_t adcerrorcallback(ADCDriver *adcp, adcerror_t err)
@@ -288,7 +201,6 @@ adcerrorcallback_t adcerrorcallback(ADCDriver *adcp, adcerror_t err)
 
 void adc_interrupt(ADC_TypeDef *adc)
 {
- #ifdef NANOVNA_F303
   uint32_t isr = ADC2->ISR;
   
   ADC2->ISR = isr;
@@ -300,29 +212,6 @@ void adc_interrupt(ADC_TypeDef *adc)
     /* Analog watchdog error.*/
     handle_touch_interrupt();
   }
- #else
-  uint32_t isr = adc->ISR;
-  adc->ISR = isr;
 
-  if (isr & ADC_ISR_OVR) {
-    /* ADC overflow condition, this could happen only if the DMA is unable
-       to read data fast enough.*/
-    
-  }
-  if (isr & ADC_ISR_AWD) {
-    /* Analog watchdog error.*/
-    handle_touch_interrupt();
-  }
- #endif
 }
 
-#if 0
-OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
-{
-  OSAL_IRQ_PROLOGUE();
-
-  adc_interrupt(ADC1);
-
-  OSAL_IRQ_EPILOGUE();
-}
-#endif

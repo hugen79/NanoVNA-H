@@ -44,11 +44,7 @@
  * @brief   Enables the ADC subsystem.
  */
 #if !defined(HAL_USE_ADC) || defined(__DOXYGEN__)
-#if defined(NANOVNA_F303) 
 #define HAL_USE_ADC                 TRUE
-#else
-#define HAL_USE_ADC                 FALSE
-#endif
 #endif
 
 /**

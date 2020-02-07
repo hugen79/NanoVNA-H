@@ -228,7 +228,7 @@ static const uint8_t ili9341_init_seq[] = {
 		0 // sentinel
 };
 
-const uint8_t ili9488_init_seq[] = {
+const uint8_t st7796s_init_seq[] = {
   //Interface Mode Control
   0xB0,1,0x00,
   //Frame Rate
@@ -253,11 +253,7 @@ const uint8_t ili9488_init_seq[] = {
   //0x36, 1, 0x20,  // landscape, RGB
   //16bpp DPI and DBI and
   //Interface Pixel Format	
-  #if defined(ILI9488)
-  0x3A, 1, 0x66,
-  #else
   0x3A, 1, 0x55,
-  #endif
   //default gamma	
     // 0xC0, 2, 0x18, 0x16,
     // 0xBE, 2, 0x00, 0x04,
@@ -286,7 +282,7 @@ const uint8_t ili9488_init_seq[] = {
 
 
 
-void ili9341_init(void)
+void ili9341_init(void) //st7796s_init
 {
     chMtxLock(&mutex_ili9341);
     spi_init();
@@ -301,11 +297,7 @@ void ili9341_init(void)
   send_command(0x28, 0, NULL); // display off
 
   const uint8_t *p;
-  #if defined(ILI9488) || defined(ILI9486) || defined(ST7796S)
-  for (p = ili9488_init_seq; *p; ) {
-  #else
-  for (p = ili9341_init_seq; *p; ) {
-  #endif
+  for (p = st7796s_init_seq; *p; ) {
     send_command(p[0], p[1], &p[2]);
     p += 2 + p[1];
     chThdSleepMilliseconds(5);
@@ -468,66 +460,6 @@ void ili9341_read_memory_continue(int len, uint16_t* out)
     chMtxUnlock(&mutex_ili9341);
 }
 
-#if !defined(ST7796S)
-void ili9341_drawchar_5x7(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
-{
-    chMtxLock(&mutex_ili9341);
-    uint16_t *buf = spi_buffer;
-    uint8_t bits;
-    int c, r;
-    for(c = 0; c < 7; c++) {
-        bits = x5x7_bits[(ch * 7) + c];
-        for (r = 0; r < 5; r++) {
-            *buf++ = (0x80 & bits) ? fg : bg;
-            bits <<= 1;
-        }
-    }
-    ili9341_bulk(x, y, 5, 7);
-    chMtxUnlock(&mutex_ili9341);
-}
-
-void ili9341_drawstring_5x7(const char *str, int x, int y, uint16_t fg, uint16_t bg)
-{
-    chMtxLock(&mutex_ili9341);
-    while (*str) {
-        ili9341_drawchar_5x7(*str, x, y, fg, bg);
-        x += 5;
-        str++;
-    }
-    chMtxUnlock(&mutex_ili9341);
-}
-
-void ili9341_drawchar_size(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
-{
-    chMtxLock(&mutex_ili9341);
-    uint16_t *buf = spi_buffer;
-    uint8_t bits;
-    int c, r;
-    for(c = 0; c < 7*size; c++) {
-        bits = x5x7_bits[(ch * 7) + (c / size)];
-        for (r = 0; r < 5*size; r++) {
-            *buf++ = (0x80 & bits) ? fg : bg;
-            if (r % size == (size-1)) {
-                bits <<= 1;
-            }
-        }
-    }
-    ili9341_bulk(x, y, 5*size, 7*size);
-    chMtxUnlock(&mutex_ili9341);
-}
-
-void ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg, uint8_t size)
-{
-    chMtxLock(&mutex_ili9341);
-    while (*str) {
-        ili9341_drawchar_size(*str, x, y, fg, bg, size);
-        x += 5 * size;
-        str++;
-    }
-    chMtxUnlock(&mutex_ili9341);
-}
-
-#else
 
 void ili9341_drawchar_7x13(uint8_t ch, int x, int y, uint16_t fg, uint16_t bg)
 {
@@ -588,7 +520,6 @@ ili9341_drawstring_size(const char *str, int x, int y, uint16_t fg, uint16_t bg,
   }
   chMtxUnlock(&mutex_ili9341);
 }
-#endif
 
 
 #define SWAP(x,y) { int z=x; x = y; y = z; }

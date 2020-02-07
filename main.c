@@ -30,9 +30,6 @@
 #include "si5351.h"
 #include "nanovna.h"
 #include "fft.h"
-#if defined(NANOVNA_F303) 
-#include "adc_F303.h"
-#endif
 
 #include <chprintf.h>
 #include <shell.h>
@@ -658,11 +655,7 @@ config_t config = {
   .menu_normal_color = 0xffff,
   .menu_active_color = 0x7777,
   .trace_color =       { RGBHEX(0xffe31f), RGBHEX(0x00bfe7), RGBHEX(0x1fe300), RGBHEX(0xe7079f) },
-#if !defined(ST7796S)
-  .touch_cal =         { 370, 540, 154, 191 },  //{ 620, 600, 160, 190 },
-#else
   .touch_cal =         { 274, 320, 110, 158 },  //4.0" LCD
-#endif
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
   .vbat_offset =       480,
@@ -2209,14 +2202,9 @@ static const ShellConfig shell_cfg1 =
 };
 
 static const I2CConfig i2ccfg = {
-#ifdef NANOVNA_F303
 	.timingr  = STM32_TIMINGR_PRESC(8U)  |            /* 72MHz/9 = 8MHz I2CCLK.           */
   STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |
   STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U),
-#else
-  .timingr  = 0x00300506, //voodoo magic 400kHz @ HSI 8MHz
-#endif
-
   .cr1      = 0,
   .cr2      = 0
 };
