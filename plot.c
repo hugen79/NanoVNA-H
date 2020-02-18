@@ -918,6 +918,7 @@ static void cell_drawline(int w, int h, int x0, int y0, int x1, int y1, int c)
 
   dy *= sy;
 
+  chMtxLock(&mutex_ili9341);
   if (dx >= dy) {
       e = dy * 2 - dx;
       while (x0 != x1) {
@@ -943,6 +944,7 @@ static void cell_drawline(int w, int h, int x0, int y0, int x1, int y1, int c)
       }
       if (y0 >= 0 && y0 < h && x0 >= 0 && x0 < w)  spi_buffer[y0*w+x0] |= c;
   }
+  chMtxUnlock(&mutex_ili9341);
 }
  #if 0
 int
@@ -1027,6 +1029,7 @@ static void draw_refpos(int w, int h, int x, int y, int c)
   int i, j;
   if (y < -3 || y > 32 + 3)
     return;
+  chMtxLock(&mutex_ili9341);
   for (j = 0; j < 3; j++) {
     int j0 = 6 - j*2;
     for (i = 0; i < j0; i++) {
@@ -1039,6 +1042,7 @@ static void draw_refpos(int w, int h, int x, int y, int c)
         spi_buffer[y1*w+x0] = c;
     }
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 
 
@@ -1062,6 +1066,7 @@ static void cell_draw_refpos(int m, int n, int w, int h)
 static void draw_marker(int w, int h, int x, int y, int c, int ch)
 {
   int i, j;
+  chMtxLock(&mutex_ili9341);
   for (j = FONT_HEIGHT+3; j >= 0; j--) {
     int j0 = j / 2;
     for (i = -j0; i <= j0; i++) {
@@ -1084,6 +1089,7 @@ static void draw_marker(int w, int h, int x, int y, int c, int ch)
         spi_buffer[y0*w+x0] = cc;
     }
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 
 void marker_position(int m, int t, int *x, int *y)
@@ -1238,15 +1244,15 @@ static void markmap_marker(int marker)
         int m = x>>5;
         int n = y>>5;
         mark_map(m, n);
-        if ((x&31) < 6)
+        if ((x&31) < (FONT_HEIGHT+5)/2)
             mark_map(m-1, n);
-        if ((x&31) > 32-6)
+        if ((x&31) > 32-(FONT_HEIGHT+5)/2)
             mark_map(m+1, n);
-        if ((y&31) < 12) {
+        if ((y&31) < (FONT_HEIGHT+5)) {
             mark_map(m, n-1);
-            if ((x&31) < 6)
+            if ((x&31) < (FONT_HEIGHT+5)/2)
                 mark_map(m-1, n-1);
-            if ((x&31) > 32-6)
+            if ((x&31) > 32-(FONT_HEIGHT+5)/2)
                 mark_map(m+1, n-1);
         }
     }
@@ -1499,6 +1505,7 @@ static  void cell_drawchar_5x7(int w, int h, uint8_t ch, int x, int y, uint16_t 
   int c, r;
   if (y <= -7 || y >= h || x <= -5 || x >= w)
     return;
+  chMtxLock(&mutex_ili9341);
   for(c = 0; c < 7; c++) {
     if ((y + c) < 0 || (y + c) >= h)
       continue;
@@ -1511,6 +1518,7 @@ static  void cell_drawchar_5x7(int w, int h, uint8_t ch, int x, int y, uint16_t 
       bits <<= 1;
     }
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 
 static void cell_drawstring_5x7(int w, int h, char *str, int x, int y, uint16_t fg)
@@ -1709,6 +1717,7 @@ static void cell_drawchar_7x13(int w, int h, uint8_t ch, int x, int y, uint16_t 
   int c, r;
   if (y <= -13 || y >= h || x <= -7 || x >= w)
     return;
+  chMtxLock(&mutex_ili9341);
   for(c = 0; c < 13; c++) {
     if ((y + c) < 0 || (y + c) >= h)
       continue;
@@ -1721,6 +1730,7 @@ static void cell_drawchar_7x13(int w, int h, uint8_t ch, int x, int y, uint16_t 
       bits <<= 1;
     }
   }
+  chMtxUnlock(&mutex_ili9341);
 }
 
 static void cell_drawstring_7x13(int w, int h, char *str, int x, int y, uint16_t fg)
@@ -1994,7 +2004,7 @@ void draw_battery_status(void)
         buf[y * w + x++] = col;
 
     ili9341_bulk(0, 1, w, h);
-chMtxUnlock(&mutex_ili9341); // [/protect spi_buffer]
+    chMtxUnlock(&mutex_ili9341); // [/protect spi_buffer]
 }
 
 void
