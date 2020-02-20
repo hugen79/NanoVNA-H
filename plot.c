@@ -1207,7 +1207,7 @@ static void cell_draw_markers(int m, int n, int w, int h)
       uint32_t index = trace_index[t][markers[i].index];
       int x = CELL_X(index) - x0;
       int y = CELL_Y(index) - y0;
-      if (x >= (-(FONT_HEIGHT+3)/2) && x <= w+(FONT_HEIGHT+3)/2 && y >= 0 && y <= h+FONT_HEIGHT+3)
+      if (x >= -8 && x <= w+8 && y >= 0 && y <= h+16)
 
         draw_marker(w, h, x, y, config.trace_color[t], '1' + i);
 
@@ -1232,15 +1232,15 @@ static void markmap_marker(int marker)
         int m = x>>5;
         int n = y>>5;
         mark_map(m, n);
-        if ((x&31) < 6)
+        if ((x&31) <= 8)
             mark_map(m-1, n);
-        if ((x&31) > 32-6)
+        if ((x&31) >= 32-8)
             mark_map(m+1, n);
-        if ((y&31) < 12) {
+        if ((y&31) <= 16) {
             mark_map(m, n-1);
-            if ((x&31) < 6)
+            if ((x&31) <= 8)
                 mark_map(m-1, n-1);
-            if ((x&31) > 32-6)
+            if ((x&31) >= 32-8)
                 mark_map(m+1, n-1);
         }
     }

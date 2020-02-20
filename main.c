@@ -658,7 +658,7 @@ config_t config = {
   .touch_cal =         { 274, 320, 110, 158 },  //4.0" LCD
   .default_loadcal =   0,
   .harmonic_freq_threshold = 300000000,
-  .vbat_offset =       480,
+  .vbat_offset =       380,
   .checksum =          0
 };
 
@@ -2263,30 +2263,13 @@ int main(void)
     usbStart(serusbcfg.usbp, &usbcfg);
     usbConnectBus(serusbcfg.usbp);
 
-  /*
-   * Initialize graph plotting
-   */
-  plot_init();
 
-    chMtxObjectInit(&mutex_sweep);
-    chMtxObjectInit(&mutex_ili9341);
 
-    // MCO on PA8
-    //palSetPadMode(GPIOA, 8, PAL_MODE_ALTERNATE(0));
-
-  /* initial frequencies */
-  update_frequencies();
 
   /* restore frequencies and calibration properties from flash memory */
   if (config.default_loadcal >= 0)
     caldata_recall(config.default_loadcal);
 
-    //palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
-    //palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(1) | PAL_STM32_OTYPE_OPENDRAIN);
-    i2cStart(&I2CD1, &i2ccfg);
-    while (!si5351_init()) {
-        ili9341_drawstring_size("error: si5351_init failed", 0, 0, RGBHEX(0xff0000), 0x0000, 2);
-    }
 
     /*
     * Initialize graph plotting
@@ -2296,9 +2279,6 @@ int main(void)
     /* initial frequencies */
     update_frequencies();
 
-    /* restore frequencies and calibration properties from flash memory */
-    if (config.default_loadcal >= 0)
-      caldata_recall(config.default_loadcal);
 
   /*
    * I2S Initialize

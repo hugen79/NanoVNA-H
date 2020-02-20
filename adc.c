@@ -113,6 +113,7 @@ static volatile ADCConversionGroup adcgrpcfgXY = {
 
 void adc_init(void)
 {
+  adcStart(&ADCD2, NULL);
   adcStart(&ADCD1, NULL);
   #ifdef F303_ADC_VREF_ALWAYS_ON
   adcSTM32EnableVBAT(&ADCD1);
@@ -124,7 +125,6 @@ void adc_init(void)
 uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
 {
   /* ADC setup */
-  adcStart(&ADCD2, NULL);
   adcgrpcfgXY.sqr[0] = ADC_SQR1_SQ1_N(chsel);
   adcConvert(&ADCD2, &adcgrpcfgXY, samples, 1);
   return(samples[0]); 
@@ -178,7 +178,6 @@ int16_t adc_vbat_read(ADC_TypeDef *adc)
 void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
 {
   uint32_t cfgr1;
-  adcStart(&ADCD2, NULL);
   adcgrpcfgTouch.sqr[0] = ADC_SQR1_SQ1_N(chsel);
   ADC2->CFGR  &= ~ADC_CFGR_DMAEN; // No need to do DMA
   adcStartConversion(&ADCD2, &adcgrpcfgTouch, samplesTouch, ADC_GRP_BUF_DEPTH_TOUCH);

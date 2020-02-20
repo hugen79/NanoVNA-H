@@ -476,10 +476,10 @@ msg_t adcConvert(ADCDriver *adcp,
 // convert vbat [mV] to battery indicator
 static inline uint8_t vbat2bati(int16_t vbat)
 {
-	if (vbat < 3200) return 0;
-	if (vbat < 3450) return 25;
-	if (vbat < 3700) return 50;
-	if (vbat < 4100) return 75;
+	if (vbat < 3400) return 0; //NanoVNA-H4 uses a larger capacity battery with less internal resistance
+	if (vbat < 3800) return 25;
+	if (vbat < 4000) return 50;
+	if (vbat < 4200) return 75;
 	return 100;
 }
 
