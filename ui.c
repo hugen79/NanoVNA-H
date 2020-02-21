@@ -31,7 +31,6 @@ uistat_t uistat = {
  current_trace: 0,
  lever_mode: LM_MARKER,
  marker_delta: FALSE,
- marker_smith_format: MS_RLC
 };
 
 
@@ -1134,7 +1133,7 @@ menu_marker_search_cb(int item)
 static void
 menu_marker_smith_cb(int item)
 {
-  uistat.marker_smith_format = item;
+  current_props._marker_smith_format = item;
   redraw_marker(active_marker, TRUE);
   draw_menu();
 }

@@ -684,6 +684,7 @@ properties_t current_props = {
   ._active_marker =        0,
   ._domain_mode =          0,
   ._velocity_factor =     70,
+  ._marker_smith_format = MS_RLC,
   .checksum =              0
 };
 properties_t *active_props = &current_props;
