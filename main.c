@@ -161,14 +161,17 @@ static void transform_domain(void)
     switch (domain_mode & TD_WINDOW) {
         case TD_WINDOW_MINIMUM:
             beta = 0.0; // this is rectangular
+            // loss by zero-padding 202 to 256 points
             wincorr = (float)FFT_SIZE / (float)(2*POINT_COUNT);
             break;
         case TD_WINDOW_NORMAL:
             beta = 6.0;
+            // additional window loss: 1/mean(kaiser(202,6)) = 2.01
             wincorr = (float)FFT_SIZE / (float)(2*POINT_COUNT) * 2.01f;
             break;
         case TD_WINDOW_MAXIMUM:
             beta = 13;
+            // additional window loss: 1/mean(kaiser(202,13)) = 2.92
             wincorr = (float)FFT_SIZE / (float)(2*POINT_COUNT) * 2.92f;
             break;
     }
