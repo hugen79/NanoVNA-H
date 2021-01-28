@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2014-2015, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
+ * Copyright (c) 2019-2020, Dmitry (DiSlord) dislordlive@gmail.com
+ * Based on TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
  * This is free software; you can redistribute it and/or modify
@@ -28,142 +29,148 @@
 #define ADC_SMPR_SMP_239P5      7U  /**< @brief 252 cycles conversion time. */ 
 #define ADC_CFGR1_RES_12BIT             (0U << 3U)
 
+// External Event Select for regular group
+#define ADC_TIM1_TRGO  0                                       // 0b000
+#define ADC_TIM1_CC4   (ADC_CFGR1_EXTSEL_0)                    // 0b001
+#define ADC_TIM2_TRGO  (ADC_CFGR1_EXTSEL_1)                    // 0b010
+#define ADC_TIM3_TRGO  (ADC_CFGR1_EXTSEL_1|ADC_CFGR1_EXTSEL_0) // 0b011
+#define ADC_TIM15_TRGO (ADC_CFGR1_EXTSEL_2)                    // 0b100
+
+#define VNA_ADC     ADC1
+
 void adc_init(void)
 {
   rccEnableADC1(FALSE);
 
   /* Ensure flag states */
-  ADC1->IER = 0;
+  VNA_ADC->IER = 0;
 
   /* Calibration procedure.*/
   ADC->CCR = 0;
-  if (ADC1->CR & ADC_CR_ADEN) {
-      ADC1->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
+  if (VNA_ADC->CR & ADC_CR_ADEN) {
+    VNA_ADC->CR |= ~ADC_CR_ADDIS; /* Disable ADC */
   }
-  while (ADC1->CR & ADC_CR_ADEN)
+  while (VNA_ADC->CR & ADC_CR_ADEN)
     ;
-  ADC1->CFGR1 &= ~ADC_CFGR1_DMAEN;
-  ADC1->CR |= ADC_CR_ADCAL;
-  while (ADC1->CR & ADC_CR_ADCAL)
+  VNA_ADC->CFGR1 &= ~ADC_CFGR1_DMAEN;
+  VNA_ADC->CR |= ADC_CR_ADCAL;
+  while (VNA_ADC->CR & ADC_CR_ADCAL)
     ;
 
-  if (ADC1->ISR & ADC_ISR_ADRDY) {
-      ADC1->ISR |= ADC_ISR_ADRDY; /* clear ADRDY */
+  if (VNA_ADC->ISR & ADC_ISR_ADRDY) {
+    VNA_ADC->ISR |= ADC_ISR_ADRDY; /* clear ADRDY */
   }
   /* Enable ADC */
-  ADC1->CR |= ADC_CR_ADEN;
-  while (!(ADC1->ISR & ADC_ISR_ADRDY))
+  VNA_ADC->CR |= ADC_CR_ADEN;
+  while (!(VNA_ADC->ISR & ADC_ISR_ADRDY))
     ;
 }
 
-uint16_t adc_single_read(ADC_TypeDef *adc, uint32_t chsel)
+uint16_t adc_single_read(uint32_t chsel)
 {
   /* ADC setup */
-  adc->ISR    = adc->ISR;
-  adc->IER    = 0;
-  adc->TR     = ADC_TR(0, 0);
-  adc->SMPR   = ADC_SMPR_SMP_239P5;
-  adc->CFGR1  = ADC_CFGR1_RES_12BIT;
-  adc->CHSELR = chsel;
+  VNA_ADC->ISR    = VNA_ADC->ISR;
+  VNA_ADC->IER    = 0;
+  VNA_ADC->TR     = ADC_TR(0, 0);
+  VNA_ADC->SMPR   = ADC_SMPR_SMP_239P5;
+  VNA_ADC->CFGR1  = ADC_CFGR1_RES_12BIT;
+  VNA_ADC->CHSELR = chsel;
 
-  /* ADC conversion start.*/
-  adc->CR |= ADC_CR_ADSTART;
-
-  while (adc->CR & ADC_CR_ADSTART)
+  VNA_ADC->CR |= ADC_CR_ADSTART; // ADC conversion start
+  while (VNA_ADC->CR & ADC_CR_ADSTART)
     ;
 
-  return adc->DR;
+  return VNA_ADC->DR;
 }
 
-
-#define ADCFILTER 32
-static uint16_t adc_single_read_filtered(ADC_TypeDef *adc, uint32_t chsel)
+int16_t adc_vbat_read(void)
 {
-    uint32_t value = 0;
-    for (int i=0; i < ADCFILTER; i++) 
-        value += adc_single_read(adc, chsel);
-    value /= ADCFILTER;
-    return (uint16_t)value;
-}
+// Vbat measure averange count = 2^VBAT_AVERAGE
+#define VBAT_AVERAGE 4
+// Measure vbat every 5 second
+#define VBAT_MEASURE_INTERVAL   50000
 
+  static int16_t   vbat_raw = 0;
+  static systime_t vbat_time = -VBAT_MEASURE_INTERVAL-1;
+  systime_t _time = chVTGetSystemTimeX();
+  if (_time - vbat_time < VBAT_MEASURE_INTERVAL)
+    goto return_cached;
+  vbat_time = _time;
+// 13.9 Temperature sensor and internal reference voltage
+// VREFINT_CAL calibrated on 3.3V, need get value in mV
+#define ADC_FULL_SCALE 3300
+#define VREFINT_CAL (*((uint16_t*)0x1FFFF7BA))
+  uint32_t vrefint = 0;
+  uint32_t vbat = 0;
 
-#define TEMP110_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7C2))
-#define TEMP30_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7B8))
-#define VDD_CALIB ((uint16_t) (330))
-#define VDD_APPLI ((uint16_t) (300))
-#define VREFINT_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FFFF7BA))
-
-int16_t adc_vbat_read(ADC_TypeDef *adc)
-{
+  uint8_t restart_touch = 0;
+  if (VNA_ADC->CR & ADC_CR_ADSTART){
+    adc_stop_analog_watchdog();
+    restart_touch = 1;
+  }
+  ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_VBATEN;
+  for (uint16_t i = 0; i < 1<<VBAT_AVERAGE; i++){
     // VREFINT == ADC_IN17
+    vrefint+= adc_single_read(ADC_CHSELR_CHSEL17);
     // VBAT == ADC_IN18
     // VBATEN enables resiter devider circuit. It consume vbat power.
-    ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_VBATEN;
-    int32_t adc_ref = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL17);
-    int32_t adc_bat = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL18);
-    ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_VBATEN);
+    vbat+= adc_single_read(ADC_CHSELR_CHSEL18);
+  }
+  vbat>>=VBAT_AVERAGE;
+  vrefint>>=VBAT_AVERAGE;
+  ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_VBATEN);
 
-    int16_t vbat_raw = (int16_t)((2 * 3300 * (int64_t)(*VREFINT_CAL_ADDR) * adc_bat) / ((int64_t)adc_ref * ((1<<12)-1)));
-    return vbat_raw + config.vbat_offset;
+  if (restart_touch)
+    adc_start_analog_watchdog();
+
+  // vbat_raw = (3300 * 2 * vbat / 4095) * (VREFINT_CAL / vrefint)
+  // uint16_t vbat_raw = (ADC_FULL_SCALE * VREFINT_CAL * (float)vbat * 2 / (vrefint * ((1<<12)-1)));
+  // For speed divide not on 4095, divide on 4096, get little error, but no matter
+  vbat_raw = ((ADC_FULL_SCALE * 2 * vbat)>>12) * VREFINT_CAL / vrefint;
+return_cached:
+  if (vbat_raw < 100) {
+    // maybe D2 is not installed
+    return -1;
+  }
+  return vbat_raw + config.vbat_offset;
 }
 
-int16_t adc_tjun_read(ADC_TypeDef *adc)
+void adc_start_analog_watchdog(void)
 {
-    // TJUN == ADC_IN16
-    ADC->CCR |= ADC_CCR_VREFEN | ADC_CCR_TSEN;
-    int32_t adc_ref = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL17);
-    int32_t adc_t = adc_single_read_filtered(adc, ADC_CHSELR_CHSEL16);
-  	ADC->CCR &= ~(ADC_CCR_VREFEN | ADC_CCR_TSEN);
-
-    int32_t t = ((adc_t * (*VREFINT_CAL_ADDR)) / adc_ref) - (int32_t) *TEMP30_CAL_ADDR;
-    t *= (int32_t)(110 - 30);
-    t = t / (int32_t)(*TEMP110_CAL_ADDR - *TEMP30_CAL_ADDR);
-    t += 30;
-    return (int16_t)t;
-}
-
-void adc_start_analog_watchdogd(ADC_TypeDef *adc, uint32_t chsel)
-{
-  uint32_t cfgr1;
-
-  cfgr1 = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
-    | ADC_CFGR1_EXTEN_0 // rising edge of external trigger
-    | ADC_CFGR1_EXTSEL_0 | ADC_CFGR1_EXTSEL_1; // TRG3  , /* CFGR1 */
-
-  /* ADC setup, if it is defined a callback for the analog watch dog then it
-     is enabled.*/
-  adc->ISR    = adc->ISR;
-  adc->IER    = ADC_IER_AWDIE;
-  adc->TR     = ADC_TR(0, TOUCH_THRESHOLD);
-  adc->SMPR   = ADC_SMPR_SMP_1P5;
-  adc->CHSELR = chsel;
+  // ADC setup, if it is defined a callback for the analog watch dog then it is enabled.
+  VNA_ADC->ISR    = VNA_ADC->ISR;
+  VNA_ADC->IER    = ADC_IER_AWDIE;
+  VNA_ADC->TR     = ADC_TR(0, TOUCH_THRESHOLD);
+  VNA_ADC->SMPR   = ADC_SMPR_SMP_1P5;
+  VNA_ADC->CHSELR = ADC_TOUCH_Y;
 
   /* ADC configuration and start.*/
-  adc->CFGR1  = cfgr1;
-
+  VNA_ADC->CFGR1  = ADC_CFGR1_RES_12BIT | ADC_CFGR1_AWDEN
+                  | ADC_CFGR1_EXTEN_0 // rising edge of external trigger
+                  | ADC_TIM3_TRGO; // External trigger is timer TIM3
   /* ADC conversion start.*/
-  adc->CR |= ADC_CR_ADSTART;
+  VNA_ADC->CR |= ADC_CR_ADSTART;
 }
 
-void adc_stop(ADC_TypeDef *adc)
+void adc_stop_analog_watchdog(void)
 {
-  if (adc->CR & ADC_CR_ADEN) {
-    if (adc->CR & ADC_CR_ADSTART) {
-      adc->CR |= ADC_CR_ADSTP;
-      while (adc->CR & ADC_CR_ADSTP)
+  if (VNA_ADC->CR & ADC_CR_ADEN) {
+    if (VNA_ADC->CR & ADC_CR_ADSTART) {
+      VNA_ADC->CR |= ADC_CR_ADSTP;
+      while (VNA_ADC->CR & ADC_CR_ADSTP)
         ;
     }
 
-    /*    adc->CR |= ADC_CR_ADDIS;
-    while (adc->CR & ADC_CR_ADDIS)
+    /*    VNA_ADC->CR |= ADC_CR_ADDIS;
+    while (VNA_ADC->CR & ADC_CR_ADDIS)
     ;*/
   }
 }
 
-static void adc_interrupt(ADC_TypeDef *adc)
+static void adc_interrupt(void)
 {
-  uint32_t isr = adc->ISR;
-  adc->ISR = isr;
+  uint32_t isr = VNA_ADC->ISR;
+  VNA_ADC->ISR = isr;
 
   if (isr & ADC_ISR_OVR) {
     /* ADC overflow condition, this could happen only if the DMA is unable
@@ -180,7 +187,7 @@ OSAL_IRQ_HANDLER(STM32_ADC1_HANDLER)
 {
   OSAL_IRQ_PROLOGUE();
 
-  adc_interrupt(ADC1);
+  adc_interrupt();
 
   OSAL_IRQ_EPILOGUE();
 }

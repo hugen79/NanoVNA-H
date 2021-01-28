@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2014-2015, TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
+ * Copyright (c) 2019-2020, Dmitry (DiSlord) dislordlive@gmail.com
+ * Based on TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
  * This is free software; you can redistribute it and/or modify
@@ -22,210 +23,164 @@
 #include "nanovna.h"
 #include <string.h>
 
-static int flash_wait_for_last_operation(void)
+uint16_t lastsaveid = 0;
+#if SAVEAREA_MAX >= 8
+#error "Increase checksum_ok type for save more cache slots"
+#endif
+// properties CRC check cache (max 8 slots)
+static uint8_t checksum_ok = 0;
+
+static inline void flash_wait_for_last_operation(void)
 {
   while (FLASH->SR == FLASH_SR_BSY) {
     //WWDG->CR = WWDG_CR_T;
   }
-  return FLASH->SR;
+//  return FLASH->SR;
 }
 
 static void flash_erase_page0(uint32_t page_address)
 {
-	flash_wait_for_last_operation();
-	FLASH->CR |= FLASH_CR_PER;
-	FLASH->AR = page_address;
-	FLASH->CR |= FLASH_CR_STRT;
-	flash_wait_for_last_operation();
-	FLASH->CR &= ~FLASH_CR_PER;
+  flash_wait_for_last_operation();
+  FLASH->CR |= FLASH_CR_PER;
+  FLASH->AR = page_address;
+  FLASH->CR |= FLASH_CR_STRT;
+  flash_wait_for_last_operation();
+  FLASH->CR &= ~FLASH_CR_PER;
 }
 
-static int flash_erase_page(uint32_t page_address)
-{
-  chSysLock();
-  flash_erase_page0(page_address);
-  chSysUnlock();
-  return 0;
-}
-
-static void flash_program_half_word(uint32_t address, uint16_t data)
-{
-	flash_wait_for_last_operation();
-	FLASH->CR |= FLASH_CR_PG;
-    *(__IO uint16_t*)address = data;
-	flash_wait_for_last_operation();
-	FLASH->CR &= ~FLASH_CR_PG;
-}
-
-static void flash_unlock(void)
+static inline void flash_unlock(void)
 {
   // unlock sequence
   FLASH->KEYR = 0x45670123;
   FLASH->KEYR = 0xCDEF89AB;
 }
 
+static void flash_erase_pages(uint32_t page_address, uint32_t size)
+{
+  // Unlock for erase
+  flash_unlock();
 
-static uint32_t checksum(const void *start, size_t len)
+  chSysLock();
+  // erase flash pages
+  size+=page_address;
+  for (; page_address < size; page_address+=FLASH_PAGESIZE)
+    flash_erase_page0(page_address);
+  chSysUnlock();
+}
+
+static void flash_program_half_word_buffer(uint16_t* dst, uint16_t *data, uint16_t size)
+{
+  uint32_t i;
+  // unlock, and erase flash pages for buffer (aligned to FLASH_PAGESIZE)
+  flash_erase_pages((uint32_t)dst, size);
+  // Save buffer
+  __IO uint16_t* p = dst;
+  for (i = 0; i < size/sizeof(uint16_t); i++){
+    flash_wait_for_last_operation();
+    FLASH->CR |= FLASH_CR_PG;
+    p[i] = data[i];
+    flash_wait_for_last_operation();
+    FLASH->CR &= ~FLASH_CR_PG;
+  }
+}
+
+static uint32_t
+checksum(const void *start, size_t len)
 {
   uint32_t *p = (uint32_t*)start;
-  uint32_t *tail = (uint32_t*)((uint8_t*)start + len);
   uint32_t value = 0;
-  while (p < tail)
-    value ^= *p++;
+  // align by sizeof(uint32_t)
+  len = (len + sizeof(uint32_t)-1)/sizeof(uint32_t);
+  while (len-- > 0)
+    value = __ROR(value, 31) + *p++;
   return value;
 }
 
-
-#define FLASH_PAGESIZE 0x800
-
-#if !defined(ANTENNA_ANALYZER)
-const uint32_t save_config_area = 0x08018000;
-#else
-const uint32_t save_config_area = 0x08019800;
-#endif
-
-int config_save(void)
+int
+config_save(void)
 {
-  uint16_t *src = (uint16_t*)&config;
-  uint16_t *dst = (uint16_t*)save_config_area;
-  int count = sizeof(config_t) / sizeof(uint16_t);
-
+  // Apply magic word and calculate checksum
   config.magic = CONFIG_MAGIC;
-  config.checksum = 0;
-  config.checksum = checksum(&config, sizeof config);
+  config.checksum = checksum(&config, sizeof config - sizeof config.checksum);
 
-  flash_unlock();
-
-  /* erase flash pages */
-  flash_erase_page((uint32_t)dst);
-
-  /* write to flahs */
-  while(count-- > 0) {
-    flash_program_half_word((uint32_t)dst, *src++);
-    dst++;
-  }
-
+  // write to flash
+  flash_program_half_word_buffer((uint16_t*)SAVE_CONFIG_ADDR, (uint16_t*)&config, sizeof(config_t));
   return 0;
 }
 
-int config_recall(void)
+int
+config_recall(void)
 {
-  const config_t *src = (const config_t*)save_config_area;
-  void *dst = &config;
+  const config_t *src = (const config_t*)SAVE_CONFIG_ADDR;
 
-  if (src->magic != CONFIG_MAGIC)
+  if (src->magic != CONFIG_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
     return -1;
-  if (checksum(src, sizeof(config_t)) != 0)
-    return -1;
-
-  /* duplicated saved data onto sram to be able to modify marker/trace */
-  memcpy(dst, src, sizeof(config_t));
+  // duplicated saved data onto sram to be able to modify marker/trace
+  memcpy(&config, src, sizeof(config_t));
   return 0;
 }
 
-const uint32_t saveareas[] =
-  {
-#if !defined(ANTENNA_ANALYZER)
-		  0x08018800,
-#endif
-		  0x0801a000, 0x0801b800, 0x0801d000, 0x0801e800 };
-
-int16_t lastsaveid = 0;
-
-
-int caldata_save(int id)
+int
+caldata_save(uint32_t id)
 {
-  uint16_t *src = (uint16_t*)&current_props;
-  uint16_t *dst;
-  int count = sizeof(properties_t) / sizeof(uint16_t);
-
-  if (id < 0 || id >= SAVEAREA_MAX)
+  if (id >= SAVEAREA_MAX)
     return -1;
-  dst = (uint16_t*)saveareas[id];
 
+  // Apply magic word and calculate checksum
   current_props.magic = CONFIG_MAGIC;
-  current_props.checksum = 0;
-  current_props.checksum = checksum(&current_props, sizeof current_props);
+  current_props.checksum = checksum(&current_props, sizeof current_props - sizeof current_props.checksum);
 
-  flash_unlock();
+  // write to flash
+  uint16_t *dst = (uint16_t*)(SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE);
+  flash_program_half_word_buffer(dst, (uint16_t*)&current_props, sizeof(properties_t));
 
-  /* erase flash pages */
-  uint8_t* p = (uint8_t*)dst;
-  uint8_t* tail = p + sizeof(properties_t);
-  while (p < tail) {
-    flash_erase_page((uint32_t)p);
-    p += FLASH_PAGESIZE;
-  }
-
-  /* write to flahs */
-  while(count-- > 0) {
-    flash_program_half_word((uint32_t)dst, *src++);
-    dst++;
-  }
-
-  /* after saving data, make active configuration points to flash */
-  active_props = (properties_t*)saveareas[id];
   lastsaveid = id;
-
   return 0;
 }
 
-int caldata_recall(int id)
-{
-  properties_t *src;
-  void *dst = &current_props;
-
-  if (id < 0 || id >= SAVEAREA_MAX)
-    return -1;
-
+static properties_t *get_properties(uint32_t id){
+  if (id >= SAVEAREA_MAX)
+    return NULL;
   // point to saved area on the flash memory
-  src = (properties_t*)saveareas[id];
-
-  if (src->magic != CONFIG_MAGIC)
-    return -1;
-  if (checksum(src, sizeof(properties_t)) != 0)
-    return -1;
-
-  /* active configuration points to save data on flash memory */
-  active_props = src;
-  lastsaveid = id;
-
-  /* duplicated saved data onto sram to be able to modify marker/trace */
-  memcpy(dst, src, sizeof(properties_t));
-
-  return 0;
-}
-
-const properties_t* caldata_ref(int id)
-{
-  const properties_t *src;
-  if (id < 0 || id >= SAVEAREA_MAX)
+  properties_t *src = (properties_t*)(SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE);
+  // Check crc cache mask (made it only 1 time)
+  if (checksum_ok&(1<<lastsaveid))
+    return src;
+  if (src->magic != CONFIG_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
     return NULL;
-  src = (const properties_t*)saveareas[id];
-
-  if (src->magic != CONFIG_MAGIC)
-    return NULL;
-  if (checksum(src, sizeof(properties_t)) != 0)
-    return NULL;
+  checksum_ok|=1<<lastsaveid;
   return src;
 }
 
-#if defined(ANTENNA_ANALYZER)
-const uint32_t save_config_prop_area_size = 0x6800;
-#else
-const uint32_t save_config_prop_area_size = 0x8000;
-#endif
-
-void clear_all_config_prop_data(void)
+int
+caldata_recall(uint32_t id)
 {
-  flash_unlock();
-
-  /* erase flash pages */
-  uint8_t* p = (uint8_t*)save_config_area;
-  uint8_t* tail = p + save_config_prop_area_size;
-  while (p < tail) {
-    flash_erase_page((uint32_t)p);
-    p += FLASH_PAGESIZE;
+  // point to saved area on the flash memory
+  properties_t *src = get_properties(id);
+  if (src == NULL){
+    load_default_properties();
+    return 1;
   }
+  // active configuration points to save data on flash memory
+  lastsaveid = id;
+  // duplicated saved data onto sram to be able to modify marker/trace
+  memcpy(&current_props, src, sizeof(properties_t));
+  return 0;
+}
+
+// Used in interpolate, get current calibration slot data
+const properties_t *
+caldata_reference(void)
+{
+  return get_properties(lastsaveid);
+}
+
+void
+clear_all_config_prop_data(void)
+{
+  lastsaveid = 0;
+  checksum_ok = 0;
+  // unlock and erase flash pages
+  flash_erase_pages(SAVE_CONFIG_ADDR, SAVE_FULL_AREA_SIZE);
 }
 

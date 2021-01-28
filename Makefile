@@ -5,16 +5,8 @@
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
-  USE_OPT = -std=gnu11 -O2  -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage
+  USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage
 endif
-
-# .
-
-ifeq ($(ANTENNA_ANALYZER),YES)
- 	USE_OPT += -DANTENNA_ANALYZER
-    BUILDDIR = buildAA
- endif
-
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
@@ -78,7 +70,7 @@ endif
 # Stack size to the allocated to the Cortex-M main/exceptions stack. This
 # stack is used for processing interrupts and exceptions.
 ifeq ($(USE_EXCEPTIONS_STACKSIZE),)
-  USE_EXCEPTIONS_STACKSIZE = 0x200
+  USE_EXCEPTIONS_STACKSIZE = 0x100
 endif
 
 #
@@ -88,6 +80,10 @@ endif
 ##############################################################################
 # Project, sources and paths
 #
+
+# Dvice node to flash
+DEVICE = /dev/cu.usbmodem401
+#DEVICE = /dev/ttyACM0
 
 # Define project name here
 PROJECT = ch
@@ -108,23 +104,16 @@ include $(CHIBIOS)/os/hal/osal/rt/osal.mk
 include $(CHIBIOS)/os/rt/rt.mk
 include $(CHIBIOS)/os/common/ports/ARMCMx/compilers/GCC/mk/port_v6m.mk
 # Other files (optional).
-include $(CHIBIOS)/test/rt/test.mk
+#include $(CHIBIOS)/test/rt/test.mk
 include $(CHIBIOS)/os/hal/lib/streams/streams.mk
-include $(CHIBIOS)/os/various/shell/shell.mk
+#include $(CHIBIOS)/os/various/shell/shell.mk
 
 # Define linker script file here
-
 #LDSCRIPT= $(STARTUPLD)/STM32F072xB.ld
-ifeq ($(ANTENNA_ANALYZER),YES)
-LDSCRIPT= STM32F072xB_AA.ld
-else
-LDSCRIPT= STM32F072xB.ld
-endif
+LDSCRIPT= NANOVNA_STM32_F072/STM32F072xB.ld
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
-
-ifeq ($(ANTENNA_ANALYZER),YES)
 CSRC = $(STARTUPSRC) \
        $(KERNSRC) \
        $(PORTSRC) \
@@ -133,24 +122,10 @@ CSRC = $(STARTUPSRC) \
        $(PLATFORMSRC) \
        $(BOARDSRC) \
        $(STREAMSSRC) \
-       $(SHELLSRC) \
+       FatFs/ff.c \
+       FatFs/ffunicode.c \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font7x13b.c flash.c adc.c
-else
-CSRC = $(STARTUPSRC) \
-       $(KERNSRC) \
-       $(PORTSRC) \
-       $(OSALSRC) \
-       $(HALSRC) \
-       $(PLATFORMSRC) \
-       $(BOARDSRC) \
-       $(STREAMSSRC) \
-       $(SHELLSRC) \
-       usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c flash.c adc.c
-endif
-
-#       $(TESTSRC) \
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font7x13b.c Font10x14.c flash.c adc.c rtc.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -181,8 +156,7 @@ ASMSRC = $(STARTUPASM) $(PORTASM) $(OSALASM)
 
 INCDIR = $(STARTUPINC) $(KERNINC) $(PORTINC) $(OSALINC) \
          $(HALINC) $(PLATFORMINC) $(BOARDINC)  \
-         $(STREAMSINC) $(SHELLINC)
-# $(TESTINC)
+         $(STREAMSINC)
 
 #
 # Project, sources and paths
@@ -204,7 +178,7 @@ CPPC = $(TRGT)g++
 LD   = $(TRGT)gcc
 #LD   = $(TRGT)g++
 CP   = $(TRGT)objcopy
-AS   = $(TRGT)gcc -x assembler-with-cpp
+AS   = $(TRGT)gcc -x assembler-with-cpp -ggdb
 AR   = $(TRGT)ar
 OD   = $(TRGT)objdump
 SZ   = $(TRGT)size
@@ -233,6 +207,10 @@ CPPWARN = -Wall -Wextra -Wundef
 
 # List all user C define here, like -D_DEBUG=1
 UDEFS = -DSHELL_CMD_TEST_ENABLED=FALSE -DSHELL_CMD_MEM_ENABLED=FALSE -DARM_MATH_CM0 -DVERSION=\"$(VERSION)\"
+#Enable if use RTC and need auto select source LSE or LSI
+UDEFS+= -DVNA_AUTO_SELECT_RTC_SOURCE
+#Enable if install external 32.768kHz clock quartz on PC14 and PC15 pins on STM32 CPU and no VNA_AUTO_SELECT_RTC_SOURCE
+#UDEFS+= -DVNA_USE_LSE
 
 # Define ASM defines here
 UADEFS =
@@ -255,14 +233,6 @@ include $(RULESPATH)/rules.mk
 
 flash: build/ch.bin
 	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
-	
-flash800: build800/ch.bin
-	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build800/ch.bin
 
 dfu:
-	-@printf "reset dfu\r" >/dev/cu.usbmodem401
-
-TAGS: Makefile
-	@etags *.[ch] NANOVNA_STM32_F072/*.[ch] $(shell find ChibiOS/os/hal/ports/STM32/STM32F0xx ChibiOS/os -name \*.\[ch\] -print) 
-	@ls -l TAGS
-
+	-printf "reset dfu\r" >$(DEVICE) && sleep 1
