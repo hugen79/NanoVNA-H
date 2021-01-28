@@ -67,7 +67,7 @@ Current builder: Gnu Make Builder
 
 当前版本源码基于**[DiSlord](https://github.com/DiSlord)**的源码修改，如果编译失败，请参考[NanoVNA-D](https://github.com/DiSlord/NanoVNA-D)的说明
 
-The source code of the current version is based on the source code modification of **[DiSlord](https://github.com/DiSlord)**. If the compilation fails, please refer to [NanoVNA-D](https://github.com/DiSlord/NanoVNA- D) Description
+The source code of the current version is based on the source code modification of **[DiSlord](https://github.com/DiSlord)**. If the compilation fails, please refer to [NanoVNA-D](https://github.com/DiSlord/NanoVNA-D) Description
 
 https://github.com/DiSlord/NanoVNA-D/issues/1#issuecomment-698945620
 
@@ -86,6 +86,7 @@ Debugger Configurations > GBD OpenOCD Debugging, Double click to create a new se
 感谢[edy555](https://github.com/edy555)创建了这个项目，所有软件版权归edy555所有。
  Thanks to [edy555](https://github.com/edy555) for creating this project, all software copyrights are owned by edy555
 [https://github.com/ttrftech/NanoVNA](https://github.com/ttrftech/NanoVNA)；
+
 感谢[cho45](https://github.com/cho45)对项目做出重大改进。
 Thanks to cho45 for making major improvements to the project. [https://github.com/cho45/NanoVNA](https://github.com/cho45/NanoVNA) 
 
