@@ -215,14 +215,14 @@ static void cell_draw_lc_match(int x0, int y0)
   ili9341_set_background(LCD_BG_COLOR);
   ili9341_set_foreground(LCD_LC_MATCH_COLOR);
 
-  if (yp > -FONT_GET_HEIGHT && yp < CELLHEIGHT)
+  if (yp > -bFONT_GET_HEIGHT && yp < CELLHEIGHT)
   {
      plot_printf(s, sizeof(s), "L/C match for source Z0 = %0.1f"S_OHM, lc_match_array.R0);
      cell_drawstring_7x13(s, xp, yp);
   }
 #if 0
   yp += STR_LC_MATH_HEIGHT;
-  if (yp > -FONT_GET_HEIGHT && yp < CELLHEIGHT)
+  if (yp > -bFONT_GET_HEIGHT && yp < CELLHEIGHT)
   {
      plot_printf(s, sizeof(s), "%qHz %0.1f %c j%0.1f"S_OHM, match_array->Hz, match_array->RL, (match_array->XL >= 0) ? '+' : '-', fabsf(match_array->XL));
      cell_drawstring_7x13(s, xp, yp);
@@ -242,7 +242,7 @@ static void cell_draw_lc_match(int x0, int y0)
     for (int i = 0; i < lc_match_array.num_matches; i++){
       yp += STR_LC_MATH_HEIGHT;
       if (yp >= CELLHEIGHT) return;
-      if (yp > -FONT_GET_HEIGHT){
+      if (yp > -bFONT_GET_HEIGHT){
         lc_match_x_str(lc_match_array.Hz, lc_match_array.matches[i].xps, xp                      , yp);
         lc_match_x_str(lc_match_array.Hz, lc_match_array.matches[i].xs , xp +   STR_LC_MATH_WIDTH, yp);
         lc_match_x_str(lc_match_array.Hz, lc_match_array.matches[i].xpl, xp + 2*STR_LC_MATH_WIDTH, yp);
