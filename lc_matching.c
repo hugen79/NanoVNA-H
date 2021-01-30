@@ -200,7 +200,7 @@ static void lc_match_x_str(uint32_t FHz, float X, int xp, int yp)
   float val = X / (2.0f * VNA_PI * FHz);
 #endif
   plot_printf(str, sizeof(str), "%4.2F%c", val, type);
-  cell_drawstring(str, xp, yp);
+  cell_drawstring_7x13(str, xp, yp);
 }
 
 // Render L/C match to cell
@@ -218,27 +218,27 @@ static void cell_draw_lc_match(int x0, int y0)
   if (yp > -FONT_GET_HEIGHT && yp < CELLHEIGHT)
   {
      plot_printf(s, sizeof(s), "L/C match for source Z0 = %0.1f"S_OHM, lc_match_array.R0);
-     cell_drawstring(s, xp, yp);
+     cell_drawstring_7x13(s, xp, yp);
   }
 #if 0
   yp += STR_LC_MATH_HEIGHT;
   if (yp > -FONT_GET_HEIGHT && yp < CELLHEIGHT)
   {
      plot_printf(s, sizeof(s), "%qHz %0.1f %c j%0.1f"S_OHM, match_array->Hz, match_array->RL, (match_array->XL >= 0) ? '+' : '-', fabsf(match_array->XL));
-     cell_drawstring(s, xp, yp);
+     cell_drawstring_7x13(s, xp, yp);
   }
 #endif
 
   yp += STR_LC_MATH_HEIGHT;
   if (yp >= CELLHEIGHT) return;
   if (lc_match_array.num_matches < 0)
-    cell_drawstring("No LC match for this", xp, yp);
+	  cell_drawstring_7x13("No LC match for this", xp, yp);
   else if (lc_match_array.num_matches == 0)
-    cell_drawstring("No need for LC match", xp, yp);
+	  cell_drawstring_7x13("No need for LC match", xp, yp);
   else {
-    cell_drawstring("Src shunt" , xp                      , yp);
-    cell_drawstring("Series"    , xp +   STR_LC_MATH_WIDTH, yp);
-    cell_drawstring("Load shunt", xp + 2*STR_LC_MATH_WIDTH, yp);
+	  cell_drawstring_7x13("Src shunt" , xp                      , yp);
+	  cell_drawstring_7x13("Series"    , xp +   STR_LC_MATH_WIDTH, yp);
+	  cell_drawstring_7x13("Load shunt", xp + 2*STR_LC_MATH_WIDTH, yp);
     for (int i = 0; i < lc_match_array.num_matches; i++){
       yp += STR_LC_MATH_HEIGHT;
       if (yp >= CELLHEIGHT) return;

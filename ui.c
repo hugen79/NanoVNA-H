@@ -440,7 +440,7 @@ touch_cal_exec(void)
   ili9341_clear_screen();
   ili9341_line(0, 0, 0, 32);
   ili9341_line(0, 0, 32, 0);
-  ili9341_drawstring("TOUCH UPPER LEFT", 10, 10);
+  ili9341_drawstring_7x13("TOUCH UPPER LEFT", 10, 10);
 
   touch_wait_release();
   x1 = last_touch_x;
@@ -449,7 +449,7 @@ touch_cal_exec(void)
   ili9341_clear_screen();
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-1, LCD_HEIGHT-32);
   ili9341_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-32, LCD_HEIGHT-1);
-  ili9341_drawstring("TOUCH LOWER RIGHT", LCD_WIDTH-17*(FONT_WIDTH)-10, LCD_HEIGHT-FONT_GET_HEIGHT-10);
+  ili9341_drawstring_7x13("TOUCH LOWER RIGHT", LCD_WIDTH-17*(bFONT_WIDTH)-10, LCD_HEIGHT-bFONT_GET_HEIGHT-10);
 
   touch_wait_release();
   x2 = last_touch_x;
@@ -469,7 +469,7 @@ touch_draw_test(void)
   ili9341_set_foreground(LCD_FG_COLOR);
   ili9341_set_background(LCD_BG_COLOR);
   ili9341_clear_screen();
-  ili9341_drawstring("TOUCH TEST: DRAG PANEL, PRESS BUTTON TO FINISH", OFFSETX, LCD_HEIGHT - FONT_GET_HEIGHT);
+  ili9341_drawstring_7x13("TOUCH TEST: DRAG PANEL, PRESS BUTTON TO FINISH", OFFSETX, LCD_HEIGHT - bFONT_GET_HEIGHT);
 
   do {
     if (touch_check() == EVT_TOUCH_PRESSED){
@@ -555,7 +555,7 @@ enter_dfu(void)
   ili9341_set_background(LCD_BG_COLOR);
   // leave a last message 
   ili9341_clear_screen();
-  ili9341_drawstring("DFU: Device Firmware Update Mode\n"
+  ili9341_drawstring_7x13("DFU: Device Firmware Update Mode\n"
                      "To exit DFU mode, please reset device yourself.", x, y);
   // see __early_init in ./NANOVNA_STM32_F072/board.c
   *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
@@ -1764,7 +1764,7 @@ draw_numeric_area_frame(void)
   ili9341_set_foreground(LCD_INPUT_TEXT_COLOR);
   ili9341_set_background(LCD_INPUT_BG_COLOR);
   ili9341_fill(0, LCD_HEIGHT-NUM_INPUT_HEIGHT, LCD_WIDTH, NUM_INPUT_HEIGHT);
-  ili9341_drawstring(keypads_mode_tbl[keypad_mode].name, 10, LCD_HEIGHT-(FONT_GET_HEIGHT+NUM_INPUT_HEIGHT)/2);
+  ili9341_drawstring_7x13(keypads_mode_tbl[keypad_mode].name, 10, LCD_HEIGHT-(bFONT_GET_HEIGHT+NUM_INPUT_HEIGHT)/2);
   //ili9341_drawfont(KP_KEYPAD, 300, 216);
 }
 

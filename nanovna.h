@@ -423,11 +423,11 @@ extern int16_t area_height;
 // X and Y offset to L/C match text
  #define STR_LC_MATH_X      (OFFSETX +  0)
 // Better be aligned by cell
- #define STR_LC_MATH_Y      (OFFSETY + 32)
+ #define STR_LC_MATH_Y      (OFFSETY + 64)
 // 1/3 Width of text (need 3 column for data)
- #define STR_LC_MATH_WIDTH  (FONT_WIDTH * 10)
+ #define STR_LC_MATH_WIDTH  (bFONT_WIDTH * 10)
 // String Height (need 2 + 0..4 string)
- #define STR_LC_MATH_HEIGHT (FONT_STR_HEIGHT + 2)
+ #define STR_LC_MATH_HEIGHT (bFONT_STR_HEIGHT + 2)
 #endif
 
 // Additional chars in fonts
