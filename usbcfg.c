@@ -14,7 +14,6 @@
     limitations under the License.
 */
 
-#include "ch.h"
 #include "hal.h"
 
 /* Virtual serial port over USB.*/

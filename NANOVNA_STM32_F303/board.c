@@ -73,6 +73,7 @@ void __early_init(void) {
   // Refer to thess pages for how to start dfu from software
   // https://community.st.com/s/question/0D50X00009XkeeWSAR/stm32l476rg-jump-to-bootloader-from-software
   // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
+#if 0
   if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
     // require irq
     // __enable_irq();
@@ -118,7 +119,8 @@ void __early_init(void) {
     while(1);
    #endif
   }
-  // si5351_setup();
+#endif
+
   stm32_clock_init();
 }
 
@@ -126,4 +128,6 @@ void __early_init(void) {
  * Board-specific initialization code.
  */
 void boardInit(void) {
+  // Speedup flash latency
+  FLASH->ACR= FLASH_ACR_PRFTBE | FLASH_ACR_LATENCY_0;
 }

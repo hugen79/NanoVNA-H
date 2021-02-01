@@ -63,7 +63,8 @@
 #define GPIOA_XP				6
 #define GPIOA_YP				7
 #define GPIOA_MCO				8
-#define GPIOA_USB_DISC			10
+#define GPIOA_USART1_TX         9
+#define GPIOA_USART1_RX	        10
 #define GPIOA_USB_DM            11
 #define GPIOA_USB_DP            12
 #define GPIOA_JTMS              13
@@ -88,6 +89,8 @@
 #define GPIOB_I2S2_MOSI         15
 
 #define GPIOC_LED               13
+#define GPIOC_OSC32_IN          14
+#define GPIOC_OSC32_OUT         15
 
 #define GPIOF_OSC_IN            0
 #define GPIOF_OSC_OUT           1
@@ -118,7 +121,9 @@
 /*
  * GPIOA setup:
  *
- * PA8  - MCO 			    (alternate 0).
+ * PA8  - MCO                       (alternate 0).
+ * PA9  - USART1_TX                 (alternate 7).
+ * PA10 - USART1_RX	                (alternate 7).
  * PA11 - USB_DM                    (alternate 14).
  * PA12 - USB_DP                    (alternate 14).
  * PA13 - SWDIO                     (alternate 0).
@@ -133,8 +138,8 @@
                                      PIN_MODE_ANALOG(GPIOA_XP) |    \
                                      PIN_MODE_ANALOG(GPIOA_YP) |    \
                                      PIN_MODE_ALTERNATE(GPIOA_MCO) | \
-                                     PIN_MODE_INPUT(9U) |           \
-                                     PIN_MODE_OUTPUT(GPIOA_USB_DISC) | \
+                                     PIN_MODE_ALTERNATE(GPIOA_USART1_TX) | \
+                                     PIN_MODE_ALTERNATE(GPIOA_USART1_RX) | \
                                      PIN_MODE_ALTERNATE(GPIOA_USB_DM) |  \
                                      PIN_MODE_ALTERNATE(GPIOA_USB_DP) |  \
                                      PIN_MODE_ALTERNATE(GPIOA_JTMS) |    \
@@ -149,8 +154,8 @@
                                      PIN_OTYPE_PUSHPULL(6U) |       \
                                      PIN_OTYPE_PUSHPULL(7U) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_MCO) |       \
-                                     PIN_OTYPE_PUSHPULL(9U) |       \
-                                     PIN_OTYPE_PUSHPULL(GPIOA_USB_DISC) | \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_USART1_TX) | \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_USART1_RX) | \
                                      PIN_OTYPE_PUSHPULL(GPIOA_USB_DM) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOA_USB_DP) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOA_JTMS) |      \
@@ -165,8 +170,8 @@
                                      PIN_OSPEED_2M(6) |          \
                                      PIN_OSPEED_2M(7) |          \
                                      PIN_OSPEED_100M(GPIOA_MCO) | \
-                                     PIN_OSPEED_100M(9) |          \
-                                     PIN_OSPEED_100M(10) |         \
+                                     PIN_OSPEED_100M(GPIOA_USART1_TX) |  \
+                                     PIN_OSPEED_100M(GPIOA_USART1_RX) |  \
                                      PIN_OSPEED_100M(GPIOA_USB_DM) |     \
                                      PIN_OSPEED_100M(GPIOA_USB_DP) |     \
                                      PIN_OSPEED_100M(GPIOA_JTMS) |         \
@@ -181,8 +186,8 @@
                                      PIN_PUPDR_FLOATING(6) |         \
                                      PIN_PUPDR_FLOATING(7) |         \
                                      PIN_PUPDR_PULLUP(GPIOA_MCO) | \
-                                     PIN_PUPDR_PULLUP(9) |         \
-                                     PIN_PUPDR_FLOATING(GPIOA_USB_DISC) | \
+                                     PIN_PUPDR_FLOATING(GPIOA_USART1_TX) | \
+                                     PIN_PUPDR_FLOATING(GPIOA_USART1_RX) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DM) | \
                                      PIN_PUPDR_FLOATING(GPIOA_USB_DP) | \
                                      PIN_PUPDR_PULLDOWN(GPIOA_JTMS) |   \
@@ -197,8 +202,8 @@
                                      PIN_ODR_HIGH(6) |             \
                                      PIN_ODR_HIGH(7) |             \
                                      PIN_ODR_HIGH(GPIOA_MCO) |     \
-                                     PIN_ODR_HIGH(9) |             \
-                                     PIN_ODR_HIGH(GPIOA_USB_DISC) | \
+                                     PIN_ODR_LOW(GPIOA_USART1_TX) | \
+                                     PIN_ODR_LOW(GPIOA_USART1_RX) | \
                                      PIN_ODR_HIGH(GPIOA_USB_DM) |   \
                                      PIN_ODR_HIGH(GPIOA_USB_DP) |   \
                                      PIN_ODR_HIGH(GPIOA_JTMS) |     \
@@ -213,8 +218,8 @@
                                      PIN_AFIO_AF(6, 0) |           \
                                      PIN_AFIO_AF(7, 0))
 #define VAL_GPIOA_AFRH              (PIN_AFIO_AF(GPIOA_MCO, 0) |           \
-                                     PIN_AFIO_AF(9, 0) |           \
-                                     PIN_AFIO_AF(GPIOA_USB_DISC, 0) |          \
+                                     PIN_AFIO_AF(GPIOA_USART1_TX, 7) |    \
+                                     PIN_AFIO_AF(GPIOA_USART1_RX, 7) |    \
                                      PIN_AFIO_AF(GPIOA_USB_DM, 14) |     \
                                      PIN_AFIO_AF(GPIOA_USB_DP, 14) |     \
                                      PIN_AFIO_AF(GPIOA_JTMS, 0) |          \
@@ -335,7 +340,8 @@
  * GPIOC setup:
  *
  * PC13 - LED                   (output pushpull maximum).
- * PC14 - USB DISC              (output pushpull maximum).
+ * PC14 - OSC32_IN              (input pushpull maximum).
+ * PC15 - OSC32_OUT             (input pushpull maximum).
  */
 #define GPIOC_LED               13
 
@@ -353,8 +359,8 @@
                                      PIN_MODE_INPUT(11) |          \
                                      PIN_MODE_INPUT(12) |          \
                                      PIN_MODE_OUTPUT(GPIOC_LED) | \
-                                     PIN_MODE_INPUT(14) | \
-                                     PIN_MODE_INPUT(15))
+                                     PIN_MODE_INPUT(GPIOC_OSC32_IN) | \
+                                     PIN_MODE_INPUT(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_OTYPER            (PIN_OTYPE_PUSHPULL(0) |       \
                                      PIN_OTYPE_PUSHPULL(1) |       \
                                      PIN_OTYPE_PUSHPULL(2) |       \
@@ -369,8 +375,8 @@
                                      PIN_OTYPE_PUSHPULL(11) |      \
                                      PIN_OTYPE_PUSHPULL(12) |      \
                                      PIN_OTYPE_PUSHPULL(GPIOC_LED) | \
-                                     PIN_OTYPE_PUSHPULL(14) | \
-                                     PIN_OTYPE_PUSHPULL(15))
+                                     PIN_OTYPE_PUSHPULL(GPIOC_OSC32_IN) | \
+                                     PIN_OTYPE_PUSHPULL(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_OSPEEDR           (PIN_OSPEED_100M(0) |          \
                                      PIN_OSPEED_100M(1) |          \
                                      PIN_OSPEED_100M(2) |          \
@@ -385,8 +391,8 @@
                                      PIN_OSPEED_100M(11) |         \
                                      PIN_OSPEED_100M(12) |         \
                                      PIN_OSPEED_100M(GPIOC_LED) | \
-                                     PIN_OSPEED_100M(14) | \
-                                     PIN_OSPEED_100M(15))
+                                     PIN_OSPEED_100M(GPIOC_OSC32_IN) | \
+                                     PIN_OSPEED_100M(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_PUPDR             (PIN_PUPDR_PULLUP(0) |         \
                                      PIN_PUPDR_PULLUP(1) |         \
                                      PIN_PUPDR_PULLUP(2) |         \
@@ -401,8 +407,8 @@
                                      PIN_PUPDR_PULLUP(11) |        \
                                      PIN_PUPDR_PULLUP(12) |        \
                                      PIN_PUPDR_FLOATING(GPIOC_LED) | \
-                                     PIN_PUPDR_FLOATING(14) |        \
-                                     PIN_PUPDR_PULLUP(15))
+                                     PIN_PUPDR_FLOATING(GPIOC_OSC32_IN) |        \
+                                     PIN_PUPDR_FLOATING(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_ODR               (PIN_ODR_HIGH(0) |             \
                                      PIN_ODR_HIGH(1) |             \
                                      PIN_ODR_HIGH(2) |             \
@@ -417,8 +423,8 @@
                                      PIN_ODR_HIGH(11) |            \
                                      PIN_ODR_HIGH(12) |            \
                                      PIN_ODR_HIGH(GPIOC_LED) | \
-                                     PIN_ODR_HIGH(14) | \
-                                     PIN_ODR_HIGH(15))
+                                     PIN_ODR_HIGH(GPIOC_OSC32_IN) | \
+                                     PIN_ODR_HIGH(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_AFRL              (PIN_AFIO_AF(0, 0) |           \
                                      PIN_AFIO_AF(1, 0) |           \
                                      PIN_AFIO_AF(2, 0) |           \
@@ -433,8 +439,8 @@
                                      PIN_AFIO_AF(11, 0) |          \
                                      PIN_AFIO_AF(12, 0) |          \
                                      PIN_AFIO_AF(GPIOC_LED, 0) | \
-                                     PIN_AFIO_AF(14, 0) | \
-                                     PIN_AFIO_AF(15, 0))
+                                     PIN_AFIO_AF(GPIOC_OSC32_IN, 0) | \
+                                     PIN_AFIO_AF(GPIOC_OSC32_OUT, 0))
 
 /*
  * GPIOD setup:
@@ -754,14 +760,18 @@
                                      PIN_AFIO_AF(14, 0) |          \
                                      PIN_AFIO_AF(15, 0))
 
+#define USB_DP_R_VDD
+
 #ifdef NANOVNA_F303
 /*
  * USB bus activation/de-activation macro, required by the USB driver.
  */
-#ifdef USB_DP_R_PA10			     
+#ifdef USB_DP_R_PA10
 #define usb_lld_connect_bus(usbp) palSetPad(GPIOA, GPIOA_USB_DISC)
 #define usb_lld_disconnect_bus(usbp) palClearPad(GPIO, GPIOA_USB_DISC)
-#elifdef USB_DP_R_VDD
+#endif
+
+#ifdef  USB_DP_R_VDD
 #define usb_lld_connect_bus(usbp) 
 #define usb_lld_disconnect_bus(usbp)
 #else // USB_DP connect to VDD by 1.5K R, and USB_DP short with PA10
