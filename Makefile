@@ -86,7 +86,7 @@ DEVICE = /dev/cu.usbmodem401
 #DEVICE = /dev/ttyACM0
 
 # Define project name here
-PROJECT = ch
+PROJECT = nanovna-h
 
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
@@ -231,8 +231,8 @@ ULIBS = -lm
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC
 include $(RULESPATH)/rules.mk
 
-flash: build/ch.bin
-	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
+flash: build/$(PROJECT).bin
+	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/$(PROJECT).bin
 
 dfu:
 	-printf "reset dfu\r" >$(DEVICE) && sleep 1
