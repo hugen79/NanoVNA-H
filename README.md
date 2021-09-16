@@ -11,6 +11,12 @@ We remade NanoVNA based on edy555 (https://github.com/ttrftech/NanoVNA) , but  m
 
 ## 编译
 ## Build firmware
+NanoVNA-H   `TARGET = F072`
+
+NanoVNA-H4 `TARGET = F303`
+
+
+
 It is recommended to compile with gcc-arm-none-eabi 8, and exceptions may occur with other versions of the compiler.
 Please sync the CibiOS submodule before compiling.
 

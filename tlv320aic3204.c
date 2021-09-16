@@ -285,10 +285,9 @@ static const uint8_t conf_data[] = {
   0x00, 0x01,     // Select Page 1
   0x01, 0x08,     // Disable Internal Crude AVdd in presence of external AVdd supply or before powering up internal AVdd LDO
   0x02, 0x01,     // Enable Master Analog Power Control
-  0x7b, 0x01,     // Set the REF charging time to 40ms
 //  0x14, 0x25,     // HP soft stepping settings for optimal pop performance at power up Rpop used is 6k with N = 6 and soft step = 20usec. This should work with 47uF coupling capacitor. Can try N=5,6 or 7 time constants as well. Trade-off delay vs “pop” sound.
-//  0x0a, 0x33,     // Set the Input Common Mode to 0.9V and Output Common Mode for Headphone to 1.65V
-  0x0a, 0x40,     // Set the Input Common Mode to 0.75V and Output Common Mode for Headphone to 1.65V
+  0x0a, 0x33,     // Set the Input Common Mode to 0.9V and Output Common Mode for Headphone to 1.65V
+//  0x0a, 0x40,     // Set the Input Common Mode to 0.75V and Output Common Mode for Headphone to 1.65V
 
   0x3d, 0x00,     // Select ADC PTM_R4
 //  0x3d, 0x64,     // Select ADC PTM_R3

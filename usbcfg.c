@@ -70,7 +70,7 @@ static const uint8_t vcom_configuration_descriptor_data[67] = {
                                            4.2).                            */
                          0x02,          /* bInterfaceSubClass (Abstract
                                          Control Model, CDC section 4.3).   */
-                         0x01,          /* bInterfaceProtocol (AT commands,
+                         0x00,          /* bInterfaceProtocol (No protocol,
                                            CDC section 4.4).                */
                          0),            /* iInterface.                      */
   /* Header Functional Descriptor (CDC section 5.2.3).*/

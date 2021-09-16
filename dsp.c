@@ -19,13 +19,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include <arm_math.h>
 #include "nanovna.h"
-
-#ifdef ENABLED_DUMP
-int16_t samp_buf[SAMPLE_LEN];
-int16_t ref_buf[SAMPLE_LEN];
-#endif
 
 #ifdef USE_VARIABLE_OFFSET
 static int16_t sincos_tbl[AUDIO_SAMPLES_COUNT][2];
@@ -38,9 +32,9 @@ void generate_DSP_Table(int offset){
   float w = step/2;
   for (int i=0; i<AUDIO_SAMPLES_COUNT; i++){
     float s, c;
-    vna_sin_cos(w, &s, &c);
-    sincos_tbl[i][0] = s*32768.0;
-    sincos_tbl[i][1] = c*32768.0;
+    vna_sincosf(w, &s, &c);
+    sincos_tbl[i][0] = s*32700.0f;
+    sincos_tbl[i][1] = c*32700.0f;
     w+=step;
   }
 }
@@ -138,7 +132,7 @@ static const int16_t sincos_tbl[48][2] = {
 #error "Need check/rebuild sin cos table for DAC"
 #endif
 
-#if 1
+#ifndef __USE_DSP__
 // Define DSP accumulator value type
 typedef float acc_t;
 typedef float measure_t;
@@ -157,16 +151,12 @@ dsp_process(int16_t *capture, size_t length)
   do{
     int16_t ref = capture[i+0];
     int16_t smp = capture[i+1];
-#ifdef ENABLED_DUMP
-    ref_buf[i] = ref;
-    samp_buf[i] = smp;
-#endif
-    int16_t sin = ((int16_t *)sincos_tbl)[i+0];
-    int16_t cos = ((int16_t *)sincos_tbl)[i+1];
-    samp_s+= ((int32_t)(smp * sin))>>4;
-    samp_c+= ((int32_t)(smp * cos))>>4;
-    ref_s += ((int32_t)(ref * sin))>>4;
-    ref_c += ((int32_t)(ref * cos))>>4;
+    int32_t sin = ((int16_t *)sincos_tbl)[i+0];
+    int32_t cos = ((int16_t *)sincos_tbl)[i+1];
+    samp_s+= (smp * sin)/16;
+    samp_c+= (smp * cos)/16;
+    ref_s += (ref * sin)/16;
+    ref_c += (ref * cos)/16;
     i+=2;
   }while (i < length);
   acc_samp_s += samp_s;
@@ -227,7 +217,7 @@ calculate_gamma(float gamma[2])
   measure_t rs = acc_ref_s;
   measure_t rc = acc_ref_c;
   measure_t rr = rs * rs + rc * rc;
-  //rr = sqrtf(rr) * 1e8;
+  //rr = vna_sqrtf(rr) * 1e8;
   measure_t ss = acc_samp_s;
   measure_t sc = acc_samp_c;
   gamma[0] =  (sc * rc + ss * rs) / rr;

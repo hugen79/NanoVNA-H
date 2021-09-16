@@ -127,7 +127,7 @@ caldata_save(uint32_t id)
     return -1;
 
   // Apply magic word and calculate checksum
-  current_props.magic = CONFIG_MAGIC;
+  current_props.magic = PROPS_MAGIC;
   current_props.checksum = checksum(&current_props, sizeof current_props - sizeof current_props.checksum);
 
   // write to flash
@@ -138,25 +138,28 @@ caldata_save(uint32_t id)
   return 0;
 }
 
-static properties_t *get_properties(uint32_t id){
+const properties_t *
+get_properties(uint32_t id)
+{
   if (id >= SAVEAREA_MAX)
     return NULL;
   // point to saved area on the flash memory
   properties_t *src = (properties_t*)(SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE);
   // Check crc cache mask (made it only 1 time)
-  if (checksum_ok&(1<<lastsaveid))
+  if (checksum_ok&(1<<id))
     return src;
-  if (src->magic != CONFIG_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
+  if (src->magic != PROPS_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
     return NULL;
-  checksum_ok|=1<<lastsaveid;
+  checksum_ok|=1<<id;
   return src;
 }
 
 int
 caldata_recall(uint32_t id)
 {
+  lastsaveid = NO_SAVE_SLOT;
   // point to saved area on the flash memory
-  properties_t *src = get_properties(id);
+  const properties_t *src = get_properties(id);
   if (src == NULL){
     load_default_properties();
     return 1;
@@ -178,7 +181,7 @@ caldata_reference(void)
 void
 clear_all_config_prop_data(void)
 {
-  lastsaveid = 0;
+  lastsaveid = NO_SAVE_SLOT;
   checksum_ok = 0;
   // unlock and erase flash pages
   flash_erase_pages(SAVE_CONFIG_ADDR, SAVE_FULL_AREA_SIZE);

@@ -26,7 +26,7 @@
 __attribute__((always_inline)) __STATIC_INLINE int32_t __smlabb(int32_t x, int32_t y, int32_t acc)
 {
   register int32_t r;
-  __ASM volatile ("smlabb %[r], %[x], %[y], %[a]"
+  __asm__ ("smlabb %[r], %[x], %[y], %[a]"
    : [r] "=r" (r) : [x] "r" (x), [y] "r" (y), [a] "r" (acc) : );
   return r;
 }
@@ -37,7 +37,7 @@ __attribute__((always_inline)) __STATIC_INLINE int32_t __smlabb(int32_t x, int32
 __attribute__((always_inline)) __STATIC_INLINE int32_t __smlabt(int32_t x, int32_t y, int32_t acc)
 {
   register int32_t r;
-  __ASM volatile ("smlabt %[r], %[x], %[y], %[a]"
+  __asm__ ("smlabt %[r], %[x], %[y], %[a]"
    : [r] "=r" (r) : [x] "r" (x), [y] "r" (y), [a] "r" (acc) : );
   return r;
 }
@@ -48,7 +48,7 @@ __attribute__((always_inline)) __STATIC_INLINE int32_t __smlabt(int32_t x, int32
 __attribute__((always_inline)) __STATIC_INLINE int32_t __smlatb(int32_t x, int32_t y, int32_t acc)
 {
   register int32_t r;
-  __ASM volatile ("smlatb %[r], %[x], %[y], %[a]"
+  __asm__ ("smlatb %[r], %[x], %[y], %[a]"
    : [r] "=r" (r) : [x] "r" (x), [y] "r" (y), [a] "r" (acc) : );
   return r;
 }
@@ -59,7 +59,7 @@ __attribute__((always_inline)) __STATIC_INLINE int32_t __smlatb(int32_t x, int32
 __attribute__((always_inline)) __STATIC_INLINE int32_t __smlatt(int32_t x, int32_t y, int32_t acc)
 {
   register int32_t r;
-  __ASM volatile ("smlatt %[r], %[x], %[y], %[a]"
+  __asm__ ("smlatt %[r], %[x], %[y], %[a]"
    : [r] "=r" (r) : [x] "r" (x), [y] "r" (y), [a] "r" (acc) : );
   return r;
 }
@@ -74,7 +74,7 @@ __attribute__((always_inline)) __STATIC_INLINE int64_t __smlalbb(int64_t acc, in
     int64_t i_rep;
   } r;
   r.i_rep = acc;
-  __ASM volatile ("smlalbb %[r_lo], %[r_hi], %[x], %[y]"
+  __asm__ ("smlalbb %[r_lo], %[r_hi], %[x], %[y]"
    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
    : [x] "r" (x), [y] "r" (y) : );
   return r.i_rep;
@@ -90,7 +90,7 @@ __attribute__((always_inline)) __STATIC_INLINE int64_t __smlalbt(int64_t acc, in
     int64_t i_rep;
   } r;
   r.i_rep = acc;
-  __ASM volatile ("smlalbt %[r_lo], %[r_hi], %[x], %[y]"
+  __asm__ ("smlalbt %[r_lo], %[r_hi], %[x], %[y]"
    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
    : [x] "r" (x), [y] "r" (y) : );
   return r.i_rep;
@@ -106,7 +106,7 @@ __attribute__((always_inline)) __STATIC_INLINE int64_t __smlaltb(int64_t acc, in
     int64_t i_rep;
   } r;
   r.i_rep = acc;
-  __ASM volatile ("smlaltb %[r_lo], %[r_hi], %[x], %[y]"
+  __asm__ ("smlaltb %[r_lo], %[r_hi], %[x], %[y]"
    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
    : [x] "r" (x), [y] "r" (y) : );
   return r.i_rep;
@@ -115,14 +115,14 @@ __attribute__((always_inline)) __STATIC_INLINE int64_t __smlaltb(int64_t acc, in
 // __smlaltt inserts a SMLALTT instruction. __smlaltt returns the equivalent of
 //  int64_t res = x[1] * y[1] + acc
 //  where [0] is the lower 16 bits and [1] is the upper 16 bits.
-static inline int64_t __smlaltt(int64_t acc, int32_t x, int32_t y)
+__attribute__((always_inline)) __STATIC_INLINE  int64_t __smlaltt(int64_t acc, int32_t x, int32_t y)
 {
   register union {
     struct { uint32_t lo; uint32_t hi; } s_rep;
     int64_t i_rep;
   } r;
   r.i_rep = acc;
-  __ASM volatile ("smlaltt %[r_lo], %[r_hi], %[x], %[y]"
+  __asm__ ("smlaltt %[r_lo], %[r_hi], %[x], %[y]"
     : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
     : [x] "r" (x), [y] "r" (y) : );
   return r.i_rep;

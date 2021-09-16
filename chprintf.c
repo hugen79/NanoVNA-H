@@ -28,19 +28,36 @@
  */
 
 #include "hal.h"
+#include "nanovna.h"
 #include "chprintf.h"
-//#include "memstreams.h"
 #include <math.h>
 
 // Enable [flags], support:
 // ' ' Prepends a space for positive signed-numeric types. positive = ' ', negative = '-'. This flag is ignored if the + flag exists.
 #define CHPRINTF_USE_SPACE_FLAG
+//#define CHPRINTF_FREQUENCY_SIZE_64
+//#define CHPRINTF_USE_INT_64
 
 // Force putting trailing zeros on float value
 #define CHPRINTF_FORCE_TRAILING_ZEROS
 
 #define MAX_FILLER 11
-#define FLOAT_PRECISION 9
+#define FLOAT_PRECISION         9
+#define FLOAT_PREFIX_PRECISION  3
+
+#ifdef CHPRINTF_USE_INT_64
+typedef uint64_t pfreq_t;
+#else
+typedef uint32_t pfreq_t;
+#endif
+
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
+typedef uint64_t ulongval_t;
+typedef int64_t longval_t;
+#else
+typedef uint32_t ulongval_t;
+typedef int32_t longval_t;
+#endif
 
 #pragma pack(push, 2)
 
@@ -48,18 +65,18 @@ static const uint32_t pow10[FLOAT_PRECISION+1] = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
 };
 // Prefixes for values bigger then 1000.0
-//                            1  1e3, 1e6, 1e9, 1e12, 1e15, 1e18, 1e21, 1e24
-static char bigPrefix[] = {' ', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 0};
+//                                 1  1e3, 1e6, 1e9, 1e12, 1e15, 1e18, 1e21, 1e24
+static const char bigPrefix[] = {' ', 'k', 'M', 'G',  'T',  'P',  'E',  'Z',  'Y', 0};
 // Prefixes for values less   then 1.0
-//                          1e-3, 1e-6, 1e-9, 1e-12, 1e-15, 1e-18, 1e-21, 1e-24
-static char smallPrefix[] = {'m', 0x1d, 'n', 'p', 'f', 'a', 'z', 'y', 0};
+//                                 1e-3,    1e-6, 1e-9, 1e-12, 1e-15, 1e-18, 1e-21, 1e-24
+static const char smallPrefix[] = { 'm', S_MICRO,  'n',   'p',   'f',   'a',   'z',   'y', 0};
 
 #pragma pack(pop)
 
 static char *long_to_string_with_divisor(char *p,
-                                         uint32_t num,
+                                         longval_t num,
                                          uint32_t radix,
-                                         uint32_t precision) {
+                                         int      precision) {
   char *q = p + MAX_FILLER;
   char *b = q;
   // convert to string from end buffer to begin
@@ -80,11 +97,10 @@ static char *long_to_string_with_divisor(char *p,
 // g.mmm kkk hhh
 #define MAX_FREQ_PRESCISION 13
 #define FREQ_PSET           1
-#define FREQ_NO_SPACE       2
-#define FREQ_PREFIX_SPACE   4
+#define FREQ_PREFIX_SPACE   2
 
 static char *
-ulong_freq(char *p, uint32_t freq, uint32_t precision)
+ulong_freq(char *p, pfreq_t freq, int precision)
 {
   uint8_t flag = FREQ_PSET;
   if (precision == 0)
@@ -96,24 +112,24 @@ ulong_freq(char *p, uint32_t freq, uint32_t precision)
   // Prefix counter
   uint32_t s = 0;
   // Set format (every 3 digits add ' ' up to GHz)
-  uint32_t format = 0b00100100100;
+  uint32_t format = 0b100100100100100;
   do {
-#if 0
-    uint8_t c = freq % 10;
+#ifdef ARM_MATH_CM4
+    uint32_t c = freq % 10;
     freq/= 10;
 #else
     // Fast and compact division uint32_t on 10, using shifts, result:
     // c = freq % 10
     // freq = freq / 10;
-    uint32_t c = freq;
+    pfreq_t c = freq;
     freq >>= 1;
     freq += freq >> 1;
     freq += freq >> 4;
     freq += freq >> 8;
     freq += freq >> 16;  // freq = 858993459*freq/1073741824 = freq *
                          // 0,799999999813735485076904296875
-    freq >>= 3;  // freq/=8; freq = freq * 0,09999999997671693563461303710938
-    c -= freq * 10;  // freq*10 = (freq*4+freq)*2 = ((freq<<2)+freq)<<1
+    freq >>= 3;          // freq/=8; freq = freq * 0,09999999997671693563461303710938
+    c -= freq * 10;      // freq*10 = (freq*4+freq)*2 = ((freq<<2)+freq)<<1
     while (c >= 10) {
       freq++;
       c -= 10;
@@ -131,14 +147,9 @@ ulong_freq(char *p, uint32_t freq, uint32_t precision)
   s = bigPrefix[s];
 
   // Get string size
-  uint32_t i = (b - q);
-  // Limit string size, max size is - precision
-  if (precision && i > precision) {
-    i = precision;
-    flag |= FREQ_NO_SPACE;
-  }
+  int i = (b - q);
   // copy string
-  // Replace first ' ' by '.', remove ' ' if size too big
+  // Replace first ' ' by '.'
   do {
     char c = *q++;
     // replace first ' ' on '.'
@@ -146,20 +157,21 @@ ulong_freq(char *p, uint32_t freq, uint32_t precision)
       if (flag & FREQ_PSET) {
         c = '.';
         flag &= ~FREQ_PSET;
-      } else if (flag & FREQ_NO_SPACE)
+      } else if (!(flag & FREQ_PREFIX_SPACE))
         c = *q++;
     }
+    if (!(flag & FREQ_PSET) && precision-- < 0) break;
     *p++ = c;
   } while (--i);
   // Put pref (amd space before it if need)
-  if (flag & FREQ_PREFIX_SPACE && s != ' ') 
+  if ((flag & FREQ_PREFIX_SPACE) && s != ' ')
     *p++ = ' ';
   *p++ = s;
   return p;
 }
 
 #if CHPRINTF_USE_FLOAT
-static char *ftoa(char *p, float num, uint32_t precision) {
+static char *ftoa(char *p, float num, int precision) {
   // Check precision limit
   if (precision > FLOAT_PRECISION)
     precision = FLOAT_PRECISION;
@@ -171,39 +183,47 @@ static char *ftoa(char *p, float num, uint32_t precision) {
   if (k>=multi){k-=multi;l++;}
   p = long_to_string_with_divisor(p, l, 10, 0);
   if (precision) {
-    *p++ = '.';
+    *p++ = DIGIT_SEPARATOR;
     p=long_to_string_with_divisor(p, k, 10, precision);
 #ifndef CHPRINTF_FORCE_TRAILING_ZEROS
     // remove zeros at end
     while (p[-1]=='0') p--;
-    if (p[-1]=='.') p--;
+    if (p[-1]==DIGIT_SEPARATOR) p--;
 #endif
   }
   return p;
 }
 
-static char *ftoaS(char *p, float num, uint32_t precision) {
+static char *ftoaS(char *p, float num, int16_t precision) {
   char prefix=0;
-  char *ptr;
-  if (num > 1000.0){
-    for (ptr = bigPrefix+1; *ptr && num > 1000.0; num/=1000, ptr++)
+  const char *ptr;
+  if (num >= 1000.0f){
+    for (ptr = bigPrefix+1; *ptr && num >= 1000.0f; num/=1000.0f, ptr++)
       ;
     prefix = ptr[-1];
   }
   else if (num < 1){
-    for (ptr = smallPrefix; *ptr && num < 1.0; num*=1000, ptr++)
+    for (ptr = smallPrefix; *ptr && num < 1.0f; num*=1000.0f, ptr++)
       ;
     prefix = num > 1e-3 ? ptr[-1] : 0;
   }
-  else
-    precision++;   // Add additional digit in place of prefix
+  if (prefix)
+    precision--;
+
   // Auto set precision in place of value
   uint32_t l = num;
-  if (l < 10)
-    precision+=2;
-  else if (l < 100)
-    precision+=1;
+  if (l >= 100)
+    precision-=2;
+  else if (l >= 10)
+    precision-=1;
+  if (precision < 0)
+    precision=0;
   p=ftoa(p, num, precision);
+  // remove zeros at end
+  if (precision){
+    while (p[-1]=='0') p--;
+    if (p[-1]==DIGIT_SEPARATOR) p--;
+  }
   if (prefix)
     *p++ = prefix;
   return p;
@@ -216,15 +236,15 @@ static char *ftoaS(char *p, float num, uint32_t precision) {
  *          with output on a @p BaseSequentialStream.
  *          The general parameters format is: %[-][width|*][.precision|*][l|L]p.
  *          The following parameter types (p) are supported:
- *          - <b>x</b> hexadecimal integer.
- *          - <b>X</b> hexadecimal long.
- *          - <b>o</b> octal integer.
- *          - <b>O</b> octal long.
- *          - <b>d</b> decimal signed integer.
- *          - <b>D</b> decimal signed long.
- *          - <b>u</b> decimal unsigned integer.
- *          - <b>U</b> decimal unsigned long.
- *          - <b>c</b> character.
+ *          - <b>x</b> hexadecimal int32.
+ *          - <b>X</b> hexadecimal int64.
+ *          - <b>o</b> octal int32.
+ *          - <b>O</b> octal int64.
+ *          - <b>d</b> decimal signed int32.
+ *          - <b>D</b> decimal signed int64.
+ *          - <b>u</b> decimal unsigned int32.
+ *          - <b>U</b> decimal unsigned int64.
+ *          - <b>c</b> char.
  *          - <b>s</b> string.
  *          .
  *
@@ -236,14 +256,15 @@ static char *ftoaS(char *p, float num, uint32_t precision) {
  *
  * @api
  */
-#define IS_LONG             1
-#define LEFT_ALIGN          2
-#define POSITIVE            4
-#define NEGATIVE            8
-#define PAD_ZERO            16
-#define PLUS_SPACE          32
-#define DEFAULT_PRESCISION  64
-#define COMPLEX             128
+#define IS_LONG             0x0001
+#define LEFT_ALIGN          0x0002
+#define POSITIVE            0x0004
+#define NEGATIVE            0x0008
+#define PAD_ZERO            0x0010
+#define PLUS_SPACE          0x0020
+#define DEFAULT_PRESCISION  0x0040
+#define COMPLEX             0x0080
+#define SHORT_FLOAT         0x0100
 
 int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
   char *p, *s, c, filler=' ';
@@ -251,9 +272,9 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
   int n = 0;
   uint32_t  state;
   union {
-      uint32_t u;
-      int32_t  l;
-      float    f;
+    ulongval_t  u;
+    longval_t   l;
+    float       f;
   }value;
 #if CHPRINTF_USE_FLOAT
   char tmpbuf[2*MAX_FILLER + 1];
@@ -289,12 +310,14 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
         state|=POSITIVE;
       else if (*fmt == '0')
         state|=PAD_ZERO;
-//      else if (*fmt == 'j')
-//        state|=COMPLEX;
+      else if (*fmt == 'j')
+        state|=COMPLEX;
 #ifdef CHPRINTF_USE_SPACE_FLAG
       else if (*fmt == ' ')
         state|=PLUS_SPACE;
 #endif
+      else if (*fmt == 'b')
+        state|=SHORT_FLOAT;
       else
         break;
       fmt++;
@@ -320,22 +343,22 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
         else if (c == '*')
           c = va_arg(ap, int);
         else
-           break;
+          break;
         precision = precision * 10 + c;
       }
     }
     else
       state|=DEFAULT_PRESCISION;
     //Get [length]
-    /*
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
     if (c == 'l' || c == 'L') {
       state|=IS_LONG;
       if (*fmt)
         c = *fmt++;
     }
     else if ((c >= 'A') && (c <= 'Z'))
-        state|=IS_LONG;
-    */
+      state|=IS_LONG;
+#endif
     // Parse type
     switch (c) {
     case 'c':
@@ -345,7 +368,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     case 's':
       state&=~PAD_ZERO;
       if ((s = va_arg(ap, char *)) == 0)
-        s = "(null)";
+        s = (char*)"(null)";
       if (state&DEFAULT_PRESCISION)
         precision = 32767;
       for (p = s; *p && (--precision >= 0); p++)
@@ -354,11 +377,13 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     case 'D':
     case 'd':
     case 'I':
-    case 'i':/*
+    case 'i':
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
       if (state & IS_LONG)
-        value.l = va_arg(ap, long);
-      else*/
-        value.l = va_arg(ap, uint32_t);
+        value.l = va_arg(ap, int64_t);
+      else
+#endif
+        value.l = va_arg(ap, int32_t);
       if (value.l < 0) {
         state|=NEGATIVE;
         *p++ = '-';
@@ -370,18 +395,24 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
       else if (state & PLUS_SPACE)
         *p++ = ' ';
 #endif
-//      if (state & COMPLEX)
-//        *p++ = 'j';
+      if (state & COMPLEX)
+        *p++ = 'j';
       p = long_to_string_with_divisor(p, value.l, 10, 0);
       break;
     case 'q':
-      value.u = va_arg(ap, uint32_t);
-      p=ulong_freq(p, value.u, precision);
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
+      p=ulong_freq(p, va_arg(ap, uint64_t), precision);
+#else
+      p=ulong_freq(p, va_arg(ap, uint32_t), precision);
+#endif
       break;
 #if CHPRINTF_USE_FLOAT
     case 'F':
     case 'f':
-      value.f = va_arg(ap, double);
+      if (state & SHORT_FLOAT)
+        value.u = va_arg(ap, uint32_t);
+      else
+        value.f = va_arg(ap, double);
       if (value.f < 0) {
         state|=NEGATIVE;
         *p++ = '-';
@@ -393,13 +424,16 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
       else if (state & PLUS_SPACE)
         *p++ = ' ';
 #endif
-//      if (state & COMPLEX)
-//        *p++ = 'j';
+      if (state & COMPLEX)
+        *p++ = 'j';
       if (value.f == INFINITY){
         *p++ = 0x19;
         break;
       }
-      p = (c=='F') ? ftoaS(p, value.f, precision) : ftoa(p, value.f, state&DEFAULT_PRESCISION ? FLOAT_PRECISION : precision);
+      // Set default precision
+      if (state&DEFAULT_PRESCISION)
+        precision = (c=='F') ? FLOAT_PREFIX_PRECISION : FLOAT_PRECISION;
+      p = (c=='F') ? ftoaS(p, value.f, precision) : ftoa(p, value.f, precision);
       break;
 #endif
     case 'X':
@@ -413,10 +447,12 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     case 'O':
     case 'o':
       c = 8;
-unsigned_common:/*
+unsigned_common:
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
       if (state & IS_LONG)
-        value.u = va_arg(ap, unsigned long);
-      else*/
+        value.u = va_arg(ap, int64_t);
+      else
+#endif
         value.u = va_arg(ap, uint32_t);
       p = long_to_string_with_divisor(p, value.u, c, 0);
       break;
@@ -577,11 +613,6 @@ static msg_t put(void *ip, uint8_t b) {
 }
 
 static const struct printStreamVMT vmt = {NULL, NULL, put, NULL};
-void printObjectInit(printStream *ps, int size, uint8_t *buffer){
-  ps->vmt    = &vmt;
-  ps->buffer = buffer;
-  ps->size   = size;
-}
 // Simple print in buffer function
 int plot_printf(char *str, int size, const char *fmt, ...) {
   va_list ap;
@@ -589,7 +620,9 @@ int plot_printf(char *str, int size, const char *fmt, ...) {
   int retval;
   if (size <= 0) return 0;
   // Init small memory stream for print
-  printObjectInit(&ps, size, (uint8_t *)str);
+  ps.vmt    = &vmt;
+  ps.buffer = (uint8_t *)str;
+  ps.size   = size;
   // Performing the print operation using the common code.
   va_start(ap, fmt);
   retval = chvprintf((BaseSequentialStream *)(void *)&ps, fmt, ap);
