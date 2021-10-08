@@ -1207,6 +1207,7 @@ static uint16_t crc16(const uint8_t *ptr, uint16_t count) {
 static inline uint8_t SD_ReadR1(uint32_t cnt) {
   uint8_t r1;
    // 8th bit R1 always zero, check it
+  spi_DropRx();
   while(((r1=spi_RxByte())&0x80) && --cnt)
     ;
   return r1;
@@ -1217,6 +1218,7 @@ static inline bool SD_WaitDataToken(uint8_t token, uint32_t wait_time) {
   uint8_t res;
   uint32_t time = chVTGetSystemTimeX();
   uint8_t count = 0;
+  spi_DropRx();
   do{
     if ((res = spi_RxByte()) == token)
       return true;
@@ -1230,6 +1232,7 @@ static inline bool SD_WaitDataToken(uint8_t token, uint32_t wait_time) {
 
 static inline uint8_t SD_WaitDataAccept(uint32_t cnt) {
   uint8_t res;
+  spi_DropRx();
   while ((res = spi_RxByte()) == 0xFF && --cnt)
     ;
   return res&0x1F;
@@ -1240,6 +1243,7 @@ static uint8_t SD_WaitNotBusy(uint32_t wait_time) {
   uint8_t res;
   uint32_t time = chVTGetSystemTimeX();
   uint8_t count = 0;
+  spi_DropRx();
   do{
     if ((res = spi_RxByte()) == 0xFF)
       return res;
@@ -1298,7 +1302,6 @@ static bool SD_TxDataBlock(const uint8_t *buff, uint8_t token) {
 #else
   spi_TxWord(0xFFFF);
 #endif
-  spi_DropRx();
   // Receive transmit data response token on next 10 bytes
   resp = SD_WaitDataAccept(10);
   if (resp != SD_TOKEN_DATA_ACCEPTED){
@@ -1344,7 +1347,6 @@ static uint8_t SD_SendCmd(uint8_t cmd, uint32_t arg) {
   buf[5] = crc;
 #endif
   spi_TxBuffer(buf, 6);
-  spi_DropRx();
 // Skip a stuff byte when STOP_TRANSMISSION
 //if (cmd == CMD12) SPI_RxByte();
   // Receive response register r1

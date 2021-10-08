@@ -423,6 +423,23 @@ touch_wait_pressed(void)
     ;
 }
 
+#define CALIBRATION_OFFSET 16
+#define TOUCH_MARK_W        9
+#define TOUCH_MARK_H        9
+#define TOUCH_MARK_X        4
+#define TOUCH_MARK_Y        4
+static const uint8_t touch_bitmap[]={
+_BMP16(0b0000100000000000),
+_BMP16(0b0100100100000000),
+_BMP16(0b0010101000000000),
+_BMP16(0b0000100000000000),
+_BMP16(0b1111011110000000),
+_BMP16(0b0000100000000000),
+_BMP16(0b0010101000000000),
+_BMP16(0b0100100100000000),
+_BMP16(0b0000100000000000),
+};
+
 void
 touch_cal_exec(void)
 {
@@ -431,18 +448,16 @@ touch_cal_exec(void)
   lcd_set_foreground(LCD_FG_COLOR);
   lcd_set_background(LCD_BG_COLOR);
   lcd_clear_screen();
-  lcd_line(0, 0, 0, 32);
-  lcd_line(0, 0, 32, 0);
-  lcd_drawstring(10, 10, "TOUCH UPPER LEFT");
+  lcd_blitBitmap(CALIBRATION_OFFSET-TOUCH_MARK_X, CALIBRATION_OFFSET-TOUCH_MARK_Y, TOUCH_MARK_W, TOUCH_MARK_H, touch_bitmap);
+  lcd_printf((LCD_WIDTH-18*FONT_WIDTH)/2, (LCD_HEIGHT-FONT_GET_HEIGHT)/2, "TOUCH UPPER LEFT *");
 
   touch_wait_release();
   x1 = last_touch_x;
   y1 = last_touch_y;
 
   lcd_clear_screen();
-  lcd_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-1, LCD_HEIGHT-32);
-  lcd_line(LCD_WIDTH-1, LCD_HEIGHT-1, LCD_WIDTH-32, LCD_HEIGHT-1);
-  lcd_drawstring(LCD_WIDTH-17*(FONT_WIDTH)-10, LCD_HEIGHT-FONT_GET_HEIGHT-10, "TOUCH LOWER RIGHT");
+  lcd_blitBitmap(LCD_WIDTH-1-CALIBRATION_OFFSET-TOUCH_MARK_X, LCD_HEIGHT-1-CALIBRATION_OFFSET-TOUCH_MARK_Y, TOUCH_MARK_W, TOUCH_MARK_H, touch_bitmap);
+  lcd_printf((LCD_WIDTH-18*FONT_WIDTH)/2, (LCD_HEIGHT-FONT_GET_HEIGHT)/2, "TOUCH LOWER RIGHT *");
 
   touch_wait_release();
   x2 = last_touch_x;
@@ -450,8 +465,8 @@ touch_cal_exec(void)
 
   config._touch_cal[0] = x1;
   config._touch_cal[1] = y1;
-  config._touch_cal[2] = (x2 - x1) * 16 / LCD_WIDTH;
-  config._touch_cal[3] = (y2 - y1) * 16 / LCD_HEIGHT;
+  config._touch_cal[2] = x2;
+  config._touch_cal[3] = y2;
 }
 
 void
@@ -482,9 +497,9 @@ touch_draw_test(void)
 static void
 touch_position(int *x, int *y)
 {
-  int tx = (last_touch_x - config._touch_cal[0]) * 16 / config._touch_cal[2];
+  int tx = ((LCD_WIDTH-1-CALIBRATION_OFFSET)*(last_touch_x - config._touch_cal[0]) + CALIBRATION_OFFSET * (config._touch_cal[2] - last_touch_x)) / (config._touch_cal[2] - config._touch_cal[0]);
   if (tx<0) tx = 0; else if (tx>=LCD_WIDTH ) tx = LCD_WIDTH -1;
-  int ty = (last_touch_y - config._touch_cal[1]) * 16 / config._touch_cal[3];
+  int ty = ((LCD_HEIGHT-1-CALIBRATION_OFFSET)*(last_touch_y - config._touch_cal[1]) + CALIBRATION_OFFSET * (config._touch_cal[3] - last_touch_y)) / (config._touch_cal[3] - config._touch_cal[1]);
   if (ty<0) ty = 0; else if (ty>=LCD_HEIGHT) ty = LCD_HEIGHT-1;
   *x = tx;
   *y = ty;
@@ -1258,35 +1273,49 @@ static const char s2_file_param[] =
 // Bitmap file header for LCD_WIDTH x LCD_HEIGHT image 16bpp (v4 format allow set RGB mask)
 //*******************************************************************************************
 #define BMP_UINT32(val)  ((val)>>0)&0xFF, ((val)>>8)&0xFF, ((val)>>16)&0xFF, ((val)>>24)&0xFF
+#define BMP_UINT16(val)  ((val)>>0)&0xFF, ((val)>>8)&0xFF
 #define BMP_H1_SIZE      (14)                        // BMP header 14 bytes
-#define BMP_V4_SIZE      (56)                        // v4  header 56 bytes
+#define BMP_V4_SIZE      (108)                        // v4  header 108 bytes
 #define BMP_HEAD_SIZE    (BMP_H1_SIZE + BMP_V4_SIZE) // Size of all headers
 #define BMP_SIZE         (2*LCD_WIDTH*LCD_HEIGHT)    // Bitmap size = 2*w*h
 #define BMP_FILE_SIZE    (BMP_SIZE + BMP_HEAD_SIZE)  // File size = headers + bitmap
-static const uint8_t bmp_header_v4[14+56] = {
+static const uint8_t bmp_header_v4[BMP_H1_SIZE + BMP_V4_SIZE]  = {
 // BITMAPFILEHEADER (14 byte size)
   0x42, 0x4D,                // BM signature
   BMP_UINT32(BMP_FILE_SIZE), // File size (h + v4 + bitmap)
-  0x00, 0x00,                // reserved
-  0x00, 0x00,                // reserved
+  BMP_UINT16(0),             // reserved
+  BMP_UINT16(0),             // reserved
   BMP_UINT32(BMP_HEAD_SIZE), // Size of all headers (h + v4)
 // BITMAPINFOv4 (56 byte size)
   BMP_UINT32(BMP_V4_SIZE),   // Data offset after this point (v4 size)
   BMP_UINT32(LCD_WIDTH),     // Width
   BMP_UINT32(LCD_HEIGHT),    // Height
-  0x01, 0x00,                // Planes
-  0x10, 0x00,                // 16bpp
-  0x03, 0x00, 0x00, 0x00,    // Compression (BI_BITFIELDS)
+  BMP_UINT16(1),             // Planes
+  BMP_UINT16(16),            // 16bpp
+  BMP_UINT32(3),             // Compression (BI_BITFIELDS)
   BMP_UINT32(BMP_SIZE),      // Bitmap size (w*h*2)
-  0xC4, 0x0E, 0x00, 0x00,    // x Resolution (96 DPI = 96 * 39.3701 inches per meter = 0x0EC4)
-  0xC4, 0x0E, 0x00, 0x00,    // y Resolution (96 DPI = 96 * 39.3701 inches per meter = 0x0EC4)
-  0x00, 0x00, 0x00, 0x00,    // Palette size
-  0x00, 0x00, 0x00, 0x00,    // Palette used
+  BMP_UINT32(0x0EC4),        // x Resolution (96 DPI = 96 * 39.3701 inches per meter = 0x0EC4)
+  BMP_UINT32(0x0EC4),        // y Resolution (96 DPI = 96 * 39.3701 inches per meter = 0x0EC4)
+  BMP_UINT32(0),             // Palette size
+  BMP_UINT32(0),             // Palette used
 // Extend v4 header data (color mask for RGB565)
   BMP_UINT32(0b1111100000000000),// R mask = 0b11111000 00000000
   BMP_UINT32(0b0000011111100000),// G mask = 0b00000111 11100000
   BMP_UINT32(0b0000000000011111),// B mask = 0b00000000 00011111
-  BMP_UINT32(0b0000000000000000) // A mask = 0b00000000 00000000
+  BMP_UINT32(0b0000000000000000),// A mask = 0b00000000 00000000
+  'B','G','R','s',           // CSType = 'sRGB'
+  BMP_UINT32(0),             // ciexyzRed.ciexyzX    Endpoints
+  BMP_UINT32(0),             // ciexyzRed.ciexyzY
+  BMP_UINT32(0),             // ciexyzRed.ciexyzZ
+  BMP_UINT32(0),             // ciexyzGreen.ciexyzX
+  BMP_UINT32(0),             // ciexyzGreen.ciexyzY
+  BMP_UINT32(0),             // ciexyzGreen.ciexyzZ
+  BMP_UINT32(0),             // ciexyzBlue.ciexyzX
+  BMP_UINT32(0),             // ciexyzBlue.ciexyzY
+  BMP_UINT32(0),             // ciexyzBlue.ciexyzZ
+  BMP_UINT32(0),             // GammaRed
+  BMP_UINT32(0),             // GammaGreen
+  BMP_UINT32(0),             // GammaBlue
 };
 
 // Create file name from current time
@@ -1368,11 +1397,14 @@ static UI_FUNCTION_CALLBACK(menu_sdcard_cb)
         lcd_read_memory(0, y, LCD_WIDTH, 1, buf_16);
         for (i = 0; i < LCD_WIDTH; i++)
           buf_16[i] = __REVSH(buf_16[i]); // swap byte order (example 0x10FF to 0xFF10)
-        res = f_write(fs_file, buf_16, LCD_WIDTH*sizeof(uint16_t), &size);
+        res = f_write(fs_file, bmp_header_v4, BMP_HEAD_SIZE, &size); // Write header struct
 //        total_size+=size;
       }
       break;
 #ifdef __SD_CARD_DUMP_FIRMWARE__
+      /*
+       * Dump firmware to SD card as bin file image
+       */
       case SAVE_BIN_FILE:
       {
         const char *src = (const char*)FLASH_START_ADDRESS;

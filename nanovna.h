@@ -181,7 +181,7 @@
 #define VNA_TWOPI                6.28318530717958647692f
 
 // Maximum sweep point count (limit by flash and RAM size)
-#define POINTS_COUNT             101
+//#define POINTS_COUNT             101
 
 // Define frequency range (can be unsigned)
 typedef uint32_t freq_t;
@@ -887,8 +887,7 @@ void marker_search_dir(int16_t from, int16_t dir);
 // Custom display driver panel definitions for ILI9341
 #ifdef LCD_DRIVER_ILI9341
 // LCD touch settings
-//#define DEFAULT_TOUCH_CONFIG { 693, 605, 124, 171 }  // 2.4 inch LCD panel
-#define DEFAULT_TOUCH_CONFIG { 358, 544, 162, 198 }    // 2.8 inch LCD panel
+#define DEFAULT_TOUCH_CONFIG {530, 795, 3460, 3350}    // 2.8 inch LCD panel
 // Define LCD pixel format (8 or 16 bit)
 //#define LCD_8BIT_MODE
 #define LCD_16BIT_MODE
@@ -901,7 +900,7 @@ void marker_search_dir(int16_t from, int16_t dir);
 // Custom display driver panel definitions for ST7796S
 #ifdef LCD_DRIVER_ST7796S
 // LCD touch settings
-#define DEFAULT_TOUCH_CONFIG { 272, 521, 114, 153 }  // 4.0 inch LCD panel
+#define DEFAULT_TOUCH_CONFIG {380, 665, 3600, 3450 }  // 4.0 inch LCD panel
 // Define LCD pixel format (8 or 16 bit)
 //#define LCD_8BIT_MODE
 #define LCD_16BIT_MODE

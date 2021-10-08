@@ -57,7 +57,7 @@ static char *shell_args[VNA_SHELL_MAX_ARGUMENTS + 1];
 static uint16_t shell_nargs;
 static volatile vna_shellcmd_t  shell_function = 0;
 
-//#define ENABLED_DUMP_COMMAND
+#define ENABLED_DUMP_COMMAND
 // Allow get threads debug info
 //#define ENABLE_THREADS_COMMAND
 // Enable vbat_offset command, allow change battery voltage correction in config
@@ -129,7 +129,7 @@ static float kaiser_data[FFT_SIZE];
 #endif
 
 #undef VERSION
-#define VERSION "1.0.69"
+#define VERSION "1.0.70"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
@@ -2296,6 +2296,7 @@ VNA_SHELL_FUNCTION(cmd_touchcal)
   shell_printf("touch cal params: ");
   for (i = 0; i < 4; i++) {
     shell_printf("%d ", config._touch_cal[i]);
+    request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
   }
   shell_printf("\r\n");
 }
