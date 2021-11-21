@@ -70,6 +70,10 @@ enum {
 #ifdef __VNA_Z_RENORMALIZATION__
   KM_Z_PORT,
 #endif
+#ifdef __USE_RTC__
+  KM_RTC_DATE,
+  KM_RTC_TIME,
+#endif
   KM_NONE
 };
 
@@ -429,44 +433,40 @@ touch_wait_pressed(void)
 #define TOUCH_MARK_X        4
 #define TOUCH_MARK_Y        4
 static const uint8_t touch_bitmap[]={
-_BMP16(0b0000100000000000),
-_BMP16(0b0100100100000000),
-_BMP16(0b0010101000000000),
-_BMP16(0b0000100000000000),
-_BMP16(0b1111011110000000),
-_BMP16(0b0000100000000000),
-_BMP16(0b0010101000000000),
-_BMP16(0b0100100100000000),
-_BMP16(0b0000100000000000),
+		  _BMP16(0b0000100000000000),
+		  _BMP16(0b0100100100000000),
+		  _BMP16(0b0010101000000000),
+		  _BMP16(0b0000100000000000),
+		  _BMP16(0b1111011110000000),
+		  _BMP16(0b0000100000000000),
+		  _BMP16(0b0010101000000000),
+		  _BMP16(0b0100100100000000),
+		  _BMP16(0b0000100000000000),
 };
+
+static void getTouchPoint(uint16_t x, uint16_t y, const char *name) {
+	  lcd_set_foreground(LCD_FG_COLOR);
+	  lcd_set_background(LCD_BG_COLOR);
+	  lcd_clear_screen();
+
+	  lcd_blitBitmap(x, y, TOUCH_MARK_W, TOUCH_MARK_H, touch_bitmap);
+	  lcd_printf((LCD_WIDTH-18*FONT_WIDTH)/2, (LCD_HEIGHT-FONT_GET_HEIGHT)/2, "TOUCH %s *", name);
+	  touch_wait_release();
+}
 
 void
 touch_cal_exec(void)
 {
-  int x1, x2, y1, y2;
-
-  lcd_set_foreground(LCD_FG_COLOR);
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_clear_screen();
-  lcd_blitBitmap(CALIBRATION_OFFSET-TOUCH_MARK_X, CALIBRATION_OFFSET-TOUCH_MARK_Y, TOUCH_MARK_W, TOUCH_MARK_H, touch_bitmap);
-  lcd_printf((LCD_WIDTH-18*FONT_WIDTH)/2, (LCD_HEIGHT-FONT_GET_HEIGHT)/2, "TOUCH UPPER LEFT *");
-
-  touch_wait_release();
-  x1 = last_touch_x;
-  y1 = last_touch_y;
-
-  lcd_clear_screen();
-  lcd_blitBitmap(LCD_WIDTH-1-CALIBRATION_OFFSET-TOUCH_MARK_X, LCD_HEIGHT-1-CALIBRATION_OFFSET-TOUCH_MARK_Y, TOUCH_MARK_W, TOUCH_MARK_H, touch_bitmap);
-  lcd_printf((LCD_WIDTH-18*FONT_WIDTH)/2, (LCD_HEIGHT-FONT_GET_HEIGHT)/2, "TOUCH LOWER RIGHT *");
-
-  touch_wait_release();
-  x2 = last_touch_x;
-  y2 = last_touch_y;
-
-  config._touch_cal[0] = x1;
-  config._touch_cal[1] = y1;
-  config._touch_cal[2] = x2;
-  config._touch_cal[3] = y2;
+  const uint16_t x1 = CALIBRATION_OFFSET - TOUCH_MARK_X;
+  const uint16_t y1 = CALIBRATION_OFFSET - TOUCH_MARK_Y;
+  const uint16_t x2 = LCD_WIDTH  - 1 - CALIBRATION_OFFSET - TOUCH_MARK_X;
+  const uint16_t y2 = LCD_HEIGHT - 1 - CALIBRATION_OFFSET - TOUCH_MARK_Y;
+  getTouchPoint(x1, y1, "UPPER LEFT");
+  config._touch_cal[0] = last_touch_x;
+  config._touch_cal[1] = last_touch_y;
+  getTouchPoint(x2, y2, "LOWER RIGHT");
+  config._touch_cal[2] = last_touch_x;
+  config._touch_cal[3] = last_touch_y;
 }
 
 void
@@ -509,12 +509,13 @@ static void
 show_version(void)
 {
   int x = 5, y = 5, i = 1;
-  lcd_set_foreground(LCD_FG_COLOR);
+  lcd_set_foreground(LCD_TRACE_2_COLOR);
   lcd_set_background(LCD_BG_COLOR);
 
   lcd_clear_screen();
   uint16_t shift = 0b00010101000;
   lcd_drawstring_size(BOARD_NAME, x , y, 3);
+  lcd_set_foreground(LCD_FG_COLOR);
   y+=FONT_GET_HEIGHT*3+3-5;
 #if  LCD_WIDTH  == 480 || _USE_FONT_== 0
   while (info_about[i]) {
@@ -1427,6 +1428,18 @@ static UI_FUNCTION_CALLBACK(menu_sdcard_cb)
 }
 #endif
 
+static UI_FUNCTION_ADV_CALLBACK(menu_band_sel_acb)
+{
+  (void)data;
+  if (b){
+    b->p1.text = config._band_mode == 0 ? "Si5351" : "MS5351";
+    return;
+  }
+  config._band_mode = config._band_mode == 0 ? 1 : 0;
+  si5351_set_band_mode(config._band_mode);
+}
+
+
 #ifdef __DIGIT_SEPARATOR__
 static UI_FUNCTION_ADV_CALLBACK(menu_separator_acb)
 {
@@ -1829,12 +1842,17 @@ const menuitem_t menu_offset[] = {
 #endif
 
 const menuitem_t menu_device[] = {
+#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
   { MT_ADV_CALLBACK, KM_THRESHOLD, "THRESHOLD\n%.6q",    menu_keyboard_acb },
+#else
+  { MT_ADV_CALLBACK, KM_THRESHOLD, "THRESHOLD",    menu_keyboard_acb },
+#endif
   { MT_ADV_CALLBACK, KM_XTAL,      "TCXO\n%.6q",         menu_keyboard_acb },
   { MT_ADV_CALLBACK, KM_VBAT,      "VBAT OFFSET\n %umV", menu_keyboard_acb },
 #ifdef USE_VARIABLE_OFFSET_MENU
   { MT_ADV_CALLBACK, 0,            "IF OFFSET\n %dHz",   menu_offset_sel_acb },
 #endif
+  { MT_ADV_CALLBACK, 0,            "MODE\n %s",          menu_band_sel_acb },
 #ifdef __DIGIT_SEPARATOR__
   { MT_ADV_CALLBACK, 0,            "SEPARATOR\n%s",      menu_separator_acb },
 #endif
@@ -1845,6 +1863,10 @@ const menuitem_t menu_device[] = {
   { MT_CALLBACK, MENU_CONFIG_LOAD, "LOAD\nCONFIG.INI",   menu_config_cb },
 #endif
   { MT_SUBMENU, 0,                 "CLEAR\nCONFIG",      menu_clear },
+#ifdef __USE_RTC__
+  { MT_ADV_CALLBACK, KM_RTC_DATE,  "SET DATE",           (const void *)menu_keyboard_acb },
+  { MT_ADV_CALLBACK, KM_RTC_TIME,  "SET TIME",           (const void *)menu_keyboard_acb },
+#endif
   { MT_NONE, 0, NULL, menu_back } // next-> menu_back
 };
 
@@ -1994,6 +2016,7 @@ menu_invoke(int item)
 #define KP_KEYPAD    20
 #define KP_N         21
 #define KP_P         22
+#define KP_ENTER     23
 // Stop
 #define KP_NONE      255
 
@@ -2029,7 +2052,7 @@ static const keypads_t keypads_scale[] = {
   { 0, 0, KP_7 },
   { 1, 0, KP_8 },
   { 2, 0, KP_9 },
-  { 3, 3, KP_X1 },
+  { 3, 3, KP_ENTER },
   { 2, 3, KP_BS },
   { 0, 0, KP_NONE }
 };
@@ -2047,7 +2070,7 @@ static const keypads_t keypads_ref[] = {
   { 1, 0, KP_8 },
   { 2, 0, KP_9 },
   { 3, 2, KP_MINUS },
-  { 3, 3, KP_X1 },
+  { 3, 3, KP_ENTER },
   { 2, 3, KP_BS },
   { 0, 0, KP_NONE }
 };
@@ -2092,11 +2115,17 @@ static const keypads_list keypads_mode_tbl[KM_NONE] = {
 #ifdef __VNA_Z_RENORMALIZATION__
 [KM_Z_PORT]          = {keypads_scale, "PORT Z 50" S_RARROW }, // Port Z renormalization impedance
 #endif
+#ifdef __USE_RTC__
+[KM_RTC_DATE]        = {keypads_scale, "SET DATE\n YYMMDD"}, // Date
+[KM_RTC_TIME]        = {keypads_scale, "SET TIME\n HHMMSS"}, // Time
+#endif
 };
 
 static void
-set_numeric_value(float f_val, freq_t u_val)
+set_numeric_value(void)
 {
+	  float  f_val = my_atof(kp_buf);
+	  freq_t u_val = my_atoui(kp_buf);
   switch (keypad_mode) {
     case KM_START:    set_sweep_frequency(ST_START,  u_val); break;
     case KM_STOP:     set_sweep_frequency(ST_STOP,   u_val); break;
@@ -2117,6 +2146,46 @@ set_numeric_value(float f_val, freq_t u_val)
 #endif
 #ifdef __VNA_Z_RENORMALIZATION__
     case KM_Z_PORT:   current_props._portz = f_val;          break;
+#endif
+#ifdef __USE_RTC__
+    case KM_RTC_DATE:
+    case KM_RTC_TIME:
+    {
+      int i = 0;
+      uint32_t  dt_buf[2];
+      dt_buf[0] = rtc_get_tr_bcd(); // TR should be read first for sync
+      dt_buf[1] = rtc_get_dr_bcd(); // DR should be read second
+      //            0    1   2       4      5     6
+      // time[] ={sec, min, hr, 0, day, month, year, 0}
+      uint8_t   *time = (uint8_t*)dt_buf;
+      for (; i < 6 && kp_buf[i]!=0; i++) kp_buf[i]-= '0';
+      for (; i < 6                ; i++) kp_buf[i] =   0;
+      for (i = 0; i < 3; i++) kp_buf[i] = (kp_buf[2*i]<<4) | kp_buf[2*i+1]; // BCD format
+      if (keypad_mode == KM_RTC_DATE) {
+          // Month limit 1 - 12 (in BCD)
+               if (kp_buf[1] <    1) kp_buf[1] =    1;
+          else if (kp_buf[1] > 0x12) kp_buf[1] = 0x12;
+          // Day limit (depend from month):
+          uint8_t day_max = 28 + ((0b11101100000000000010111110111011001100>>(kp_buf[1]<<1))&3);
+          day_max = ((day_max/10)<<4)|(day_max%10); // to BCD
+               if (kp_buf[2] <  1)      kp_buf[2] = 1;
+          else if (kp_buf[2] > day_max) kp_buf[2] = day_max;
+          time[6] = kp_buf[0]; // year
+          time[5] = kp_buf[1]; // month
+          time[4] = kp_buf[2]; // day
+        }
+        else {
+          // Hour limit 0 - 23, min limit 0 - 59, sec limit 0 - 59 (in BCD)
+          if (kp_buf[0] > 0x23) kp_buf[0] = 0x23;
+          if (kp_buf[1] > 0x59) kp_buf[1] = 0x59;
+          if (kp_buf[2] > 0x59) kp_buf[2] = 0x59;
+          time[2] = kp_buf[0]; // hour
+          time[1] = kp_buf[1]; // min
+          time[0] = kp_buf[2]; // sec
+      }
+      rtc_set_time(dt_buf[1], dt_buf[0]);
+    }
+    break;
 #endif
   }
 }
@@ -2202,7 +2271,13 @@ draw_numeric_input(const char *buf)
   bool focused = FALSE;
   uint16_t x = 14 + 10 * FONT_WIDTH;
   uint16_t y = LCD_HEIGHT-(NUM_FONT_GET_HEIGHT+NUM_INPUT_HEIGHT)/2;
-  uint16_t xsim = (0b00100100100100100 >>(2-(period_pos()%3)))&(~1);
+  uint16_t xsim;
+#ifdef __USE_RTC__
+  if ((1<<keypad_mode)&((1<<KM_RTC_DATE)|(1<<KM_RTC_TIME)))
+    xsim = 0b01010100;
+  else
+#endif
+    xsim = (0b00100100100100100 >>(2-(period_pos()%3)))&(~1);
   int c;
   while(*buf) {
     c = *buf++;
@@ -2629,6 +2704,7 @@ static int
 keypad_click(int key)
 {
   int c = keypads[key].c;
+  if (c == KP_ENTER) c = KP_X1;
   if ((c >= KP_X1 && c <= KP_G) || c == KP_N || c == KP_P) {
     if (kp_index == 0)
       return KP_CANCEL;
@@ -2646,7 +2722,7 @@ keypad_click(int key)
       }
     }
     // numeric input done
-    set_numeric_value(my_atof(kp_buf),  my_atoui(kp_buf));
+    set_numeric_value();
     return KP_DONE;
   }
 

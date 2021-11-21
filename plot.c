@@ -720,10 +720,11 @@ static inline void
 markmap_upperarea(void)
 {
   // Hardcoded, Text info from upper area
-#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
-  invalidate_rect(0, 0, AREA_WIDTH_NORMAL, ((MARKERS_MAX+1)/2 + 1)*FONT_STR_HEIGHT);
+#if  LCD_WIDTH  == 320 && _USE_FONT_== 1
+	 invalidate_rect(0, 0, AREA_WIDTH_NORMAL, (MARKERS_MAX+ 1)*FONT_STR_HEIGHT);
 #else
-  invalidate_rect(0, 0, AREA_WIDTH_NORMAL, (MARKERS_MAX+ 1)*FONT_STR_HEIGHT);
+	invalidate_rect(0, 0, AREA_WIDTH_NORMAL, ((MARKERS_MAX+1)/2 + 1)*FONT_STR_HEIGHT);
+
 #endif
 }
 
@@ -1584,10 +1585,11 @@ draw_cell(int m, int n)
 #if 1
   int cnt = t_count > m_count ? t_count : m_count;
   // Get max marker/trace string count add one string for edelay/marker freq
-#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
-	if (n <= (((cnt+1)/2 + 1)*FONT_STR_HEIGHT)/CELLHEIGHT)
+#if  LCD_WIDTH  == 320 && _USE_FONT_== 1
+  if (n <= ((cnt+  1)*FONT_STR_HEIGHT)/CELLHEIGHT)
 #else
-	if (n <= ((cnt+  1)*FONT_STR_HEIGHT)/CELLHEIGHT)
+  if (n <= (((cnt+1)/2 + 1)*FONT_STR_HEIGHT)/CELLHEIGHT)
+
 #endif
     cell_draw_marker_info(x0, y0);
 #endif
@@ -1711,19 +1713,7 @@ redraw_marker(int8_t marker)
 }
 
 // Marker and trace data position
-#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
-static const struct {uint16_t x, y;} marker_pos[]={
-  {1 +             CELLOFFSETX, 1                    },
-  {1 + (WIDTH/2) + CELLOFFSETX, 1                    },
-  {1 +             CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
-  {1 + (WIDTH/2) + CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
-  {1 +             CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT},
-  {1 + (WIDTH/2) + CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT},
-  {1 +             CELLOFFSETX, 1 + 3*FONT_STR_HEIGHT},
-  {1 + (WIDTH/2) + CELLOFFSETX, 1 + 3*FONT_STR_HEIGHT},
-};
-
-#else
+#if  LCD_WIDTH  == 320 && _USE_FONT_== 1
 static const struct {uint16_t x, y;} marker_pos[]={
   {1 +             CELLOFFSETX, 1                    },
   {1 +             CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
@@ -1733,6 +1723,19 @@ static const struct {uint16_t x, y;} marker_pos[]={
   {1 +             CELLOFFSETX, 1 + 5*FONT_STR_HEIGHT},
   {1 +             CELLOFFSETX, 1 + 6*FONT_STR_HEIGHT},
   {1 +             CELLOFFSETX, 1 + 7*FONT_STR_HEIGHT},
+};
+
+#else
+
+static const struct {uint16_t x, y;} marker_pos[]={
+  {1 +             CELLOFFSETX, 1                    },
+  {1 + (WIDTH/2) + CELLOFFSETX, 1                    },
+  {1 +             CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
+  {1 + (WIDTH/2) + CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
+  {1 +             CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT},
+  {1 + (WIDTH/2) + CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT},
+  {1 +             CELLOFFSETX, 1 + 3*FONT_STR_HEIGHT},
+  {1 + (WIDTH/2) + CELLOFFSETX, 1 + 3*FONT_STR_HEIGHT},
 };
 #endif
 
@@ -1807,12 +1810,13 @@ cell_draw_marker_info(int x0, int y0)
 
   lcd_set_foreground(LCD_FG_COLOR);
   // Marker frequency data print
-#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
-  xpos = 3 + (WIDTH/2) + CELLOFFSETX   - x0;
-  ypos =  1 + ((j+1)/2)*FONT_STR_HEIGHT - y0;
-#else
+#if  LCD_WIDTH  == 320 && _USE_FONT_== 1
   xpos =  12+(WIDTH/2) + CELLOFFSETX   - x0;
     ypos =  1 + j*FONT_STR_HEIGHT - y0;
+#else
+
+    xpos = 3 + (WIDTH/2) + CELLOFFSETX   - x0;
+    ypos =  1 + ((j+1)/2)*FONT_STR_HEIGHT - y0;
 #endif
 
   if (previous_marker != MARKER_INVALID && current_trace != TRACE_INVALID) {
@@ -1848,12 +1852,12 @@ cell_draw_marker_info(int x0, int y0)
 
   if (electrical_delay != 0.0f) {
     // draw electrical delay
-#if  LCD_WIDTH  == 480 || _USE_FONT_== 0
+#if  LCD_WIDTH  == 320 && _USE_FONT_== 1
+	    xpos = 1      - x0;
+	    ypos = 1 + (j)*FONT_STR_HEIGHT - y0;
+#else
     xpos = 1 + 18 + CELLOFFSETX          - x0;
     ypos = 1 + ((j+1)/2)*FONT_STR_HEIGHT - y0;
-#else
-    xpos = 1      - x0;
-    ypos = 1 + (j)*FONT_STR_HEIGHT - y0;
 #endif
 
     if (lever_mode == LM_EDELAY)
@@ -1900,6 +1904,9 @@ draw_frequencies(void)
 #if  LCD_WIDTH  == 480 || _USE_FONT_== 0
   lcd_set_foreground(LCD_BW_TEXT_COLOR);
   lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"bw:%uHz %up", get_bandwidth_frequency(config._bandwidth), sweep_points);
+#elif  LCD_WIDTH  == 320 && _USE_FONT_== 3
+  lcd_set_foreground(LCD_BW_TEXT_COLOR);
+  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"bw:%uHz", get_bandwidth_frequency(config._bandwidth));
 #endif
 }
 

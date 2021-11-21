@@ -80,9 +80,9 @@
 // Add LC match function
 #define __USE_LC_MATCHING__
 // Enable Series measure option
-//#define __S21_MEASURE__
+#define __S21_MEASURE__
 // Enable S11 cable measure option
-//#define __S11_CABLE_MEASURE__
+#define __S11_CABLE_MEASURE__
 #endif
 
 /*
@@ -93,7 +93,7 @@
 // Maximum frequency set
 #define STOP_MAX                 2000000000U
 // Frequency threshold (max frequency for si5351, harmonic mode after)
-#define FREQUENCY_THRESHOLD      280000100U
+#define FREQUENCY_THRESHOLD      290000100U
 // XTAL frequency on si5351
 #define XTALFREQ 26000000U
 // Define i2c bus speed, add predefined for 400k, 600k, 900k
@@ -103,21 +103,30 @@
 
 // Define ADC sample rate in kilobyte (can be 48k, 96k, 192k, 384k)
 //#define AUDIO_ADC_FREQ_K        768
-//#define AUDIO_ADC_FREQ_K        384
+#ifdef ARM_MATH_CM4
+#define AUDIO_ADC_FREQ_K        384
+#else
 #define AUDIO_ADC_FREQ_K        192
+#endif
 //#define AUDIO_ADC_FREQ_K        96
 //#define AUDIO_ADC_FREQ_K        48
 
 // Define sample count for one step measure
+#ifndef ARM_MATH_CM4
 #define AUDIO_SAMPLES_COUNT   (48)
-//#define AUDIO_SAMPLES_COUNT   (96)
+#else
+#define AUDIO_SAMPLES_COUNT   (96)
+#endif
 //#define AUDIO_SAMPLES_COUNT   (192)
 
 // Frequency offset, depend from AUDIO_ADC_FREQ settings (need aligned table)
 // Use real time build table (undef for use constant, see comments)
 // Constant tables build only for AUDIO_SAMPLES_COUNT = 48
-//#define USE_VARIABLE_OFFSET
-//#define USE_VARIABLE_OFFSET_MENU
+#define USE_VARIABLE_OFFSET
+// Add IF select menu in expert settings
+#ifdef USE_VARIABLE_OFFSET
+#define USE_VARIABLE_OFFSET_MENU
+#endif
 
 #if AUDIO_ADC_FREQ_K == 768
 #define FREQUENCY_OFFSET_STEP    16000
@@ -190,15 +199,15 @@ typedef uint32_t freq_t;
 #if POINTS_COUNT >=401
 #define POINTS_SET_COUNT       5
 #define POINTS_SET             {51, 101, 201, 301, POINTS_COUNT}
-#define POINTS_COUNT_DEFAULT   POINTS_COUNT
+#define POINTS_COUNT_DEFAULT   101
 #elif POINTS_COUNT >=301
 #define POINTS_SET_COUNT       4
 #define POINTS_SET             {51, 101, 201, POINTS_COUNT}
-#define POINTS_COUNT_DEFAULT   POINTS_COUNT
+#define POINTS_COUNT_DEFAULT   101
 #elif POINTS_COUNT >=201
 #define POINTS_SET_COUNT       3
 #define POINTS_SET             {51, 101, POINTS_COUNT}
-#define POINTS_COUNT_DEFAULT   POINTS_COUNT
+#define POINTS_COUNT_DEFAULT   101
 #elif POINTS_COUNT >=101
 #define POINTS_SET_COUNT       2
 #define POINTS_SET             {51, POINTS_COUNT}
@@ -404,9 +413,9 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 // Define maximum distance in pixel for pickup marker (can be bigger for big displays)
 #define MARKER_PICKUP_DISTANCE    20
 // Used marker size settings
-#define _USE_BIG_MARKER_     1
+//#define _USE_BIG_MARKER_     1
 // Used font settings
-#define _USE_FONT_           1
+//#define _USE_FONT_           3
 
 // Offset of plot area (size of additional info at left side)
 #if _USE_FONT_== 1
@@ -416,14 +425,25 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 // HEIGHT = 8*GRIDY
 #define HEIGHT 224
 #define FREQUENCIES_XPOS2 176
+#define FREQUENCIES_XPOS3 155
 #define MENU_BUTTON_WIDTH      84
-#elif
+#elif _USE_FONT_== 3
+#define OFFSETX 12
+// WIDTH better be n*(POINTS_COUNT-1)
+#define WIDTH  298
+// HEIGHT = 8*GRIDY
+#define HEIGHT 224
+#define FREQUENCIES_XPOS2 193
+#define FREQUENCIES_XPOS3 144
+#define MENU_BUTTON_WIDTH      84
+#else
 #define OFFSETX 10
 // WIDTH better be n*(POINTS_COUNT-1)
 #define WIDTH  300
 // HEIGHT = 8*GRIDY
 #define HEIGHT 232
 #define FREQUENCIES_XPOS2 206
+#define FREQUENCIES_XPOS3 135
 #define MENU_BUTTON_WIDTH      66
 #endif
 #define OFFSETY  0
@@ -435,7 +455,7 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 
 #define FREQUENCIES_XPOS1 OFFSETX
 
-#define FREQUENCIES_XPOS3 135
+
 #define FREQUENCIES_YPOS  (LCD_HEIGHT-FONT_GET_HEIGHT)
 
 // GRIDX calculated depends from frequency span
@@ -503,9 +523,9 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 // Define maximum distance in pixel for pickup marker (can be bigger for big displays)
 #define MARKER_PICKUP_DISTANCE    30
 // Used marker size settings
-#define _USE_BIG_MARKER_     1
+//#define _USE_BIG_MARKER_     1
 // Used font settings
-#define _USE_FONT_           1
+//#define _USE_FONT_           1
 
 // Offset of plot area (size of additional info at left side)
 #define OFFSETX 15
@@ -614,6 +634,17 @@ extern const uint8_t x10x14_bits[];
 #define FONT_STR_HEIGHT     16
 #define FONT_GET_DATA(ch)   (   &x10x14_bits[(ch-FONT_START_CHAR)*2*FONT_GET_HEIGHT  ])
 #define FONT_GET_WIDTH(ch)  (14-(x10x14_bits[(ch-FONT_START_CHAR)*2*FONT_GET_HEIGHT+1]&0x7))
+
+#elif _USE_FONT_ == 3
+extern const uint8_t x6x11_bits[];
+#define FONT_START_CHAR   0x17
+#define FONT_MAX_WIDTH       8
+#define FONT_WIDTH           6
+#define FONT_GET_HEIGHT     11
+#define FONT_STR_HEIGHT     11
+#define FONT_GET_DATA(ch)   (  &x6x11_bits[(ch-FONT_START_CHAR)*FONT_GET_HEIGHT])
+#define FONT_GET_WIDTH(ch)  (8-(x6x11_bits[(ch-FONT_START_CHAR)*FONT_GET_HEIGHT]&7))
+#define HZ14
 #endif
 
 extern const uint8_t numfont16x22[];
@@ -789,6 +820,7 @@ typedef struct config {
   float    _measure_r;
   uint8_t  _lever_mode;
   uint8_t  _digit_separator;
+  uint8_t  _band_mode;
   uint32_t checksum;
 } config_t;
 

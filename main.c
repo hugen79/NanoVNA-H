@@ -129,7 +129,7 @@ static float kaiser_data[FFT_SIZE];
 #endif
 
 #undef VERSION
-#define VERSION "1.0.70"
+#define VERSION "1.0.71"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
@@ -910,6 +910,7 @@ config_t config = {
   ._measure_r = MEASURE_DEFAULT_R,
   ._lever_mode = LM_MARKER,
   ._digit_separator = '.',
+  ._band_mode = 0,
 };
 
 properties_t current_props;

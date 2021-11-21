@@ -26,7 +26,11 @@
 extern "C" {
 #endif
 
-#include "ffconf.h"		/* FatFs configuration options */
+#if defined(NANOVNA_F303)
+#include "ffconf_303.h"		/* FatFs configuration options for F303 */
+#else
+#include "ffconf_072.h"		/* FatFs configuration options for F072  */
+#endif
 
 #if FF_DEFINED != FFCONF_DEF
 #error Wrong configuration file (ffconf.h).

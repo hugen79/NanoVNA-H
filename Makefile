@@ -7,15 +7,16 @@
 ifeq ($(TARGET),)
   TARGET = F072
 endif
-#TARGET=F303
+TARGET=F303
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
  ifeq ($(TARGET),F303)
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ST7796S -DLCD_480x320 -D__VNA_ENABLE_DAC__ -D__LCD_BRIGHTNESS__  -DPOINTS_COUNT=401
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ST7796S -DLCD_480x320 -D__VNA_ENABLE_DAC__ -D__LCD_BRIGHTNESS__  -DPOINTS_COUNT=401  -D_USE_FONT_=1  -D_USE_BIG_MARKER_=1
 #USE_OPT+=-fstack-protector-strong
  else
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ILI9341 -DLCD_320x240 -D__DFU_SOFTWARE_MODE__  -DPOINTS_COUNT=101
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ILI9341 -DLCD_320x240 -D__DFU_SOFTWARE_MODE__  -DPOINTS_COUNT=101 -D_USE_FONT_=1 -D_USE_BIG_MARKER_=1
+
  endif
 endif
 
@@ -147,7 +148,7 @@ CSRC = $(STARTUPSRC) \
        FatFs/ff.c \
        FatFs/ffunicode.c \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font7x13b.c Font10x14.c flash.c adc.c rtc.c vna_math.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font7x11b.c Font10x14.c Font6x11.c flash.c adc.c rtc.c vna_math.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
