@@ -129,7 +129,7 @@ static float kaiser_data[FFT_SIZE];
 #endif
 
 #undef VERSION
-#define VERSION "1.0.71"
+#define VERSION "1.1"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
@@ -143,8 +143,8 @@ const char *info_about[]={
   "ADC:"define_to_STR(AUDIO_ADC_FREQ_K)"k, "\
   "Lcd:"define_to_STR(LCD_WIDTH)"x"define_to_STR(LCD_HEIGHT)\
   "]",  "Build Time: " __DATE__ " - " __TIME__,
-  "Kernel: " CH_KERNEL_VERSION,
-  "Compiler: " PORT_COMPILER_NAME,
+//  "Kernel: " CH_KERNEL_VERSION,
+//  "Compiler: " PORT_COMPILER_NAME,
   "Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME,
   "Port Info: " PORT_INFO,
   "Platform: " PLATFORM_NAME,
@@ -910,7 +910,13 @@ config_t config = {
   ._measure_r = MEASURE_DEFAULT_R,
   ._lever_mode = LM_MARKER,
   ._digit_separator = '.',
+#ifdef __BAND_MODE__
+#ifdef __MS5351__
+  ._band_mode = 1,
+#else
   ._band_mode = 0,
+#endif
+#endif
 };
 
 properties_t current_props;
@@ -924,27 +930,27 @@ static const trace_t def_trace[TRACES_MAX] = {//enable, type, channel, reserved,
 };
 
 static const marker_t def_markers[MARKERS_MAX] = {
-  { 1, 0, 30*POINTS_COUNT/100-1, 0 },
+  { 1, 0, 30*POINTS_COUNT_DEFAULT/100-1, 0 },
 #if MARKERS_MAX > 1
-  { 0, 0, 40*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 40*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 2
-  { 0, 0, 50*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 50*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 3
-  { 0, 0, 60*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 60*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 4
-  { 0, 0, 70*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 70*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 5
-  { 0, 0, 80*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 80*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 6
-  { 0, 0, 90*POINTS_COUNT/100-1, 0 },
+  { 0, 0, 90*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 7
-  { 0, 0,100*POINTS_COUNT/100-1, 0 },
+  { 0, 0,100*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 };
 
@@ -2297,9 +2303,9 @@ VNA_SHELL_FUNCTION(cmd_touchcal)
   shell_printf("touch cal params: ");
   for (i = 0; i < 4; i++) {
     shell_printf("%d ", config._touch_cal[i]);
-    request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
   }
   shell_printf("\r\n");
+  request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
 }
 
 VNA_SHELL_FUNCTION(cmd_touchtest)

@@ -29,7 +29,6 @@
  */
 
 #define wFONT_START_CHAR   0x17
-#define wFONT_MAX_WIDTH      12
 #define wFONT_GET_HEIGHT     14
 #define wFONT_STR_HEIGHT     16
 #define wFONT_GET_DATA(ch)   (   &x10x14_bits[(ch-wFONT_START_CHAR)*2*wFONT_GET_HEIGHT  ])
