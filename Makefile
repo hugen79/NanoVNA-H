@@ -7,15 +7,15 @@
 ifeq ($(TARGET),)
   TARGET = F072
 endif
-#TARGET=F303
+TARGET=F303
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
  ifeq ($(TARGET),F303)
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ST7796S -DLCD_480x320 -D__VNA_ENABLE_DAC__ -D__LCD_BRIGHTNESS__  -DPOINTS_COUNT=401  -DLCD_480x320  -D_USE_BIG_MARKER_=1
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ST7796S -DLCD_480x320 -D__VNA_ENABLE_DAC__ -D__LCD_BRIGHTNESS__  -DPOINTS_COUNT=401  -DLCD_480x320
 #USE_OPT+=-fstack-protector-strong
  else
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ILI9341 -DLCD_320x240 -D__DFU_SOFTWARE_MODE__  -DPOINTS_COUNT=101 -DLCD_320x240 -D_USE_BIG_MARKER_=1
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ILI9341 -DLCD_320x240 -D__DFU_SOFTWARE_MODE__  -DPOINTS_COUNT=101 -DLCD_320x240
 
  endif
 endif

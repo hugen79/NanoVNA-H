@@ -20,8 +20,7 @@
  */
 #include "ch.h"
 
-//#define ZHCN
-#define  __MS5351__
+//#define  __MS5351__
 #define __BAND_MODE__
 
 
@@ -42,12 +41,16 @@
 //#define __DFU_SOFTWARE_MODE__
 // Add RTC clock support
 #define __USE_RTC__
+// Add RTC backup registers support
+#define __USE_BACKUP__
 // Add SD card support, req enable RTC (additional settings for file system see FatFS lib ffconf.h)
 #define __USE_SD_CARD__
 // If enabled serial in halconf.h, possible enable serial console control
 #define __USE_SERIAL_CONSOLE__
 // Add show y grid line values option
 #define __USE_GRID_VALUES__
+// Add remote desktop option
+#define __REMOTE_DESKTOP__
 // Use build in table for sin/cos calculation, allow save a lot of flash space (this table also use for FFT), max sin/cos error = 4e-7
 #define __VNA_USE_MATH_TABLES__
 // Use custom fast/compact approximation for some math functions in calculations (vna_ ...), use it carefully
@@ -88,20 +91,27 @@
 #define __S21_MEASURE__
 // Enable S11 cable measure option
 #define __S11_CABLE_MEASURE__
+// Enable S11 resonance search option
+#define __S11_RESONANCE_MEASURE__
 #endif
 
 /*
  * main.c
  */
 // Minimum frequency set
+#ifdef __MS5351__
+#define START_MIN                1600
+#else
 #define START_MIN                800
+#endif
+
 // Maximum frequency set
 #define STOP_MAX                 2000000000U
 // Frequency threshold (max frequency for si5351, harmonic mode after)
 #ifdef __MS5351__
 #define FREQUENCY_THRESHOLD      300000100U
 #else
-#define FREQUENCY_THRESHOLD      300000100U
+#define FREQUENCY_THRESHOLD      290000100U
 #endif
 // XTAL frequency on si5351
 #define XTALFREQ 26000000U
@@ -121,17 +131,19 @@
 //#define AUDIO_ADC_FREQ_K        48
 
 // Define sample count for one step measure
-#ifndef ARM_MATH_CM4
-#define AUDIO_SAMPLES_COUNT   (48)
-#else
+#ifdef ARM_MATH_CM4
 #define AUDIO_SAMPLES_COUNT   (96)
+#else
+#define AUDIO_SAMPLES_COUNT   (48)
 #endif
 //#define AUDIO_SAMPLES_COUNT   (192)
 
 // Frequency offset, depend from AUDIO_ADC_FREQ settings (need aligned table)
 // Use real time build table (undef for use constant, see comments)
 // Constant tables build only for AUDIO_SAMPLES_COUNT = 48
+#ifdef ARM_MATH_CM4
 #define USE_VARIABLE_OFFSET
+#endif
 // Add IF select menu in expert settings
 #ifdef USE_VARIABLE_OFFSET
 #define USE_VARIABLE_OFFSET_MENU
@@ -153,8 +165,8 @@
 //#define FREQUENCY_IF_K          8
 //#define FREQUENCY_IF_K         12  // only 96 samples and variable table
 //#define FREQUENCY_IF_K         16
-//#define FREQUENCY_IF_K         20  // only 96 samples and variable table
-#define FREQUENCY_IF_K         24
+#define FREQUENCY_IF_K         20  // only 96 samples and variable table
+//#define FREQUENCY_IF_K         24
 //#define FREQUENCY_IF_K         32
 
 #elif AUDIO_ADC_FREQ_K == 192
@@ -262,7 +274,7 @@ void cal_done(void);
 
 #define MAX_FREQ_TYPE 5
 enum stimulus_type {
-  ST_START=0, ST_STOP, ST_CENTER, ST_SPAN, ST_CW
+	  ST_START=0, ST_STOP, ST_CENTER, ST_CW, ST_SPAN, ST_VAR
 };
 
 freq_t getFrequency(uint16_t idx);
@@ -290,13 +302,34 @@ float    my_atof(const char *p);
 void toggle_sweep(void);
 void load_default_properties(void);
 int  load_properties(uint32_t id);
+#ifdef __USE_BACKUP__
+void update_backup_data(void);
+#endif
+
 void set_sweep_points(uint16_t points);
 
 bool sd_card_load_config(void);
 
+#ifdef __REMOTE_DESKTOP__
+// State flags for remote touch state
+#define REMOTE_NONE     0
+#define REMOTE_PRESS    1
+#define REMOTE_RELEASE  2
+typedef struct {
+  char new_str[6];
+  int16_t x;
+  int16_t y;
+  int16_t w;
+  int16_t h;
+} remote_region_t;
+void remote_touch_set(uint16_t state, int16_t x, int16_t y);
+void send_region(remote_region_t *rd, uint8_t * buf, uint16_t size);
+#endif
+
 #define SWEEP_ENABLE  0x01
 #define SWEEP_ONCE    0x02
 #define SWEEP_BINARY  0x08
+#define SWEEP_REMOTE  0x40
 #define SWEEP_UI_MODE 0x80
 
 extern  uint8_t sweep_mode;
@@ -420,9 +453,9 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 #define LCD_HEIGHT                  240
 
 // Define maximum distance in pixel for pickup marker (can be bigger for big displays)
-#define MARKER_PICKUP_DISTANCE    20
-// Used marker size settings
-//#define _USE_BIG_MARKER_              0
+#define MARKER_PICKUP_DISTANCE       20
+// Used marker image settings
+#define _USE_MARKER_SET_              1
 // Used font settings
 #define _USE_FONT_                    1
 #define _USE_SMALL_FONT_              0
@@ -476,8 +509,8 @@ void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
 
 // Define maximum distance in pixel for pickup marker (can be bigger for big displays)
 #define MARKER_PICKUP_DISTANCE       30
-// Used marker size settings
-#define _USE_BIG_MARKER_              1
+// Used marker image settings
+#define _USE_MARKER_SET_              2
 // Used font settings
 #define _USE_FONT_                    2
 #define _USE_SMALL_FONT_              2
@@ -685,18 +718,38 @@ extern const uint8_t numfont16x22[];
 #define S_MICRO    '\035'  // hex 0x1D
 #define S_OHM      "\036"  // hex 0x1E
 #define S_DEGREE   "\037"  // hex 0x1F
+#define S_SIEMENS  "S"     //
+#define S_dB       "dB"    //
+#define S_Hz       "Hz"    //
+#define S_FARAD    "F"     //
+#define S_HENRY    "H"     //
+#define S_SECOND   "s"     //
+#define S_METRE    "m"     //
+#define S_VOLT     "V"     //
+#define S_AMPER    "A"     //
 
 // Max palette indexes in config
 #define MAX_PALETTE     32
 
 // trace 
-#define MAX_TRACE_TYPE 13
+#define MAX_TRACE_TYPE 22
 enum trace_type {
-  TRC_LOGMAG=0, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, /*TRC_ADMIT,*/ TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_Z, TRC_Q, TRC_OFF
+  TRC_LOGMAG=0, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG,
+  TRC_R, TRC_X, TRC_Z,
+  TRC_G, TRC_B, TRC_Y, TRC_Rp, TRC_Xp,
+  TRC_sC, TRC_sL,
+  TRC_pC, TRC_pL,
+  TRC_Q, TRC_OFF
 };
 // Mask for define rectangular plot
-#define RECTANGULAR_GRID_MASK ((1<<TRC_LOGMAG)|(1<<TRC_PHASE)|(1<<TRC_DELAY)|(1<<TRC_LINEAR)|(1<<TRC_SWR)|(1<<TRC_REAL)|(1<<TRC_IMAG)|(1<<TRC_R)|(1<<TRC_X)|(1<<TRC_Z)|(1<<TRC_Q))
-#define ROUND_GRID_MASK ((1<<TRC_POLAR)|(1<<TRC_SMITH)/*|(1<<TRC_ADMIT)*/)
+#define RECTANGULAR_GRID_MASK ((1<<TRC_LOGMAG)|(1<<TRC_PHASE)|(1<<TRC_DELAY)|(1<<TRC_LINEAR)|(1<<TRC_SWR)|(1<<TRC_REAL)|(1<<TRC_IMAG)\
+                              |(1<<TRC_R)|(1<<TRC_X)|(1<<TRC_Z)\
+                              |(1<<TRC_G)|(1<<TRC_B)|(1<<TRC_Y)|(1<<TRC_Rp)|(1<<TRC_Xp)\
+                              |(1<<TRC_sC)|(1<<TRC_sL)\
+                              |(1<<TRC_pC)|(1<<TRC_pL)\
+                              |(1<<TRC_Q))
+
+#define ROUND_GRID_MASK ((1<<TRC_POLAR)|(1<<TRC_SMITH))
 
 // Trace info description structure
 typedef float (*get_value_cb_t)(int idx, const float *v); // get value callback
@@ -704,6 +757,7 @@ typedef struct trace_info {
   const char *name;            // Trace name
   const char *format;          // trace value printf format for marker output
   const char *dformat;         // delta value printf format
+  const char *symbol;          // value symbol
   float refpos;                // default refpos
   float scale_unit;            // default scale
   get_value_cb_t get_value_cb; // get value callback (can be NULL, in this case need add custom calculations)
@@ -712,9 +766,17 @@ typedef struct trace_info {
 extern const trace_info_t trace_info_list[MAX_TRACE_TYPE];
 
 // marker smith value format
-enum marker_smithvalue {
-  MS_LIN, MS_LOG, MS_REIM, MS_RX, MS_RLC
-};
+enum {MS_LIN, MS_LOG, MS_REIM, MS_RX, MS_RLC, MS_GB, MS_GLC, MS_RpXp, MS_RpLC, MS_END};
+#define ADMIT_MARKER_VALUE(v)    ((1<<(v))&((1<<MS_GB)|(1<<MS_GLC)|(1<<MS_RpXp)|(1<<MS_RpLC)))
+#define LC_MARKER_VALUE(v)       ((1<<(v))&((1<<MS_RLC)|(1<<MS_GLC)|(1<<MS_RpLC)))
+
+typedef struct {
+  const char *name;         // Trace name
+  const char *format;       // trace value printf format for marker output
+  get_value_cb_t get_re_cb; // get real value callback
+  get_value_cb_t get_im_cb; // get imag value callback (can be NULL, in this case need add custom calculations)
+} marker_info_t;
+extern const marker_info_t marker_info_list[MS_END];
 
 // lever_mode
 enum {LM_MARKER, LM_SEARCH, LM_FREQ_0, LM_FREQ_1, LM_EDELAY};
@@ -744,11 +806,11 @@ enum {LM_MARKER, LM_SEARCH, LM_FREQ_0, LM_FREQ_1, LM_EDELAY};
 // Marker delta
 #define TD_MARKER_DELTA         (1<<8)
 // Marker delta
-#define TD_MARKER_LOCK          (1<<9)
+//#define TD_MARKER_LOCK          (1<<9) // reserved
 
 // config._mode flags
 // Made x4 average on calibration data
-#define VNA_AVG_CALIBRATION       0x01
+//#define VNA_AVG_CALIBRATION       0x01 // reserved
 // Smooth function
 #define VNA_SMOOTH_FUNCTION       0x02
 // Connection flag
@@ -756,13 +818,14 @@ enum {LM_MARKER, LM_SEARCH, LM_FREQ_0, LM_FREQ_1, LM_EDELAY};
 #define VNA_MODE_SERIAL           0x04
 #define VNA_MODE_USB              0x00
 // Marker search mode
-#define VNA_MODE_SEARCH_MASK      0x08
 #define VNA_MODE_SEARCH_MIN       0x08
 #define VNA_MODE_SEARCH_MAX       0x00
 // Show grid values
 #define VNA_MODE_SHOW_GRID        0x10
 // Show grid values
 #define VNA_MODE_DOT_GRID         0x20
+// Made backup settings (save some settings after power off)
+#define VNA_MODE_BACKUP           0x40
 
 #ifdef __VNA_MEASURE_MODULE__
 // Measure option mode
@@ -778,6 +841,9 @@ enum {
 #endif
 #ifdef __S11_CABLE_MEASURE__
   MEASURE_S11_CABLE,
+#endif
+#ifdef __S11_RESONANCE_MEASURE__
+  MEASURE_S11_RESONANCE,
 #endif
   MEASURE_END
 };
@@ -859,7 +925,6 @@ void set_trace_type(int t, int type);
 void set_trace_channel(int t, int channel);
 void set_trace_scale(int t, float scale);
 void set_trace_refpos(int t, float refpos);
-const char *get_trace_typename(int t);
 const char *get_trace_chname(int t);
 
 //
@@ -888,6 +953,9 @@ int search_nearest_index(int x, int y, int t);
 void storeCurrentTrace(int idx);
 void disableStoredTrace(int idx);
 
+const char *get_trace_typename(int t);
+const char *get_smith_format_names(int m);
+
 // Marker search functions
 #define MK_SEARCH_LEFT    -1
 #define MK_SEARCH_RIGHT    1
@@ -902,6 +970,7 @@ void marker_search_dir(int16_t from, int16_t dir);
 #define REDRAW_BATTERY    (1<<4)
 #define REDRAW_AREA       (1<<5)
 #define REDRAW_CLRSCR     (1<<6)
+#define REDRAW_BACKUP     (1<<7)
 
 /*
  * ili9341.c

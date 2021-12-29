@@ -10,7 +10,7 @@
 
 #ifdef __VNA_MEASURE_MODULE__
 // Memory for measure cache data
-static char measure_memory[64];
+static char measure_memory[128];
 
 // Measure math functions
 // quadratic function solver
@@ -533,7 +533,7 @@ static void prepare_s11_cable(uint8_t type, uint8_t update_mask)
       }
     }
   }
-  if (update_mask & MEASURE_UPD_ALL && active_marker != MARKER_INVALID) {
+  if ((update_mask & MEASURE_UPD_ALL) && active_marker != MARKER_INVALID) {
     int idx = markers[active_marker].index;
     s11_cable->loss = vna_fabsf(logmag(idx, measured[0][idx]) / 2);
   }
@@ -543,5 +543,79 @@ static void prepare_s11_cable(uint8_t type, uint8_t update_mask)
 }
 
 #endif // __S11_CABLE_MEASURE__
+
+#ifdef __S11_RESONANCE_MEASURE__
+#define MEASURE_RESONANCE_COUNT   6
+typedef struct {
+  struct {
+    freq_t f;
+    float  r;
+    float  x;
+  } data[MEASURE_RESONANCE_COUNT];
+  uint8_t count;
+} s11_resonance_measure_t;
+static s11_resonance_measure_t *s11_resonance = (s11_resonance_measure_t *)measure_memory;
+
+
+static float s11_resonance_value(uint16_t i) {
+  return measured[0][i][1];
+}
+
+static float s11_resonance_min(uint16_t i) {
+  return fabsf(reactance(i, measured[0][i]));
+}
+
+static void draw_s11_resonance(int x0, int y0){
+  int xp = STR_MEASURE_X - x0;
+  int yp = STR_MEASURE_Y - y0;
+  cell_printf(xp, yp, "S11 RESONANCE");
+  if (s11_resonance->count == 0) {
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Not found");
+    return;
+  }
+  for (int i = 0; i < s11_resonance->count; i++)
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "%qHz, %F%+jF" S_OHM, s11_resonance->data[i].f, s11_resonance->data[i].r, s11_resonance->data[i].x);
+}
+
+static bool add_resonance_value(int i, uint16_t x, freq_t f) {
+  float data[2];
+  if (measure_get_value(0, f, data)) {
+    s11_resonance->data[i].f = f;
+    //set_marker_index(i, x);
+    s11_resonance->data[i].r = resistance(x, data);
+    s11_resonance->data[i].x = reactance(x, data);
+    return true;
+  }
+  return false;
+}
+
+static void prepare_s11_resonance(uint8_t type, uint8_t update_mask)
+{
+  (void)type;
+  if (update_mask & MEASURE_UPD_SWEEP) {
+    int i;
+    freq_t f;
+    uint16_t x = 0;
+    // Search resonances (X == 0)
+    for (i = 0; i < MEASURE_RESONANCE_COUNT && i < MARKERS_MAX;) {
+      f = measure_search_value(&x, 0.0f, s11_resonance_value, MEASURE_SEARCH_RIGHT);
+      if (f == 0) break;
+      if (add_resonance_value(i, x, f))
+        i++;
+      x++;
+    }
+    if (i == 0) { // Search minimum position, if resonances not found
+      x = 0;
+      search_peak_value(&x, s11_resonance_min, MEASURE_SEARCH_MIN);
+      if (x && add_resonance_value(0, x, getFrequency(x)))
+        i = 1;
+    }
+    s11_resonance->count = i;
+  }
+  // Prepare for update
+  invalidate_rect(STR_MEASURE_X                        , STR_MEASURE_Y,
+                  STR_MEASURE_X + 3 * STR_MEASURE_WIDTH, STR_MEASURE_Y + (MEASURE_RESONANCE_COUNT + 1) * STR_MEASURE_HEIGHT);
+}
+#endif //__S11_RESONANCE_MEASURE__
 
 #endif // __VNA_MEASURE__

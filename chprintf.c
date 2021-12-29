@@ -202,7 +202,7 @@ static char *ftoaS(char *p, float num, int16_t precision) {
       ;
     prefix = ptr[-1];
   }
-  else if (num < 1){
+  else if (num < 1.0f){
     for (ptr = smallPrefix; *ptr && num < 1.0f; num*=1000.0f, ptr++)
       ;
     prefix = num > 1e-3 ? ptr[-1] : 0;

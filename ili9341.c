@@ -549,6 +549,12 @@ void lcd_fill(int x, int y, int w, int h)
     SPI_WRITE_8BIT(LCD_SPI, background_color);
 #endif
   }while(--len);
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+     remote_region_t rd = {"fill\r\n", x, y, w, h};
+     send_region(&rd, (uint8_t *)&background_color, sizeof(pixel_t));
+  }
+#endif
 }
 
 void lcd_bulk(int x, int y, int w, int h)
@@ -556,6 +562,12 @@ void lcd_bulk(int x, int y, int w, int h)
   ili9341_setWindow(x, y, w, h);
   ili9341_send_command(ILI9341_MEMORY_WRITE, 0, NULL);
   spi_TxBuffer((uint8_t *)spi_buffer, w * h * sizeof(pixel_t));
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+     remote_region_t rd = {"bulk\r\n", x, y, w, h};
+     send_region(&rd, (uint8_t *)buffer, w * h * sizeof(pixel_t));
+  }
+#endif
 }
 
 #else
@@ -572,6 +584,12 @@ void lcd_fill(int x, int y, int w, int h)
   dmaStreamSetMemory0(dmatx, &background_color);
   dmaStreamSetMode(dmatx, txdmamode | LCD_DMA_MODE);
   dmaStreamFlush(w * h);
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+     remote_region_t rd = {"fill\r\n", x, y, w, h};
+     send_region(&rd, (uint8_t *)&background_color, sizeof(pixel_t));
+  }
+#endif
 }
 
 static void ili9341_DMA_bulk(int x, int y, int w, int h, pixel_t *buffer){
@@ -582,6 +600,12 @@ static void ili9341_DMA_bulk(int x, int y, int w, int h, pixel_t *buffer){
   dmaStreamSetMode(dmatx, txdmamode | LCD_DMA_MODE | STM32_DMA_CR_MINC);
   dmaStreamSetTransactionSize(dmatx, w * h);
   dmaStreamEnable(dmatx);
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+     remote_region_t rd = {"bulk\r\n", x, y, w, h};
+     send_region(&rd, (uint8_t *)buffer, w * h * sizeof(pixel_t));
+  }
+#endif
 }
 
 // Copy spi_buffer to region, wait completion after
@@ -1294,8 +1318,8 @@ static uint8_t SD_WaitNotBusy(uint32_t wait_time) {
 
 // Receive data block from SD
 static bool SD_RxDataBlock(uint8_t *buff, uint16_t len, uint8_t token) {
-  // loop until receive read response token or timeout ~50ms
-  if (!SD_WaitDataToken(token, MS2ST(50))) {
+  // loop until receive read response token or timeout ~100ms
+  if (!SD_WaitDataToken(token, MS2ST(100))) {
     DEBUG_PRINT(" rx SD_WaitDataToken err\r\n");
     return FALSE;
   }
@@ -1339,8 +1363,8 @@ static bool SD_TxDataBlock(const uint8_t *buff, uint8_t token) {
 #else
   spi_TxWord(0xFFFF);
 #endif
-  // Receive transmit data response token on next 10 bytes
-  resp = SD_WaitDataAccept(10);
+  // Receive transmit data response token on next 100 bytes
+  resp = SD_WaitDataAccept(100);
   if (resp != SD_TOKEN_DATA_ACCEPTED){
     goto error_tx;
   }
@@ -1365,7 +1389,7 @@ static uint8_t SD_SendCmd(uint8_t cmd, uint32_t arg) {
   uint8_t buf[6];
   uint8_t r1;
   // wait SD ready after last Tx (recommended timeout is 250ms (500ms for SDXC) set 250ms
-  if ((r1 = SD_WaitNotBusy(MS2ST(250))) != 0xFF) {
+  if ((r1 = SD_WaitNotBusy(MS2ST(500))) != 0xFF) {
     DEBUG_PRINT(" SD_WaitNotBusy CMD%d err, %02x\r\n", cmd-0x40, (uint32_t)r1);
     return 0xFF;
   }
@@ -1387,7 +1411,7 @@ static uint8_t SD_SendCmd(uint8_t cmd, uint32_t arg) {
 // Skip a stuff byte when STOP_TRANSMISSION
 //if (cmd == CMD12) SPI_RxByte();
   // Receive response register r1
-  r1 = SD_ReadR1(10);
+  r1 = SD_ReadR1(100);
 #if 1
   if (r1&(SD_R1_NOT_R1|SD_R1_CRC_ERROR|SD_R1_ERASE_RESET|SD_R1_ERR_ERASE_CLR)){
     DEBUG_PRINT(" SD_SendCmd err CMD%d, 0x%x, 0x%08x\r\n", (uint32_t)cmd-0x40, (uint32_t)r1, arg);

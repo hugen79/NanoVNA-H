@@ -129,7 +129,7 @@ static float kaiser_data[FFT_SIZE];
 #endif
 
 #undef VERSION
-#define VERSION "1.1"
+#define VERSION "1.1.01"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
@@ -146,7 +146,7 @@ const char *info_about[]={
 //  "Kernel: " CH_KERNEL_VERSION,
 //  "Compiler: " PORT_COMPILER_NAME,
   "Architecture: " PORT_ARCHITECTURE_NAME " Core Variant: " PORT_CORE_VARIANT_NAME,
-  "Port Info: " PORT_INFO,
+//  "Port Info: " PORT_INFO,
   "Platform: " PLATFORM_NAME,
   0 // sentinel
 };
@@ -194,7 +194,7 @@ static void measurementDataSmooth(uint16_t ch_mask){
   int j;
 //  ch_mask = 2;
 //  memcpy(measured[0], measured[1], sizeof(measured[0]));
-  float (*smooth_func)(float v0, float v1, float v2) = (config._vna_mode&VNA_SMOOTH_FUNCTION) ? arifmetic_mean : geometry_mean;
+  float (*smooth_func)(float v0, float v1, float v2) = (VNA_mode & VNA_SMOOTH_FUNCTION) ? arifmetic_mean : geometry_mean;
   for (int ch = 0; ch < 2; ch++,ch_mask>>=1) {
     if ((ch_mask&1)==0) continue;
     int count = 1<<(smooth_factor-1), n;
@@ -988,6 +988,67 @@ void load_default_properties(void)
 //current_props.checksum = 0;
 }
 
+//
+// Backup registers support, allow save data on power off (while vbat power enabled)
+//
+#ifdef __USE_BACKUP__
+#if POINTS_COUNT > 511 || SAVEAREA_MAX > 15
+#error "Check backup data limits!!"
+#endif
+// backup_0 bitfield
+typedef union {
+  struct {
+    uint32_t points   : 9; //  9 !! limit 511 points!!
+    uint32_t bw       : 9; // 18 !! limit 511
+    uint32_t id       : 4; // 22 !! 15 save slots
+    uint32_t leveler  : 3; // 25
+  };
+  uint32_t v;
+} backup_0;
+
+void update_backup_data(void) {
+  backup_0 bk = {
+    .points   = sweep_points,
+    .bw       = config._bandwidth,
+    .id       = lastsaveid,
+    .leveler  = lever_mode,
+  };
+  RTC->BKP0R = bk.v;
+  RTC->BKP1R = frequency0;
+  RTC->BKP2R = frequency1;
+  RTC->BKP3R = var_freq;
+}
+
+static void load_start_properties(void) {
+  if (VNA_mode & VNA_MODE_BACKUP) {
+    backup_0 bk = {.v = RTC->BKP0R};
+    if (bk.v != 0 && bk.id < SAVEAREA_MAX) { // if backup data valid, and slot valid
+      if (caldata_recall(bk.id) == 0) {      // Load ok
+        sweep_points = bk.points;            // Restore settings depend from calibration data
+        lever_mode   = bk.leveler;
+        set_bandwidth(bk.bw);
+        frequency0 = RTC->BKP1R;
+        frequency1 = RTC->BKP2R;
+        var_freq   = RTC->BKP3R;
+      }
+      // Here need restore settings not depend from cal data
+    }
+    else
+      caldata_recall(0);
+  }
+  else
+    caldata_recall(0);
+  update_frequencies();
+#ifdef __VNA_MEASURE_MODULE__
+  plot_set_measure_mode(current_props._measure);
+#endif
+}
+#else
+static void load_start_properties(void) {
+  load_properties(0);
+}
+#endif
+
 int load_properties(uint32_t id){
   int r = caldata_recall(id);
   update_frequencies();
@@ -1247,7 +1308,7 @@ static int set_frequency(freq_t freq)
 
 void set_bandwidth(uint16_t bw_count){
   config._bandwidth = bw_count&0x1FF;
-  request_to_redraw(REDRAW_FREQUENCY);
+  request_to_redraw(REDRAW_BACKUP | REDRAW_FREQUENCY);
 }
 
 uint32_t get_bandwidth_frequency(uint16_t bw_freq){
@@ -1486,8 +1547,7 @@ update_frequencies(void)
   else
     cal_status&= ~CALSTAT_INTERPOLATED;
 
-  request_to_redraw(REDRAW_CAL_STATUS);
-  request_to_redraw(REDRAW_FREQUENCY | REDRAW_AREA);
+  request_to_redraw(REDRAW_BACKUP | REDRAW_CAL_STATUS | REDRAW_FREQUENCY | REDRAW_AREA);
   RESET_SWEEP;
 }
 
@@ -1495,7 +1555,7 @@ void
 set_sweep_frequency(int type, freq_t freq)
 {
   // Check frequency for out of bounds (minimum SPAN can be any value)
-  if (type != ST_SPAN && freq < START_MIN)
+  if (type < ST_SPAN && freq < START_MIN)
     freq = START_MIN;
   if (freq > STOP_MAX)
     freq = STOP_MAX;
@@ -1540,6 +1600,10 @@ set_sweep_frequency(int type, freq_t freq)
       frequency0 = freq;
       frequency1 = freq;
       break;
+    case ST_VAR:
+      var_freq = freq;
+      request_to_redraw(REDRAW_BACKUP);
+      return;
   }
   update_frequencies();
 }
@@ -1554,8 +1618,6 @@ void reset_sweep_frequency(void){
 freq_t
 get_sweep_frequency(int type)
 {
-// Obsolete, ensure correct start/stop, start always must be < stop
-//  if (frequency0 > frequency1) SWAP(freq_t, frequency0, frequency1);
   switch (type) {
     case ST_START:  return frequency0;
     case ST_STOP:   return frequency1;
@@ -1936,7 +1998,7 @@ cal_done(void)
 
   cal_status|= CALSTAT_APPLY;
   lastsaveid = NO_SAVE_SLOT;
-  request_to_redraw(REDRAW_CAL_STATUS);
+  request_to_redraw(REDRAW_BACKUP | REDRAW_CAL_STATUS);
 }
 
 static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]){
@@ -2082,11 +2144,6 @@ static const char * const trc_channel_name[] = {
   "S11", "S21"
 };
 
-const char *get_trace_typename(int t)
-{
-  return trace_info_list[trace[t].type].name;
-}
-
 const char *get_trace_chname(int t)
 {
   return trc_channel_name[trace[t].channel];
@@ -2152,7 +2209,7 @@ VNA_SHELL_FUNCTION(cmd_trace)
   if (argc == 0) {
     for (t = 0; t < TRACES_MAX; t++) {
       if (trace[t].enabled) {
-        const char *type = get_trace_typename(t);
+        const char *type = get_trace_typename(trace[t].type);
         const char *channel = get_trace_chname(t);
         float scale = get_trace_scale(t);
         float refpos = get_trace_refpos(t);
@@ -2173,16 +2230,16 @@ VNA_SHELL_FUNCTION(cmd_trace)
   if (t < 0 || t >= TRACES_MAX)
     goto usage;
   if (argc == 1) {
-    const char *type = get_trace_typename(t);
+    const char *type = get_trace_typename(trace[t].type);
     const char *channel = get_trace_chname(t);
     shell_printf("%d %s %s\r\n", t, type, channel);
     return;
   }
-#if MAX_TRACE_TYPE != 13
+#if MAX_TRACE_TYPE != 22
 #error "Trace type enum possibly changed, check cmd_trace function"
 #endif
-  // enum TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_Q, TRC_OFF
-  static const char cmd_type_list[] = "logmag|phase|delay|smith|polar|linear|swr|real|imag|r|x|z|q|off";
+  // enum TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_Z, TRC_G, TRC_B, TRC_Y, TRC_Rp, TRC_Xp, TRC_sC, TRC_sL, TRC_pC, TRC_pL, TRC_Q, TRC_OFF
+  static const char cmd_type_list[] = "logmag|phase|delay|smith|polar|linear|swr|real|imag|r|x|z|g|b|y|rp|xp|sc|sl|pc|pl|q|off";
   int type = get_str_index(argv[1], cmd_type_list);
   if (type >= 0) {
     if (argc > 2) {
@@ -2223,7 +2280,7 @@ VNA_SHELL_FUNCTION(cmd_edelay)
 VNA_SHELL_FUNCTION(cmd_marker)
 {
   static const char cmd_marker_list[] = "on|off";
-  static const char cmd_marker_smith[] = "lin|log|ri|rx|rlc";
+  static const char cmd_marker_smith[] = "lin|log|ri|rx|rlc|gb|glc|rpxp|rplc";
   int t;
   if (argc == 0) {
     for (t = 0; t < MARKERS_MAX; t++) {
@@ -2233,7 +2290,7 @@ VNA_SHELL_FUNCTION(cmd_marker)
     }
     return;
   }
-  request_to_redraw(REDRAW_MARKER);
+  request_to_redraw(REDRAW_MARKER|REDRAW_AREA);
   // Marker on|off command
   int enable = get_str_index(argv[0], cmd_marker_list);
   if (enable >= 0) { // string found: 0 - on, 1 - off
@@ -2300,9 +2357,9 @@ VNA_SHELL_FUNCTION(cmd_touchcal)
   touch_cal_exec();
   shell_printf("done\r\n");
 
-  shell_printf("touch cal params: ");
+  shell_printf("touch cal params:");
   for (i = 0; i < 4; i++) {
-    shell_printf("%d ", config._touch_cal[i]);
+    shell_printf(" %d", config._touch_cal[i]);
   }
   shell_printf("\r\n");
   request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
@@ -2587,6 +2644,12 @@ VNA_SHELL_FUNCTION(cmd_si5351reg)
 }
 #endif
 
+static void set_I2C_timings(uint32_t timings) {
+  I2CD1.i2c->CR1 &=~I2C_CR1_PE;
+  I2CD1.i2c->TIMINGR = timings;
+  I2CD1.i2c->CR1 |= I2C_CR1_PE;
+}
+
 #ifdef ENABLE_I2C_TIMINGS
 VNA_SHELL_FUNCTION(cmd_i2ctime)
 {
@@ -2594,10 +2657,7 @@ VNA_SHELL_FUNCTION(cmd_i2ctime)
   uint32_t tim =  STM32_TIMINGR_PRESC(0U)  |
                   STM32_TIMINGR_SCLDEL(my_atoui(argv[0])) | STM32_TIMINGR_SDADEL(my_atoui(argv[1])) |
                   STM32_TIMINGR_SCLH(my_atoui(argv[2])) | STM32_TIMINGR_SCLL(my_atoui(argv[3]));
-  I2CD1.i2c->CR1 &=~I2C_CR1_PE;
-  I2CD1.i2c->TIMINGR = tim;
-  I2CD1.i2c->CR1 |= I2C_CR1_PE;
-
+  set_I2C_timings(tim);
 }
 #endif
 
@@ -2731,6 +2791,46 @@ VNA_SHELL_FUNCTION(cmd_usart)
     streamWrite(&SDU1, buffer, size);
 }
 #endif
+#endif
+
+#ifdef __REMOTE_DESKTOP__
+void send_region(remote_region_t *rd, uint8_t * buf, uint16_t size)
+{
+  if (SDU1.config->usbp->state == USB_ACTIVE) {
+    streamWrite(shell_stream, (void*) rd, sizeof(remote_region_t));
+    streamWrite(shell_stream, (void*) buf, size);
+    streamWrite(shell_stream, (void*)"ch> \r\n", 6);
+  }
+  else
+    sweep_mode&=~SWEEP_REMOTE;
+}
+
+VNA_SHELL_FUNCTION(cmd_refresh)
+{
+  static const char cmd_enable_list[] = "on|off";
+  if (argc != 1) return;
+  int enable = get_str_index(argv[0], cmd_enable_list);
+       if (enable == 0) sweep_mode|= SWEEP_REMOTE;
+  else if (enable == 1) sweep_mode&=~SWEEP_REMOTE;
+  // redraw all on screen
+  request_to_redraw(REDRAW_FREQUENCY | REDRAW_CAL_STATUS | REDRAW_AREA | REDRAW_BATTERY);
+}
+
+VNA_SHELL_FUNCTION(cmd_touch)
+{
+  if (argc != 2) return;
+  remote_touch_set(REMOTE_PRESS, my_atoi(argv[0]), my_atoi(argv[1]));
+}
+
+VNA_SHELL_FUNCTION(cmd_release)
+{
+  int16_t x = -1, y = -1;
+  if (argc == 2) {
+    x = my_atoi(argv[0]);
+    y = my_atoi(argv[1]);
+  }
+  remote_touch_set(REMOTE_RELEASE, x, y);
+}
 #endif
 
 #ifdef ENABLE_SD_CARD_CMD
@@ -2894,6 +2994,11 @@ static const VNAShellCommand commands[] =
 //  {"grid"        , cmd_grid        , CMD_RUN_IN_LOAD},
     {"edelay"      , cmd_edelay      , CMD_RUN_IN_LOAD},
     {"capture"     , cmd_capture     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+#ifdef __REMOTE_DESKTOP__
+    {"refresh"     , cmd_refresh     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+    {"touch"       , cmd_touch       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+    {"release"     , cmd_release     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+#endif
     {"vbat"        , cmd_vbat        , CMD_RUN_IN_LOAD},
     {"tcxo"        , cmd_tcxo        , CMD_RUN_IN_LOAD},
     {"reset"       , cmd_reset       , CMD_RUN_IN_LOAD},
@@ -3231,11 +3336,18 @@ THD_FUNCTION(myshellThread, p)
  */
 #if STM32_I2C1_CLOCK == 8    // STM32_I2C1SW == STM32_I2C1SW_HSI     (HSI=8MHz)
 #if   STM32_I2C_SPEED == 400 // 400kHz @ HSI 8MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
+ #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(0U)  |\
+                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(1U) |\
+                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
  #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)  |\
                             STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(1U) |\
                             STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
 #endif
 #elif  STM32_I2C1_CLOCK == 48 // STM32_I2C1SW == STM32_I2C1SW_SYSCLK  (SYSCLK = 48MHz)
+ #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(5U) |\
+                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |\
+                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
+
  #if   STM32_I2C_SPEED == 400 // 400kHz @ SYSCLK 48MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
  #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(5U)  |\
                             STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |\
@@ -3250,6 +3362,10 @@ THD_FUNCTION(myshellThread, p)
                             STM32_TIMINGR_SCLH(23U)   | STM32_TIMINGR_SCLL(30U)
  #endif
 #elif  STM32_I2C1_CLOCK == 72 // STM32_I2C1SW == STM32_I2C1SW_SYSCLK  (SYSCLK = 72MHz)
+ #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(0U)   |\
+                            STM32_TIMINGR_SCLDEL(20U) | STM32_TIMINGR_SDADEL(20U) |\
+                            STM32_TIMINGR_SCLH(80U)   | STM32_TIMINGR_SCLL(100U)
+
  #if   STM32_I2C_SPEED == 400 // ~400kHz @ SYSCLK 72MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
  #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
                             STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
@@ -3271,7 +3387,7 @@ THD_FUNCTION(myshellThread, p)
 
 // I2C clock bus setting: depend from STM32_I2C1SW in mcuconf.h
 static const I2CConfig i2ccfg = {
-  .timingr = STM32_I2C_TIMINGR,  // TIMINGR register initialization. (use I2C timing configuration tool for STM32F3xx and STM32F0xx microcontrollers (AN4235))
+  .timingr = STM32_I2C_INIT_T,  // TIMINGR register initialization. (use I2C timing configuration tool for STM32F3xx and STM32F0xx microcontrollers (AN4235))
   .cr1 = 0,                      // CR1 register initialization.
   .cr2 = 0                       // CR2 register initialization.
 };
@@ -3299,9 +3415,9 @@ int main(void)
   config_recall();
 
 /*
- * restore frequencies and calibration 0 slot properties from flash memory
+ * restore frequencies and calibration 0 slot / backup id properties from flash memory
  */
-  load_properties(0);
+  load_start_properties();
 
 /*
  * Set frequency offset
@@ -3359,6 +3475,11 @@ int main(void)
 #ifdef  __VNA_ENABLE_DAC__
   dac_init();
 #endif
+
+/*
+ * I2C bus run on work speed
+ */
+  set_I2C_timings(STM32_I2C_TIMINGR);
 
 /*
  * Startup sweep thread
