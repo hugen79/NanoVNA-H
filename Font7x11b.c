@@ -28,7 +28,7 @@
 
 #if 0
 // Font definitions for header
-#define FONT_START_CHAR   0x17
+#define FONT_START_CHAR   0x16
 #define FONT_WIDTH           7
 #define FONT_GET_HEIGHT     11
 #define FONT_STR_HEIGHT     11
@@ -46,7 +46,7 @@
 #define CW_07  (8 - 7)
 #define CW_08  (8 - 8)
 
-#if FONT_START_CHAR!=0x17
+#if FONT_START_CHAR!=0x16
 #error "Need set correct offset in x5x7_bits font"
 #endif
 
@@ -339,20 +339,20 @@ const uint8_t x7x11b_bits[] =
   0b00110000,       // |  **    |
   0b00110000,       // |  **    |
   0b00110000,       // |  **    |
-
-// Char 0x16 width = 7
-  0b00110000|CW_07, // |  **    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
-  0b11110000,       // |****    |
-  0b11110000,       // |****    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
-  0b00110000,       // |  **    |
 #endif
+
+// Char 0x16 width = 8
+  0b00000000|CW_08, // |        |
+  0b00000110,       // |     ** |
+  0b00000110,       // |     ** |
+  0b00000110,       // |     ** |
+  0b00100110,       // |  *  ** |
+  0b01100110,       // | **  ** |
+  0b11111110,       // |******* |
+  0b11111110,       // |******* |
+  0b01100000,       // | **     |
+  0b00100000,       // |  *     |
+  0b00000000,       // |        |
 
 // Char "\029" width = 8
   0b00000000|CW_08, // |        |

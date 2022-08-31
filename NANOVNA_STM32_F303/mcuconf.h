@@ -163,6 +163,11 @@
 #define STM32_GPT_TIM2_IRQ_PRIORITY         2
 #define STM32_GPT_TIM3_IRQ_PRIORITY         2
 #define STM32_GPT_TIM4_IRQ_PRIORITY         2
+// disable interrupt handlers
+#define STM32_TIM1_SUPPRESS_ISR
+#define STM32_TIM2_SUPPRESS_ISR
+#define STM32_TIM3_SUPPRESS_ISR
+#define STM32_TIM4_SUPPRESS_ISR
 
 /*
  * I2C driver system settings.

@@ -51,14 +51,14 @@
 //*****************************************************
 // The RXNE flag is set depending on the FRXTH bit value in the SPIx_CR2 register:
 // • If FRXTH is set, RXNE goes high and stays high until the RXFIFO level is greater or equal to 1/4 (8-bit).
-#define SPI_RX_IS_NOT_EMPTY(spi)  (spi->SR&SPI_SR_RXNE)
-#define SPI_RX_IS_EMPTY(spi)     (((spi->SR&SPI_SR_RXNE) == 0))
+#define SPI_RX_IS_NOT_EMPTY(spi)    (spi->SR&SPI_SR_RXNE)
+#define SPI_RX_IS_EMPTY(spi)      (!(spi->SR&SPI_SR_RXNE))
 
 // The TXE flag is set when transmission TXFIFO has enough space to store data to send.
 // 0: Tx buffer not empty, bit is cleared automatically when the TXFIFO level becomes greater than 1/2
 // 1: Tx buffer empty, flag goes high and stays high until the TXFIFO level is lower or equal to 1/2 of the FIFO depth
-#define SPI_TX_IS_NOT_EMPTY(spi)  (((spi->SR&(SPI_SR_TXE)) == 0))
-#define SPI_TX_IS_EMPTY(spi)     (spi->SR&SPI_SR_TXE)
+#define SPI_TX_IS_NOT_EMPTY(spi)  (!(spi->SR&SPI_SR_TXE))
+#define SPI_TX_IS_EMPTY(spi)        (spi->SR&SPI_SR_TXE)
 
 // When BSY is set, it indicates that a data transfer is in progress on the SPI (the SPI bus is busy).
 #define SPI_IS_BUSY(spi)     (spi->SR & SPI_SR_BSY)

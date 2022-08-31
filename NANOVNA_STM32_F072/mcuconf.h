@@ -40,7 +40,7 @@
 #define STM32_PVD_ENABLE                    FALSE
 #define STM32_PLS                           STM32_PLS_LEV0
 #define STM32_HSI_ENABLED                   TRUE
-#define STM32_HSI14_ENABLED                 TRUE
+#define STM32_HSI14_ENABLED                 FALSE
 #define STM32_HSI48_ENABLED                 TRUE
 #define STM32_HSE_ENABLED                   FALSE
 #define STM32_SW                            STM32_SW_PLL
@@ -49,10 +49,8 @@
 #define STM32_PLLMUL_VALUE                  12
 #define STM32_HPRE                          STM32_HPRE_DIV1
 #define STM32_PPRE                          STM32_PPRE_DIV1
-#define STM32_ADCSW                         STM32_ADCSW_HSI14
 #define STM32_ADCPRE                        STM32_ADCPRE_DIV4
 #define STM32_MCOSEL                        STM32_MCOSEL_PLLDIV2
-#define STM32_ADCSW                         STM32_ADCSW_HSI14
 #define STM32_USBSW                         STM32_USBSW_HSI48
 #define STM32_CECSW                         STM32_CECSW_HSI
 //#define STM32_I2C1SW                        STM32_I2C1SW_HSI
@@ -63,7 +61,7 @@
 #define STM32_I2C1_CLOCK                    48
 
 /*
- * RTC driver system settings for stm32f303
+ * RTC driver system settings for stm32f072
  */
 #define RTC_PRER(a, s)              ((((a) - 1) << 16) | ((s) - 1))
 
@@ -145,6 +143,7 @@
 #define STM32_GPT_TIM3_IRQ_PRIORITY         2
 #define STM32_GPT_TIM14_IRQ_PRIORITY        2
 
+#define STM32_TIM3_SUPPRESS_ISR
 /*
  * I2C driver system settings.
  */
@@ -192,6 +191,10 @@
 #define STM32_ICU_TIM1_IRQ_PRIORITY         3
 #define STM32_ICU_TIM2_IRQ_PRIORITY         3
 #define STM32_ICU_TIM3_IRQ_PRIORITY         3
+// disable interrupt handlers
+#define STM32_TIM1_SUPPRESS_ISR
+#define STM32_TIM2_SUPPRESS_ISR
+#define STM32_TIM3_SUPPRESS_ISR
 
 /*
  * PWM driver system settings.

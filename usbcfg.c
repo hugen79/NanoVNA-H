@@ -234,9 +234,7 @@ static const USBEndpointConfig ep1config = {
   0x0040,
   0x0040,
   &ep1instate,
-  &ep1outstate,
-  2,
-  NULL
+  &ep1outstate
 };
 
 /**
@@ -255,8 +253,6 @@ static const USBEndpointConfig ep2config = {
   0x0010,
   0x0000,
   &ep2instate,
-  NULL,
-  1,
   NULL
 };
 
@@ -265,39 +261,31 @@ static const USBEndpointConfig ep2config = {
  */
 static void usb_event(USBDriver *usbp, usbevent_t event) {
   extern SerialUSBDriver SDU1;
-
+  chSysLockFromISR();
   switch (event) {
   case USB_EVENT_RESET:
-    return;
+    break;
   case USB_EVENT_ADDRESS:
-    return;
+    break;
   case USB_EVENT_CONFIGURED:
-    chSysLockFromISR();
-
     /* Enables the endpoints specified into the configuration.
        Note, this callback is invoked from an ISR so I-Class functions
        must be used.*/
     usbInitEndpointI(usbp, USBD1_DATA_REQUEST_EP, &ep1config);
     usbInitEndpointI(usbp, USBD1_INTERRUPT_REQUEST_EP, &ep2config);
-
     /* Resetting the state of the CDC subsystem.*/
     sduConfigureHookI(&SDU1);
-
-    chSysUnlockFromISR();
-    return;
+    break;
   case USB_EVENT_SUSPEND:
-    chSysLockFromISR();
-
     /* Disconnection event on suspend.*/
     sduDisconnectI(&SDU1);
-
-    chSysUnlockFromISR();
-    return;
+    break;
   case USB_EVENT_WAKEUP:
-    return;
+    break;
   case USB_EVENT_STALLED:
-    return;
+    break;
   }
+  chSysUnlockFromISR();
   return;
 }
 
@@ -305,9 +293,7 @@ static void usb_event(USBDriver *usbp, usbevent_t event) {
  * Handles the USB driver global events.
  */
 static void sof_handler(USBDriver *usbp) {
-
   (void)usbp;
-
   osalSysLockFromISR();
   sduSOFHookI(&SDU1);
   osalSysUnlockFromISR();

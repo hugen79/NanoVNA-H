@@ -109,6 +109,22 @@
 #define REG_39_CM2R_TO_RIGHT_N_20k   (2<<0)
 #define REG_39_CM2R_TO_RIGHT_N_40k   (3<<0)
 
+#define REG_27_WCLK_IN               (0<<2)
+#define REG_27_WCLK_OUT              (1<<2)
+#define REG_27_BCLK_IN               (0<<3)
+#define REG_27_BCLK_OUT              (1<<3)
+#define REG_27_DATA_16               (0<<4)
+#define REG_27_DATA_20               (1<<4)
+#define REG_27_DATA_24               (2<<4)
+#define REG_27_DATA_32               (3<<4)
+#define REG_27_INTERFACE_I2S         (0<<6)
+#define REG_27_INTERFACE_DSP         (1<<6)
+#define REG_27_INTERFACE_RJF         (2<<6)
+#define REG_27_INTERFACE_LJF         (3<<6)
+
+// Set the interface mode: 16 bit, BCLK, WCLK as output, DSP mode
+#define REG_27  (REG_27_DATA_16 | REG_27_INTERFACE_DSP | REG_27_WCLK_OUT | REG_27_BCLK_OUT)
+
 static const uint8_t conf_data[] = {
 // reg, data,     // PLL clock config
   0x00, 0x00,     // Initialize to Page 0
@@ -132,7 +148,7 @@ static const uint8_t conf_data[] = {
   0x06, 0x02,     // J=2
   0x07, 0x00,     // D=0
   0x08, 0x00,
-#elif AUDIO_CLOCK_REF == 86016000U
+#elif AUDIO_CLOCK_REF == 98304000U
   // MCLK = 98.304MHz
   0x04, 0x00,     // MCLK as CODEC_CLKIN
   0x05, 0x00,     // Power down PLL
@@ -154,17 +170,14 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 128
   0x0e, 0x80,     // DAC OSR Setting Register 2 (LSB)
   0x3c, 0x01,     // Set the DAC Mode to PRB_P1
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x81,     // Power up the NADC divider with value 1
   0x13, 0x88,     // Power up the MADC divider with value 7
   0x14, 0x80,     // ADC Oversampling (AOSR) Program the OSR of ADC to 128
   0x3d, 0x01,     // Select ADC PRB_R1
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
+  0x1b, REG_27,   // Set the interface mode
   0x1e, 0x80 + 32,// Enable the BCLKN divider with value 32 (I2S clock = 98.304MHz/(NDAC*32) = 48kHz * (16+16)
-
 #elif AUDIO_ADC_FREQ == 24000
   // Clock config, default fs=24kHz
   // from PLL 98.304MHz/(4*8*128) = 24kHz
@@ -173,17 +186,14 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 128
   0x0e, 0x80,     // DAC OSR Setting Register 2 (LSB)
   0x3c, 0x01,     // Set the DAC Mode to PRB_P1
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x81,     // Power up the NADC divider with value 1
   0x13, 0x88,     // Power up the MADC divider with value 7
   0x14, 0x80,     // ADC Oversampling (AOSR) Program the OSR of ADC to 128
   0x3d, 0x01,     // Select ADC PRB_R1
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
+  0x1b, REG_27,   // Set the interface mode
   0x1e, 0x80 + 32,// Enable the BCLKN divider with value 32 (I2S clock = 98.304MHz/(NDAC*32) = 48kHz * (16+16)
-
 #elif AUDIO_ADC_FREQ == 48000
   // Clock config, default fs=48kHz
   // from PLL 98.304MHz/(2*8*128) = 48kHz
@@ -192,15 +202,13 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 128
   0x0e, 0x80,     // DAC OSR Setting Register 2 (LSB)
   0x3c, 0x01,     // Set the DAC Mode to PRB_P1
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x81,     // Power up the NADC divider with value 1
   0x13, 0x88,     // Power up the MADC divider with value 8
   0x14, 0x80,     // ADC Oversampling (AOSR) Program the OSR of ADC to 128
   0x3d, 0x01,     // Select ADC PRB_R1
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
+  0x1b, REG_27,   // Set the interface mode
   0x1e, 0x80 + 32,// Enable the BCLKN divider with value 32 (I2S clock = 98.304MHz/(NDAC*32) = 48kHz * (16+16)
 #elif AUDIO_ADC_FREQ == 96000
   // Clock config, default fs=96kHz
@@ -210,15 +218,13 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 64
   0x0e, 0x40,     // DAC OSR Setting Register 2 (LSB)
   0x3c, 0x01,     // Set the DAC Mode to PRB_P1
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x82,     // Power up the NADC divider with value 2
   0x13, 0x88,     // Power up the MADC divider with value 8
   0x14, 0x80,     // ADC Oversampling (AOSR) set OSR of ADC to 128
   0x3d, 0x01,     // Select ADC PRB_R1 (AOSR = 64 (Use with PRB_R1 to PRB_R12, ADC Filter Type A or B))
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
+  0x1b, REG_27,   // Set the interface mode
   0x1e, 0x80 + 16,// Enable the BCLKN divider with value 16 (I2S clock = 98.304MHz/(NDAC*16) = 96kHz * (16+16)
 #elif AUDIO_ADC_FREQ == 192000
 // Clock config, default fs=192kHz
@@ -229,16 +235,13 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 64
   0x0e, 0x40,     // DAC OSR Setting Register 2 (LSB)
   0x3c,   17,     // Set the DAC Mode to PRB_P17
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x82,     // Power up the NADC divider with value 2
   0x13, 0x84,     // Power up the MADC divider with value 4
   0x14, 0x40,     // ADC Oversampling (AOSR) set OSR of ADC to 64
   0x3d,    7,     // Select ADC PRB_R7
-  0x24, 0xee,     // ADC power up
-
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
-  0x1e, 0x80 + 8,// Enable the BCLKN divider with value 8 (I2S clock = 98.304MHz/(NDAC*8) = 192kHz * (16+16)
+  0x1b, REG_27,   // Set the interface mode
+  0x1e, 0x80 + 8, // Enable the BCLKN divider with value 8 (I2S clock = 98.304MHz/(NDAC*8) = 192kHz * (16+16)
 #elif AUDIO_ADC_FREQ == 384000
 // Clock config, default fs=384kHz
 // from PLL 98.304MHz/(2*4*32) = 384kHz
@@ -248,16 +251,14 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 32
   0x0e, 0x20,     // DAC OSR Setting Register 2 (LSB)
   0x3c,   17,     // Set the DAC Mode to PRB_P17
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x82,     // Power up the NADC divider with value 2
   0x13, 0x82,     // Power up the MADC divider with value 2
   0x14, 0x40,     // ADC Oversampling (AOSR) set OSR of ADC to 64
   0x3d,    7,     // Select ADC PRB_R7
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
-  0x1e, 0x80 + 4,// Enable the BCLKN divider with value 4 (I2S clock = 98.304MHz/(NDAC*4) = 384kHz * (16+16)
+  0x1b, REG_27,   // Set the interface mode
+  0x1e, 0x80 + 4, // Enable the BCLKN divider with value 4 (I2S clock = 98.304MHz/(NDAC*4) = 384kHz * (16+16)
 #elif AUDIO_ADC_FREQ == 768000
 // Clock config, default fs=768kHz
 // from PLL 98.304MHz/(2*4*16) = 768kHz
@@ -267,16 +268,14 @@ static const uint8_t conf_data[] = {
   0x0d, 0x00,     // DAC OSR Setting Register 1 (MSB)  Program the OSR of DAC to 16
   0x0e, 0x20,     // DAC OSR Setting Register 2 (LSB)
   0x3c,   17,     // Set the DAC Mode to PRB_P17
-  0x25, 0x00,     // DAC power down
 // ADC output sample rate depend from DAC, but internal use this settings
   0x12, 0x82,     // Power up the NADC divider with value 2
   0x13, 0x82,     // Power up the MADC divider with value 2
   0x14, 0x40,     // ADC Oversampling (AOSR) set OSR of ADC to 64
   0x3d,    7,     // Select ADC PRB_R7
-  0x24, 0xee,     // ADC power up
 
-  0x1b, 0x0c,     // Set the BCLK,WCLK as output
-  0x1e, 0x80 + 2,// Enable the BCLKN divider with value 2 (I2S clock = 98.304MHz/(NDAC*2) = 768kHz * (16+16)
+  0x1b, REG_27,   // Set the interface mode
+  0x1e, 0x80 + 2, // Enable the BCLKN divider with value 2 (I2S clock = 98.304MHz/(NDAC*2) = 768kHz * (16+16)
 #else
 #error "Need set correct ADC clock for aic3204"
 #endif
@@ -331,9 +330,7 @@ static const uint8_t conf_data_ch1_select[] = {
 static void
 tlv320aic3204_bulk_write(const uint8_t *buf, int len)
 {
-//  i2cAcquireBus(&I2CD1);
-  (void)i2cMasterTransmitTimeout(&I2CD1, AIC3204_ADDR, buf, len, NULL, 0, 1000);
-//  i2cReleaseBus(&I2CD1);
+  i2c_transfer(AIC3204_ADDR, buf, len);
 }
 
 #if 0
@@ -342,9 +339,7 @@ tlv320aic3204_read(uint8_t d0)
 {
   int addr = AIC3204_ADDR;
   uint8_t buf[] = { d0 };
-  i2cAcquireBus(&I2CD1);
-  i2cMasterTransmitTimeout(&I2CD1, addr, buf, 1, buf, 1, 1000);
-  i2cReleaseBus(&I2CD1);
+  i2c_receive(&I2CD1, addr, buf, 1, buf, 1);
   return buf[0];
 }
 #endif
@@ -352,10 +347,8 @@ tlv320aic3204_read(uint8_t d0)
 static void
 tlv320aic3204_config(const uint8_t *data, int len)
 {
-//  i2cAcquireBus(&I2CD1);
   for (; len--; data += 2)
     tlv320aic3204_bulk_write(data, 2);
-//  i2cReleaseBus(&I2CD1);
 }
 
 void tlv320aic3204_init(void)

@@ -95,7 +95,7 @@ static char *long_to_string_with_divisor(char *p,
 
 // default prescision = 13
 // g.mmm kkk hhh
-#define MAX_FREQ_PRESCISION 13
+#define MAX_FREQ_PRESCISION 14
 #define FREQ_PSET           1
 #define FREQ_PREFIX_SPACE   2
 
@@ -185,11 +185,6 @@ static char *ftoa(char *p, float num, int precision) {
   if (precision) {
     *p++ = DIGIT_SEPARATOR;
     p=long_to_string_with_divisor(p, k, 10, precision);
-#ifndef CHPRINTF_FORCE_TRAILING_ZEROS
-    // remove zeros at end
-    while (p[-1]=='0') p--;
-    if (p[-1]==DIGIT_SEPARATOR) p--;
-#endif
   }
   return p;
 }
@@ -427,13 +422,20 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
       if (state & COMPLEX)
         *p++ = 'j';
       if (value.f == INFINITY){
-        *p++ = 0x19;
+        *p++ = 0x19; *p++ = ' ';
         break;
       }
       // Set default precision
       if (state&DEFAULT_PRESCISION)
         precision = (c=='F') ? FLOAT_PREFIX_PRECISION : FLOAT_PRECISION;
       p = (c=='F') ? ftoaS(p, value.f, precision) : ftoa(p, value.f, precision);
+#ifdef CHPRINTF_FORCE_TRAILING_ZEROS
+      if (state & PAD_ZERO) { // remove zeros at end
+        state^= PAD_ZERO;
+        while (p[-1]=='0') p--;
+        if (p[-1]=='.') p--;
+      }
+#endif
       break;
 #endif
     case 'X':

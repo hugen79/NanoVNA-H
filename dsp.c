@@ -141,7 +141,7 @@ acc_t acc_samp_c;
 acc_t acc_ref_s;
 acc_t acc_ref_c;
 void
-dsp_process(int16_t *capture, size_t length)
+dsp_process(audio_sample_t *capture, size_t length)
 {
   int32_t samp_s = 0;
   int32_t samp_c = 0;
@@ -176,7 +176,7 @@ static acc_t acc_ref_c;
 // Cortex M4 DSP instruction use
 #include "dsp.h"
 void
-dsp_process(int16_t *capture, size_t length)
+dsp_process(audio_sample_t *capture, size_t length)
 {
   uint32_t i = 0;
 //  int64_t samp_s = 0;

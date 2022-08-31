@@ -62,8 +62,6 @@ const PALConfig pal_default_config = {
 };
 #endif
 
-//extern void si5351_setup(void);
-
 /*
  * Early initialization code.
  * This initialization must be performed just after stack setup and before
@@ -85,7 +83,6 @@ void __early_init(void) {
     while (1);
   }
 
-  //si5351_setup();
   stm32_clock_init();
 }
 

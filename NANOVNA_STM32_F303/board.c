@@ -62,8 +62,6 @@ const PALConfig pal_default_config = {
 };
 #endif
 
-// extern void si5351_setup(void);
-
 /*
  * Early initialization code.
  * This initialization must be performed just after stack setup and before

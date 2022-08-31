@@ -28,7 +28,7 @@
 
 #if 0
 // Font definitions for header
-#define FONT_START_CHAR   0x17
+#define FONT_START_CHAR   0x16
 #define FONT_WIDTH           5
 #define FONT_WIDTH_MASK   0x07
 #define FONT_GET_HEIGHT      7
@@ -46,7 +46,7 @@
 #define CW_07  (8 - 7)
 #define CW_08  (8 - 8)
 
-#if FONT_START_CHAR!=0x17
+#if FONT_START_CHAR!=0x16
 #error "Need set correct offset in x5x7_bits font"
 #endif
 
@@ -251,16 +251,16 @@ const uint8_t x5x7_bits[] =
   0b00100000,       // |  *     |
   0b00100000,       // |  *     |
   0b00100000,       // |  *     |
-
-// Char 0x16 width = 6
-  0b00000000|CW_06, // |        |
-  0b11000000,       // |**      |
-  0b11110000,       // |****    |
-  0b00011100,       // |   ***  |
-  0b11110000,       // |****    |
-  0b11000000,       // |**      |
-  0b00000000,       // |        |
 #endif
+
+// Char 0x16 width = 8
+  0b00000000|CW_08, // |        |
+  0b00000110,       // |     ** |
+  0b00000110,       // |     ** |
+  0b01000110,       // | *   ** |
+  0b11111110,       // |******* |
+  0b11111110,       // |******* |
+  0b01000000,       // | *      |
 
 // Char "\029" width = 6
   0b00000000|CW_06, // |        |
@@ -280,8 +280,8 @@ const uint8_t x5x7_bits[] =
   0b11000000,       // |**      |
   0b10000000,       // |*       |
 
-// Char "\031" width = 7
-  0b00000000|CW_07, // |        |
+// Char "\031" width = 8
+  0b00000000|CW_08, // |        |
   0b01101100,       // | ** **  |
   0b10110010,       // |* **  * |
   0b10010010,       // |*  *  * |
@@ -326,11 +326,11 @@ const uint8_t x5x7_bits[] =
   0b10000000,       // |*       |
 
 // Char "\036" width = 6
-  0b00000000|CW_06, // |        |
-  0b01110000,       // | ***    |
+  0b01110000|CW_06, // | ***    |
   0b10001000,       // |*   *   |
   0b10001000,       // |*   *   |
   0b10001000,       // |*   *   |
+  0b01010000,       // | * *    |
   0b01010000,       // | * *    |
   0b11011000,       // |** **   |
 

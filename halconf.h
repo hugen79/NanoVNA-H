@@ -34,18 +34,14 @@
  * @brief   Enables the PAL subsystem.
  */
 #if !defined(HAL_USE_PAL) || defined(__DOXYGEN__)
-#define HAL_USE_PAL                 TRUE
+#define HAL_USE_PAL                 FALSE
 #endif
 
 /**
  * @brief   Enables the ADC subsystem.
  */
 #if !defined(HAL_USE_ADC) || defined(__DOXYGEN__)
-#if defined(NANOVNA_F303) 
-#define HAL_USE_ADC                 TRUE
-#else
 #define HAL_USE_ADC                 FALSE
-#endif
 #endif
 
 /**
@@ -66,28 +62,28 @@
  * @brief   Enables the EXT subsystem.
  */
 #if !defined(HAL_USE_EXT) || defined(__DOXYGEN__)
-#define HAL_USE_EXT                 TRUE
+#define HAL_USE_EXT                 FALSE
 #endif
 
 /**
  * @brief   Enables the GPT subsystem.
  */
 #if !defined(HAL_USE_GPT) || defined(__DOXYGEN__)
-#define HAL_USE_GPT                 TRUE
+#define HAL_USE_GPT                 FALSE
 #endif
 
 /**
  * @brief   Enables the I2C subsystem.
  */
 #if !defined(HAL_USE_I2C) || defined(__DOXYGEN__)
-#define HAL_USE_I2C                 TRUE
+#define HAL_USE_I2C                 FALSE
 #endif
 
 /**
  * @brief   Enables the I2S subsystem.
  */
 #if !defined(HAL_USE_I2S) || defined(__DOXYGEN__)
-#define HAL_USE_I2S                 TRUE
+#define HAL_USE_I2S                 FALSE
 #endif
 
 /**
@@ -174,6 +170,7 @@
 #define HAL_USE_WDG                 FALSE
 #endif
 
+//#define STM32_DMA_REQUIRED
 /*===========================================================================*/
 /* ADC driver related settings.                                              */
 /*===========================================================================*/
@@ -183,11 +180,7 @@
  * @note    Disabling this option saves both code and data space.
  */
 #if !defined(ADC_USE_WAIT) || defined(__DOXYGEN__)
-#if defined(NANOVNA_F303)
-#define ADC_USE_WAIT                TRUE
-#else
 #define ADC_USE_WAIT                FALSE
-#endif
 #endif
 
 /**

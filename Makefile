@@ -7,18 +7,24 @@
 ifeq ($(TARGET),)
   TARGET = F072
 endif
-TARGET=F303
+#TARGET=F303
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
  ifeq ($(TARGET),F303)
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ST7796S -DLCD_480x320 -D__VNA_ENABLE_DAC__ -D__LCD_BRIGHTNESS__  -DPOINTS_COUNT=401  -DLCD_480x320
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
 #USE_OPT+=-fstack-protector-strong
  else
-USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11 -DLCD_DRIVER_ILI9341 -DLCD_320x240 -D__DFU_SOFTWARE_MODE__  -DPOINTS_COUNT=101 -DLCD_320x240
-
+USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-functions=16 --specs=nano.specs -fstack-usage -std=c11
  endif
 endif
+# additional options, use math optimisations
+USE_OPT+= -ffast-math -fsingle-precision-constant
+
+USE_OPT+= -D__BAND_MODE__
+
+#USE_OPT+= -D__MS5351__
+
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
@@ -76,9 +82,9 @@ ifeq ($(TARGET),F303)
   USE_FPU = hard
 endif
 
-# Stack size to the allocated to the Cortex-M main/exceptions stack. This
-# stack is used for processing interrupts and exceptions.
-ifeq ($(USE_EXCEPTIONS_STACKSIZE),)
+# Stack size to be allocated to the Cortex-M process stack. This stack is
+# the stack used by the main() thread.
+ifeq ($(USE_PROCESS_STACKSIZE),)
   USE_PROCESS_STACKSIZE = 0x200
 endif
 # Stack size to the allocated to the Cortex-M main/exceptions stack. This
@@ -148,7 +154,7 @@ CSRC = $(STARTUPSRC) \
        FatFs/ff.c \
        FatFs/ffunicode.c \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font6x10.c Font7x11b.c Font10x14.c flash.c adc.c rtc.c vna_math.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font6x10.c Font7x11b.c Font11x14.c data_storage.c hardware.c vna_math.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -243,6 +249,7 @@ endif
 UDEFS+= -DVNA_AUTO_SELECT_RTC_SOURCE
 #Enable if install external 32.768kHz clock quartz on PC14 and PC15 pins on STM32 CPU and no VNA_AUTO_SELECT_RTC_SOURCE
 #UDEFS+= -DVNA_USE_LSE
+#UDEFS+= -D__VNA_Z_RENORMALIZATION__ -D__SD_FILE_BROWSER__ -D__VNA_FAST_LINES__
 
 # Define ASM defines here
 UADEFS =

@@ -250,13 +250,22 @@ static const float sin_table_512[] = {
 
 #endif // __VNA_USE_MATH_TABLES__
 
-static uint16_t reverse_bits(uint16_t x, int n) {
-	uint16_t result = 0;
-	int i;
-	for (i = 0; i < n; i++, x >>= 1)
-		result = (result << 1) | (x & 1U);
-	return result;
+#ifdef ARM_MATH_CM4
+// Use CORTEX M4 rbit instruction (reverse bit order in 32bit value)
+static uint32_t reverse_bits(uint32_t x, int n) {
+	uint32_t result;
+	 __asm volatile ("rbit %0, %1" : "=r" (result) : "r" (x) );
+	return result>>(32-n); // made shift for correct result
 }
+#else
+static uint16_t reverse_bits(uint16_t x, int n) {
+  uint16_t result = 0;
+  int i;
+  for (i = 0; i < n; i++, x >>= 1)
+    result = (result << 1) | (x & 1U);
+  return result;
+}
+#endif
 
 /***
  * dir = forward: 0, inverse: 1
@@ -271,40 +280,32 @@ void fft(float array[][2], const uint8_t dir) {
 #else
  #error "Need define FFT_N for this FFT size"
 #endif
-	const uint16_t n = FFT_SIZE;
-	const uint8_t levels = FFT_N; // log2(n)
-
-	const uint8_t real =   dir & 1;
-	const uint8_t imag = ~real & 1;
-	uint16_t i;
-
-	for (i = 0; i < n; i++) {
-		uint16_t j = reverse_bits(i, levels);
-		if (j > i) {
-			SWAP(float, array[i][real], array[j][real]);
-			SWAP(float, array[i][imag], array[j][imag]);
-		}
-	}
-	const uint16_t size = 2;
-	uint16_t halfsize = size / 2;
-	uint16_t tablestep = n / size;
-	uint16_t j, k;
-	// Cooley-Tukey decimation-in-time radix-2 FFT
-	for (;tablestep; tablestep>>=1, halfsize<<=1) {
-		for (i = 0; i < n; i+=2*halfsize) {
-			for (j = i, k = 0; j < i + halfsize; j++, k += tablestep) {
-				uint16_t l = j + halfsize;
-				float s = FFT_SIN(k);
-				float c = FFT_COS(k);
-				float tpre =  array[l][real] * c + array[l][imag] * s;
-				float tpim = -array[l][real] * s + array[l][imag] * c;
-				array[l][real] = array[j][real] - tpre;
-				array[l][imag] = array[j][imag] - tpim;
-				array[j][real] += tpre;
-				array[j][imag] += tpim;
-			}
-		}
-	}
+  const uint16_t n = FFT_SIZE;
+  const uint8_t levels = FFT_N; // log2(n)
+  uint16_t i, j;
+  for (i = 0; i < n; i++) {
+    if ((j = reverse_bits(i, levels)) > i) {
+      SWAP(float, array[i][0], array[j][0]);
+      SWAP(float, array[i][1], array[j][1]);
+    }
+  }
+  const uint16_t size = 2;
+  uint16_t halfsize = size / 2;
+  uint16_t tablestep = n / size;
+  // Cooley-Tukey decimation-in-time radix-2 FFT
+  for (;tablestep; tablestep>>=1, halfsize<<=1) {
+    for (i = 0; i < n; i+= halfsize) {
+      for (j = 0; j < n / size; i++, j+= tablestep) {
+        const uint16_t l = i + halfsize;
+        const float s = dir ? FFT_SIN(j) : -FFT_SIN(j);
+        const float c = FFT_COS(j);
+        const float tpre = array[l][0] * c - array[l][1] * s;
+        const float tpim = array[l][0] * s + array[l][1] * c;
+        array[l][0] = array[i][0] - tpre; array[i][0]+= tpre;
+        array[l][1] = array[i][1] - tpim; array[i][1]+= tpim;
+      }
+    }
+  }
 }
 
 // Return sin/cos value angle in range 0.0 to 1.0 (0 is 0 degree, 1 is 360 degree)
@@ -316,14 +317,14 @@ void vna_sincosf(float angle, float * pSinVal, float * pCosVal)
   *pSinVal = sinf(angle);
   *pCosVal = cosf(angle);
 #else
-  const float Dn = 2 * VNA_PI / FAST_MATH_TABLE_SIZE; // delta between the two points in table (fixed);
   uint16_t indexS, indexC;  // Index variable
   float f1, f2, d1, d2;     // Two nearest output values
-  float Df, fract, temp;
+  float fract, temp;
 
   // Round angle to range 0.0 to 1.0
   temp = vna_fabsf(angle);
-  temp-= (uint32_t)temp;//floorf(temp);
+  temp-= (uint32_t)temp;
+
   // Scale input from range 0.0 to 1.0 to table size
   temp*= FAST_MATH_TABLE_SIZE;
 
@@ -348,19 +349,28 @@ void vna_sincosf(float angle, float * pSinVal, float * pCosVal)
   else             {d1 =-sin_table_512[indexS-256+0];d2 =-sin_table_512[indexS-256+1];}
 #endif
 
-  // Calculation of cosine value
-  Df = f2 - f1;          // delta between the values of the functions
+#if 1
+  // 1e-7 error on 512 size table
+  const float Dn = 2 * VNA_PI / FAST_MATH_TABLE_SIZE; // delta between the two points in table (fixed);
+  float Df;
+  // Calculation of cos value
+  Df = f2 - f1; // delta between the values of the functions
   temp = Dn * (d1 + d2) + 2 * Df;
-  temp = (3 * Df + (d2 + 2 * d1) * Dn) - fract * temp;
+  temp = Df + (d1 * Dn + temp - fract * temp);
   temp = fract * temp - d1 * Dn;
-  *pCosVal = fract * temp + f1;
-
-  // Calculation of sine value
-  Df = d2 - d1; // delta between the values of the functions
-  temp = Dn * (f1 + f2) - 2 * Df;
-  temp = fract * temp + (3 * Df - (f2 + 2 * f1) * Dn);
-  temp = fract * temp + f1 * Dn;
-  *pSinVal = fract * temp + d1;
+  *pCosVal = f1 + fract * temp;
+  // Calculation of sin value
+  Df = d1 - d2; // delta between the values of the functions
+  temp = Dn * (f1 + f2) + 2 * Df;
+  temp = Df + (f1 * Dn + temp - fract * temp);
+  temp = fract * temp - f1 * Dn;
+  *pSinVal = d1 - fract * temp;
+#else
+  // 1e-5 error  on 512 size table
+  // Calculation of sin and cos value, use simple linear interpolation
+  *pCosVal = fract * (f2 - f1) + f1;
+  *pSinVal = fract * (d2 - d1) + d1;
+#endif
   if (angle < 0)
     *pSinVal = -*pSinVal;
 #endif
@@ -375,6 +385,28 @@ void vna_sincosf(float angle, float * pSinVal, float * pCosVal)
 #undef vna_logf
 #undef vna_atanf
 #undef vna_atan2f
+#undef vna_modff
+
+//**********************************************************************************
+// modff function - return fractional part and integer from float value x
+//**********************************************************************************
+float vna_modff(float x, float *iptr)
+{
+  union {float f; uint32_t i;} u = {x};
+  int e = (int)((u.i>>23)&0xff) - 0x7f; // get exponent
+  if (e <   0) {                        // no integral part
+    if (iptr) *iptr = 0;
+    return u.f;
+  }
+  if (e >= 23) x = 0;                   // no fractional part
+  else {
+    x = u.f; u.i&= ~(0x007fffff>>e);    // remove fractional part from u
+    x-= u.f;                            // calc fractional part
+  }
+//if (iptr) *iptr = ((u.i&0x007fffff)|0x00800000)>>(23-e); // cut integer part from float as integer
+  if (iptr) *iptr = u.f;                // cut integer part from float as float
+  return x;
+}
 
 //**********************************************************************************
 // square root
@@ -513,18 +545,18 @@ float vna_logf(float x)
   // Give up to 0.006 error (2.5x faster original code)
   union {float f; int32_t i;} u = {x};
   const int      log_2 = ((u.i >> 23) & 255) - 128;
-  if (u.i <=0) return (x-x)/0.0f;             // if <=0 return NAN
+  if (u.i <=0) return -1/(x*x);                 // if <=0 return -inf
   u.i = (u.i&0x007FFFFF) + 0x3F800000;
   u.f = ((-1.0f/3) * u.f + 2) * u.f - (2.0f/3); // (1)
   return (u.f + log_2) * MULTIPLIER;
 #elif 1
-  // Give up to 0.0001 error (2x faster original code)
-  // fast log2f approximation, give 0.0004 error
+  // Give up to 0.00005 error (2x faster original code)
+  // fast log2f approximation, give 0.0002 error
   union { float f; uint32_t i; } vx = { x };
   union { uint32_t i; float f; } mx = { (vx.i & 0x007FFFFF) | 0x3f000000 };
   // if <=0 return NAN
-  if (vx.i <=0) return (x-x)/0.0f;
-  return vx.i * (MULTIPLIER / (1 << 23)) - (124.22551499f * MULTIPLIER) - (1.498030302f * MULTIPLIER) * mx.f - (1.72587999f * MULTIPLIER) / (0.3520887068f + mx.f);
+  if (vx.i <=0) return -1/(x*x);
+  return vx.i * (MULTIPLIER / (1 << 23)) - (124.22544637f * MULTIPLIER) - (1.498030302f * MULTIPLIER) * mx.f - (1.72587999f * MULTIPLIER) / (0.3520887068f + mx.f);
 #else
   // use original code (20% faster default)
   static const float
@@ -584,7 +616,7 @@ float vna_log10f_x_10(float x)
   // Give up to 0.006 error (2.5x faster original code)
   union {float f; int32_t i;} u = {x};
   const int      log_2 = ((u.i >> 23) & 255) - 128;
-  if (u.i <=0) return (x-x)/0.0f;             // if <=0 return NAN
+  if (u.i <=0) return -1/(x*x);                 // if <=0 return -inf
   u.i = (u.i&0x007FFFFF) + 0x3F800000;
   u.f = ((-1.0f/3) * u.f + 2) * u.f - (2.0f/3); // (1)
   return (u.f + log_2) * MULTIPLIER;
@@ -594,8 +626,8 @@ float vna_log10f_x_10(float x)
   union { float f; uint32_t i; } vx = { x };
   union { uint32_t i; float f; } mx = { (vx.i & 0x007FFFFF) | 0x3f000000 };
   // if <=0 return NAN
-  if (vx.i <=0) return (x-x)/0.0f;
-  return vx.i * (MULTIPLIER / (1 << 23)) - (124.22551499f * MULTIPLIER) - (1.498030302f * MULTIPLIER) * mx.f - (1.72587999f * MULTIPLIER) / (0.3520887068f + mx.f);
+  if (vx.i <=0) return -1/(x*x);
+  return vx.i * (MULTIPLIER / (1 << 23)) - (124.22544637f * MULTIPLIER) - (1.498030302f * MULTIPLIER) * mx.f - (1.72587999f * MULTIPLIER) / (0.3520887068f + mx.f);
 #endif
 }
 //**********************************************************************************
@@ -744,33 +776,36 @@ float vna_atan2f(float y, float x)
 }
 #else
 // Polynomial approximation to atan2f
-float vna_atan2f (float y, float x)
+float vna_atan2f(float y, float x)
 {
   union {float f; int32_t i;} ux = {x};
   union {float f; int32_t i;} uy = {y};
   if (ux.i == 0 && uy.i == 0)
     return 0.0f;
 
-  float ax, ay, r, a, s;
+  float ax, ay, r, s;
   ax = vna_fabsf(x);
   ay = vna_fabsf(y);
-  a = (ay < ax) ? ay / ax : ax / ay;
-  s = a * a;
+  r = (ay < ax) ? ay / ax : ax / ay;
+  s = r * r;
   // Polynomial approximation to atan(a) on [0,1]
 #if 0
   // give 0.31 degree error
-  r = 0.970562748477141f - 0.189514164974601f * s;
+  r*= 0.970562748477141f - 0.189514164974601f * s;
+  //r*= vna_fmaf(-s, 0.189514164974601f, 0.970562748477141f);
 #elif 1
   // give 0.04 degree error
-  r = 0.994949366116654f - s * (0.287060635532652f - 0.078037176446441f * s);
+  r*= 0.994949366116654f - s * (0.287060635532652f - 0.078037176446441f * s);
+  //r*= vna_fmaf(-s, vna_fmaf(-s, 0.078037176446441f, 0.287060635532652f), 0.994949366116654f);
+  //r*= 0.995354f − s * (0.288679f + 0.079331f * s);
 #else
   // give 0.005 degree error
-  r = 0.999133448222780f - s * (0.320533292381664f - s * (0.144982490144465f - s * 0.038254464970299f));
+  r*= 0.999133448222780f - s * (0.320533292381664f - s * (0.144982490144465f - s * 0.038254464970299f));
+  //r*= vna_fmaf(-s, vna_fmaf(-s, vna_fmaf(-s, 0.038254464970299f, 0.144982490144465f), 0.320533292381664f), 0.999133448222780f);
 #endif
   // Map to full circle
-  r*=a;
-  if (ay  > ax) r = 1.57079637f - r;
-  if (ux.i < 0) r = 3.14159274f - r;
+  if (ay  > ax) r = VNA_PI/2.0f - r;
+  if (ux.i < 0) r = VNA_PI      - r;
   if (uy.i < 0) r = -r;
   return r;
 }

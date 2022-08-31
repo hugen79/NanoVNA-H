@@ -281,8 +281,8 @@
                                      PIN_OTYPE_PUSHPULL(GPIOB_I2S2_BCLK)| \
                                      PIN_OTYPE_PUSHPULL(GPIOB_I2S2_MISO)| \
                                      PIN_OTYPE_PUSHPULL(GPIOB_I2S2_MOSI))
-#define VAL_GPIOB_OSPEEDR           (PIN_OSPEED_100M(GPIOB_XN)       | \
-                                     PIN_OSPEED_100M(GPIOB_YN)       | \
+#define VAL_GPIOB_OSPEEDR           (PIN_OSPEED_2M(GPIOB_XN)         | \
+                                     PIN_OSPEED_2M(GPIOB_YN)         | \
                                      PIN_OSPEED_100M(2)              | \
                                      PIN_OSPEED_100M(GPIOB_SPI_SCLK) | \
                                      PIN_OSPEED_100M(GPIOB_SPI_MISO) | \
@@ -297,8 +297,8 @@
                                      PIN_OSPEED_100M(GPIOB_I2S2_BCLK)| \
                                      PIN_OSPEED_100M(GPIOB_I2S2_MISO)| \
                                      PIN_OSPEED_100M(GPIOB_I2S2_MOSI))
-#define VAL_GPIOB_PUPDR             (PIN_PUPDR_PULLUP(GPIOB_XN)       | \
-                                     PIN_PUPDR_PULLUP(GPIOB_YN)       | \
+#define VAL_GPIOB_PUPDR             (PIN_PUPDR_FLOATING(GPIOB_XN)     | \
+                                     PIN_PUPDR_FLOATING(GPIOB_YN)     | \
                                      PIN_PUPDR_PULLUP(2)              | \
                                      PIN_PUPDR_PULLUP(GPIOB_SPI_SCLK) | \
                                      PIN_PUPDR_PULLUP(GPIOB_SPI_MISO) | \

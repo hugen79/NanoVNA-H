@@ -36,6 +36,7 @@
 // #define VNA_SHELL_THREAD
 
 static BaseSequentialStream *shell_stream = 0;
+threads_queue_t shell_thread;
 
 // Shell new line
 #define VNA_SHELL_NEWLINE_STR    "\r\n"
@@ -96,9 +97,11 @@ static volatile vna_shellcmd_t  shell_function = 0;
 //#define DEBUG_CONSOLE_SHOW
 // Enable usart command
 #define ENABLE_USART_COMMAND
+// Enable config command
+#define ENABLE_CONFIG_COMMAND
 #ifdef __USE_SD_CARD__
 // Enable SD card console command
-#define ENABLE_SD_CARD_CMD
+#define ENABLE_SD_CARD_COMMAND
 #endif
 
 static void apply_CH0_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2]);
@@ -113,34 +116,24 @@ static bool sweep(bool break_on_operation, uint16_t ch_mask);
 static void transform_domain(uint16_t ch_mask);
 
 uint8_t sweep_mode = SWEEP_ENABLE;
-
-// sweep operation variables
-volatile uint16_t wait_count = 0;
 // current sweep point (used for continue sweep if user break)
 static uint16_t p_sweep = 0;
-// ChibiOS i2s buffer must be 2x size (for process one while next buffer filled by DMA)
-static int16_t rx_buffer[AUDIO_BUFFER_LEN * 2];
 // Sweep measured data
 float measured[2][POINTS_COUNT][2];
 
-//Buffer for fast apply FFT window function
-#ifdef USE_FFT_WINDOW_BUFFER
-static float kaiser_data[FFT_SIZE];
-#endif
-
 #undef VERSION
-#define VERSION "1.1.01"
+#define VERSION "1.2.14"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
   "Board: " BOARD_NAME,
-  "2019-2021 Copyright NanoVNA.com",
+  "2019-2022 Copyright NanoVNA.com",
   "based on  @DiSlord @edy555 ... source",
   "Licensed under GPL.",
   "Version: " VERSION " ["\
   "p:"define_to_STR(POINTS_COUNT)", "\
   "IF:"define_to_STR(FREQUENCY_IF_K)"k, "\
-  "ADC:"define_to_STR(AUDIO_ADC_FREQ_K)"k, "\
+  "ADC:"define_to_STR(AUDIO_ADC_FREQ_K1)"k, "\
   "Lcd:"define_to_STR(LCD_WIDTH)"x"define_to_STR(LCD_HEIGHT)\
   "]",  "Build Time: " __DATE__ " - " __TIME__,
 //  "Kernel: " CH_KERNEL_VERSION,
@@ -184,6 +177,7 @@ void set_smooth_factor(uint8_t factor){
   smooth_factor = factor;
   request_to_redraw(REDRAW_CAL_STATUS);
 }
+
 uint8_t get_smooth_factor(void) {
   return smooth_factor;
 }
@@ -194,7 +188,7 @@ static void measurementDataSmooth(uint16_t ch_mask){
   int j;
 //  ch_mask = 2;
 //  memcpy(measured[0], measured[1], sizeof(measured[0]));
-  float (*smooth_func)(float v0, float v1, float v2) = (VNA_mode & VNA_SMOOTH_FUNCTION) ? arifmetic_mean : geometry_mean;
+  float (*smooth_func)(float v0, float v1, float v2) = VNA_MODE(VNA_MODE_SMOOTH) ? arifmetic_mean : geometry_mean;
   for (int ch = 0; ch < 2; ch++,ch_mask>>=1) {
     if ((ch_mask&1)==0) continue;
     int count = 1<<(smooth_factor-1), n;
@@ -222,24 +216,21 @@ static void measurementDataSmooth(uint16_t ch_mask){
 }
 #endif
 
-static THD_WORKING_AREA(waThread1, 768);
+static THD_WORKING_AREA(waThread1, 1024);
 static THD_FUNCTION(Thread1, arg)
 {
   (void)arg;
   chRegSetThreadName("sweep");
+#ifdef __FLIP_DISPLAY__
+  if(VNA_MODE(VNA_MODE_FLIP_DISPLAY))
+    lcd_set_flip(true);
+#endif
 /*
  * UI (menu, touch, buttons) and plot initialize
  */
   ui_init();
   //Initialize graph plotting
   plot_init();
-/*
- * Set LCD display brightness
- */
-#ifdef  __LCD_BRIGHTNESS__
-  lcd_setBrightness(config._brightness);
-#endif
-
   while (1) {
     bool completed = false;
     uint16_t mask = get_sweep_mask();
@@ -250,18 +241,17 @@ static THD_FUNCTION(Thread1, arg)
       __WFI();
     }
     // Run Shell command in sweep thread
-    if (shell_function) {
+    while (shell_function) {
       shell_function(shell_nargs - 1, &shell_args[1]);
       shell_function = 0;
-      chThdSleepMilliseconds(10);
-      continue;
+      osalThreadDequeueNextI(&shell_thread, MSG_OK);
     }
     // Process UI inputs
     sweep_mode|= SWEEP_UI_MODE;
     ui_process();
     sweep_mode&=~SWEEP_UI_MODE;
     // Process collected data, calculate trace coordinates and plot only if scan completed
-    if ((sweep_mode & SWEEP_ENABLE) && completed) {
+    if (completed) {
 #ifdef __USE_SMOOTH__
 //    START_PROFILE;
       if (smooth_factor)
@@ -272,17 +262,17 @@ static THD_FUNCTION(Thread1, arg)
       if ((props_mode & DOMAIN_MODE) == DOMAIN_TIME) transform_domain(mask);
 //      STOP_PROFILE;
       // Prepare draw graphics, cache all lines, mark screen cells for redraw
-      plot_into_index(measured);
+      plot_into_index();
     }
     request_to_redraw(REDRAW_BATTERY);
 #ifndef DEBUG_CONSOLE_SHOW
     // plot trace and other indications as raster
-    draw_all(completed);  // flush markmap only if scan completed to prevent remaining traces
+    draw_all();
 #endif
   }
 }
 
-static inline void
+void
 pause_sweep(void)
 {
   sweep_mode &= ~SWEEP_ENABLE;
@@ -307,7 +297,7 @@ toggle_sweep(void)
 static float
 bessel0(float x)
 {
-  const float eps = 0.0001;
+  const float eps = 0.0001f;
 
   float ret = 0;
   float term = 1;
@@ -324,7 +314,7 @@ bessel0(float x)
 static float
 kaiser_window(float k, float n, float beta)
 {
-  if (beta == 0.0) return 1.0;
+  if (beta == 0.0) return 1.0f;
   float r = (2 * k) / (n - 1) - 1;
   return bessel0(beta * vna_sqrtf(1 - r * r)) / bessel0(beta);
 }
@@ -339,8 +329,8 @@ kaiser_window(float k, float n, float beta)
 //     (n!)^2          1        4       36       576    14400
 // first 2 (0 and 1) precalculated as simple.
 
-// Precalculated multiplier step for (n!)^2  max SIZE 16 (first 2 use as init)
-static const float div[] = {/*0, 1,*/ 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225, 256};
+// Precalculated multiplier step for 1 / ((n!)^2)  max SIZE 16 (first 2 use as init)
+static const float div[] = {/*0, 1,*/ 1/4.0f, 1/9.0f, 1/16.0f, 1/25.0f, 1/36.0f, 1/49.0f, 1/64.0f, 1/81.0f, 1/100.0f, 1/121.0f, 1/144.0f, 1/169.0f, 1/196.0f, 1/225.0f, 1/256.0f};
 float bessel0_ext(float x_pow_2)
 {
 // set calculated count, more SIZE - less error but longer (bigger beta also need more size for less error)
@@ -351,7 +341,7 @@ float bessel0_ext(float x_pow_2)
   float term = x_pow_2;
   float ret = 1.0f + term;
   do {
-    term*= x_pow_2 / div[SIZE - i];
+    term*= x_pow_2 * div[SIZE - i];
     ret += term;
   }while(--i);
   return ret;
@@ -368,7 +358,7 @@ float bessel0_ext(float x_pow_2)
 static float
 kaiser_window_ext(uint32_t k, uint32_t n, uint16_t beta)
 {
-  if (beta == 0) return 1.0;
+  if (beta == 0) return 1.0f;
   n = n - 1;
   k = k * (n - k) * beta * beta;
   n = n * n;
@@ -413,7 +403,7 @@ transform_domain(uint16_t ch_mask)
   // recalculate the scale factor if any window details are changed. The scale factor is to compensate for windowing.
   // Add constant multiplier for kaiser_window_ext use 1.0f / bessel0_ext(beta*beta/4.0f)
   // Add constant multiplier  1.0f / FFT_SIZE
-  static float window_scale = 0;
+  static float window_scale = 0.0f;
   static uint16_t td_cache = 0;
   // Check mode cache data
   uint16_t td_check = (props_mode & (TD_WINDOW|TD_FUNC))|(sweep_points<<5);
@@ -425,15 +415,16 @@ transform_domain(uint16_t ch_mask)
       window_scale = 0.0f;
       for (int i = 0; i < sweep_points; i++)
         window_scale += kaiser_window_ext(i + offset, window_size, beta);
-      if (domain_func == TD_FUNC_BANDPASS) window_scale = 1.0f / (  window_scale);
-      else                                 window_scale = 1.0f / (2*window_scale);
+      if (domain_func == TD_FUNC_BANDPASS) window_scale = 1.0f / (       window_scale);
+      else                                 window_scale = 1.0f / (2.0f * window_scale);
 //    window_scale*= FFT_SIZE               // add correction from kaiser_window
 //    window_scale/= FFT_SIZE               // add defaut from FFT_SIZE
 //    window_scale*= bessel0_ext(beta*beta/4.0f) // for get result as kaiser_window
 //    window_scale/= bessel0_ext(beta*beta/4.0f) // for set correction on calculated kaiser_window for value
     }
 #ifdef USE_FFT_WINDOW_BUFFER
-    // Cache window function data to buffer
+    // Cache window function data to static buffer
+    static float kaiser_data[FFT_SIZE];
     for (i = 0; i < sweep_points; i++)
       kaiser_data[i] = kaiser_window_ext(i + offset, window_size, beta) * window_scale;
 #endif
@@ -455,8 +446,8 @@ transform_domain(uint16_t ch_mask)
     }
     // Fill zeroes last
     for (; i < FFT_SIZE; i++) {
-      tmp[i * 2 + 0] = 0.0;
-      tmp[i * 2 + 1] = 0.0;
+      tmp[i * 2 + 0] = 0.0f;
+      tmp[i * 2 + 1] = 0.0f;
     }
     // For lowpass mode swap
     if (is_lowpass) {
@@ -494,6 +485,11 @@ int shell_printf(const char *fmt, ...)
   va_end(ap);
   return formatted_bytes;
 }
+
+static void shell_write(const void *buf, uint32_t size) {streamWrite(shell_stream, buf, size);}
+static int  shell_read(void *buf, uint32_t size)        {return streamRead(shell_stream, buf, size);}
+//static void shell_put(uint8_t c)                      {streamPut(shell_stream, c);}
+//static uint8_t shell_getc(void)                       {return streamGet(shell_stream);}
 
 #ifdef __USE_SERIAL_CONSOLE__
 // Serial Shell commands output
@@ -564,21 +560,14 @@ VNA_SHELL_FUNCTION(cmd_reset)
 #ifdef __DFU_SOFTWARE_MODE__
   if (argc == 1) {
     if (get_str_index(argv[0], "dfu") == 0) {
-      shell_printf("Performing reset to DFU mode\r\n");
+      shell_printf("Performing reset to DFU mode" VNA_SHELL_NEWLINE_STR);
       enter_dfu();
       return;
     }
   }
 #endif
-  shell_printf("Performing reset\r\n");
-
-  rccEnableWWDG(FALSE);
-  WWDG->CFR = 0x60;
-  WWDG->CR = 0xff;
-
-  /* wait forever */
-  while (1)
-    ;
+  shell_printf("Performing reset" VNA_SHELL_NEWLINE_STR);
+  NVIC_SystemReset();
 }
 
 // Use macro, std isdigit more big
@@ -671,7 +660,20 @@ VNA_SHELL_FUNCTION(cmd_smooth)
     set_smooth_factor(my_atoui(argv[0]));
     return;
   }
-  shell_printf("smooth = %d\r\n", smooth_factor);
+  shell_printf("smooth = %d" VNA_SHELL_NEWLINE_STR, smooth_factor);
+}
+#endif
+
+#ifdef ENABLE_CONFIG_COMMAND
+VNA_SHELL_FUNCTION(cmd_config)
+{
+  static const char cmd_mode_list[] = "auto|avg|connection|mode|grid|dot|bk|flip";
+  int idx;
+  if (argc == 2 && (idx = get_str_index(argv[0], cmd_mode_list)) >= 0) {
+	apply_VNA_mode(idx, my_atoui(argv[1]));
+  }
+  else
+    shell_printf("usage: config {%s} [0|1]" VNA_SHELL_NEWLINE_STR, cmd_mode_list);
 }
 #endif
 
@@ -679,7 +681,7 @@ VNA_SHELL_FUNCTION(cmd_smooth)
 VNA_SHELL_FUNCTION(cmd_offset)
 {
   if (argc != 1) {
-    shell_printf("usage: offset {frequency offset(Hz)}\r\n");
+    shell_printf("usage: offset {frequency offset(Hz)}" VNA_SHELL_NEWLINE_STR);
     return;
   }
   si5351_set_frequency_offset(my_atoi(argv[0]));
@@ -697,7 +699,7 @@ VNA_SHELL_FUNCTION(cmd_freq)
   set_frequency(freq);
   return;
 usage:
-  shell_printf("usage: freq {frequency(Hz)}\r\n");
+  shell_printf("usage: freq {frequency(Hz)}" VNA_SHELL_NEWLINE_STR);
 }
 
 void set_power(uint8_t value){
@@ -712,11 +714,11 @@ void set_power(uint8_t value){
 VNA_SHELL_FUNCTION(cmd_power)
 {
   if (argc == 0) {
-    shell_printf("power: %d\r\n", current_props._power);
+    shell_printf("power: %d" VNA_SHELL_NEWLINE_STR, current_props._power);
     return;
   }
   if (argc != 1) {
-    shell_printf("usage: power {0-3}|{255 - auto}\r\n");
+    shell_printf("usage: power {0-3}|{255 - auto}" VNA_SHELL_NEWLINE_STR);
     return;
   }
   set_power(my_atoi(argv[0]));
@@ -750,30 +752,21 @@ VNA_SHELL_FUNCTION(cmd_time)
   rtc_set_time(dt_buf[1], dt_buf[0]);
   return;
 usage:
-  shell_printf("20%02x/%02x/%02x %02x:%02x:%02x\r\n"\
-               "usage: time {[%s] 0-99} or {b 0xYYMMDD 0xHHMMSS}\r\n", time[6], time[5], time[4], time[2], time[1], time[0], time_cmd);
+  shell_printf("20%02x/%02x/%02x %02x:%02x:%02x" VNA_SHELL_NEWLINE_STR \
+               "usage: time {[%s] 0-99} or {b 0xYYMMDD 0xHHMMSS}" VNA_SHELL_NEWLINE_STR,
+                time[6], time[5], time[4], time[2], time[1], time[0], time_cmd);
 }
 #endif
 
 #ifdef __VNA_ENABLE_DAC__
-// Check DAC enabled in ChibiOS
-#if HAL_USE_DAC == TRUE
-#error "Need disable HAL_USE_DAC in halconf.h for use VNA_DAC"
-#endif
-
-static void dac_init(void) {
-  rccEnableDAC1(false); // Use DAC1
-  DAC->CR|= DAC_CR_EN2; // Enable DAC1 ch2
-}
-
 VNA_SHELL_FUNCTION(cmd_dac)
 {
   if (argc != 1) {
-    shell_printf("usage: dac {value(0-4095)}\r\n"\
-                 "current value: %d\r\n", config._dac_value);
+    shell_printf("usage: dac {value(0-4095)}" VNA_SHELL_NEWLINE_STR \
+                 "current value: %d" VNA_SHELL_NEWLINE_STR, config._dac_value);
     return;
   }
-  DAC->DHR12R2 = my_atoui(argv[0])&0xFFF;
+  dac_setvalue_ch2(my_atoui(argv[0])&0xFFF);
 }
 #endif
 
@@ -781,8 +774,8 @@ VNA_SHELL_FUNCTION(cmd_threshold)
 {
   uint32_t value;
   if (argc != 1) {
-    shell_printf("usage: threshold {frequency in harmonic mode}\r\n"\
-                 "current: %d\r\n", config._harmonic_freq_threshold);
+    shell_printf("usage: threshold {frequency in harmonic mode}" VNA_SHELL_NEWLINE_STR \
+                 "current: %d" VNA_SHELL_NEWLINE_STR, config._harmonic_freq_threshold);
     return;
   }
   value = my_atoui(argv[0]);
@@ -794,24 +787,24 @@ VNA_SHELL_FUNCTION(cmd_saveconfig)
   (void)argc;
   (void)argv;
   config_save();
-  shell_printf("Config saved.\r\n");
+  shell_printf("Config saved" VNA_SHELL_NEWLINE_STR);
 }
 
 VNA_SHELL_FUNCTION(cmd_clearconfig)
 {
   if (argc != 1) {
-    shell_printf("usage: clearconfig {protection key}\r\n");
+    shell_printf("usage: clearconfig {protection key}" VNA_SHELL_NEWLINE_STR);
     return;
   }
 
   if (get_str_index(argv[0], "1234") != 0) {
-    shell_printf("Key unmatched.\r\n");
+    shell_printf("Key unmatched." VNA_SHELL_NEWLINE_STR);
     return;
   }
 
   clear_all_config_prop_data();
-  shell_printf("Config and all cal data cleared.\r\n"\
-               "Do reset manually to take effect. Then do touch cal and save.\r\n");
+  shell_printf("Config and all cal data cleared." VNA_SHELL_NEWLINE_STR \
+               "Do reset manually to take effect. Then do touch cal and save." VNA_SHELL_NEWLINE_STR);
 }
 
 VNA_SHELL_FUNCTION(cmd_data)
@@ -827,10 +820,10 @@ VNA_SHELL_FUNCTION(cmd_data)
   array = sel < 2 ? measured[sel] : cal_data[sel-2];
 
   for (i = 0; i < sweep_points; i++)
-    shell_printf("%f %f\r\n", array[i][0], array[i][1]);
+    shell_printf("%f %f" VNA_SHELL_NEWLINE_STR, array[i][0], array[i][1]);
   return;
 usage:
-  shell_printf("usage: data [array]\r\n");
+  shell_printf("usage: data [array]" VNA_SHELL_NEWLINE_STR);
 }
 
 VNA_SHELL_FUNCTION(cmd_capture)
@@ -848,7 +841,7 @@ VNA_SHELL_FUNCTION(cmd_capture)
   for (y = 0; y < LCD_HEIGHT; y += READ_ROWS) {
     // use uint16_t spi_buffer[2048] (defined in ili9341) for read buffer
     lcd_read_memory(0, y, LCD_WIDTH, READ_ROWS, (uint16_t *)spi_buffer);
-    streamWrite(shell_stream, (void*)spi_buffer, READ_ROWS * LCD_WIDTH * sizeof(uint16_t));
+    shell_write(spi_buffer, READ_ROWS * LCD_WIDTH * sizeof(uint16_t));
   }
 }
 
@@ -865,7 +858,7 @@ VNA_SHELL_FUNCTION(cmd_gamma)
   calculate_gamma(gamma);
   chMtxUnlock(&mutex);
 
-  shell_printf("%d %d\r\n", gamma[0], gamma[1]);
+  shell_printf("%d %d" VNA_SHELL_NEWLINE_STR, gamma[0], gamma[1]);
 }
 #endif
 
@@ -890,7 +883,7 @@ VNA_SHELL_FUNCTION(cmd_sample)
       break;
   }
 usage:
-  shell_printf("usage: sample {%s}\r\n", cmd_sample_list);
+  shell_printf("usage: sample {%s}" VNA_SHELL_NEWLINE_STR, cmd_sample_list);
 }
 #endif
 
@@ -902,7 +895,7 @@ config_t config = {
   ._vna_mode   = VNA_MODE_USB | VNA_MODE_SEARCH_MAX,
   ._brightness = DEFAULT_BRIGHTNESS,
   ._dac_value   = 1922,
-  ._vbat_offset = 320,
+  ._vbat_offset = 450,
   ._bandwidth = BANDWIDTH_1000,
   ._lcd_palette = LCD_DEFAULT_PALETTE,
   ._serial_speed = SERIAL_DEFAULT_BITRATE,
@@ -922,35 +915,35 @@ config_t config = {
 properties_t current_props;
 
 // NanoVNA Default settings
-static const trace_t def_trace[TRACES_MAX] = {//enable, type, channel, reserved, scale, refpos
-  { 1, TRC_LOGMAG, 0, 0, 10.0, NGRIDY-1 },
-  { 1, TRC_LOGMAG, 1, 0, 10.0, NGRIDY-1 },
-  { 1, TRC_SMITH,  0, 0, 1.0, 0 },
-  { 1, TRC_PHASE,  1, 0, 90.0, NGRIDY/2 }
+static const trace_t def_trace[TRACES_MAX] = {//enable, type, channel, smith format, scale, refpos
+  { TRUE, TRC_LOGMAG, 0, MS_REIM, 10.0, NGRIDY-1 },
+  { TRUE, TRC_LOGMAG, 1, MS_REIM, 10.0, NGRIDY-1 },
+  { TRUE, TRC_SMITH,  0,   MS_RX, 1.0,         0 },
+  { TRUE, TRC_PHASE,  1, MS_REIM, 90.0, NGRIDY/2 }
 };
 
 static const marker_t def_markers[MARKERS_MAX] = {
-  { 1, 0, 30*POINTS_COUNT_DEFAULT/100-1, 0 },
+  { TRUE, 0, 20*POINTS_COUNT_DEFAULT/100-1, 0 },
 #if MARKERS_MAX > 1
-  { 0, 0, 40*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 30*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 2
-  { 0, 0, 50*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 40*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 3
-  { 0, 0, 60*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 50*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 4
-  { 0, 0, 70*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 60*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 5
-  { 0, 0, 80*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 70*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 6
-  { 0, 0, 90*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0, 80*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 #if MARKERS_MAX > 7
-  { 0, 0,100*POINTS_COUNT_DEFAULT/100-1, 0 },
+  {FALSE, 0,90*POINTS_COUNT_DEFAULT/100-1, 0 },
 #endif
 };
 
@@ -971,17 +964,18 @@ void load_default_properties(void)
   memcpy(current_props._trace, def_trace, sizeof(def_trace));
   memcpy(current_props._markers, def_markers, sizeof(def_markers));
 //=============================================
-  current_props._electrical_delay = 0.0;
+  current_props._electrical_delay = 0.0f;
+  current_props._s21_offset       = 0.0f;
   current_props._portz = 50.0f;
   current_props._velocity_factor = 70;
   current_props._current_trace   = 0;
   current_props._active_marker   = 0;
   current_props._previous_marker = MARKER_INVALID;
   current_props._mode            = 0;
-  current_props._marker_smith_format = MS_RLC;
+  current_props._reserved = 0;
   current_props._power     = SI5351_CLK_DRIVE_STRENGTH_AUTO;
   current_props._cal_power = SI5351_CLK_DRIVE_STRENGTH_AUTO;
-  current_props._measure   = MEASURE_NONE;
+  current_props._measure   = 0;
 //This data not loaded by default
 //current_props._cal_data[5][POINTS_COUNT][2];
 //Checksum add on caldata_save
@@ -995,46 +989,51 @@ void load_default_properties(void)
 #if POINTS_COUNT > 511 || SAVEAREA_MAX > 15
 #error "Check backup data limits!!"
 #endif
+
 // backup_0 bitfield
 typedef union {
   struct {
-    uint32_t points   : 9; //  9 !! limit 511 points!!
-    uint32_t bw       : 9; // 18 !! limit 511
-    uint32_t id       : 4; // 22 !! 15 save slots
-    uint32_t leveler  : 3; // 25
+    uint32_t points     : 9; //  9 !! limit 511 points!!
+    uint32_t bw         : 9; // 18 !! limit 511
+    uint32_t id         : 4; // 22 !! 15 save slots
+    uint32_t leveler    : 3; // 25
+    uint32_t brightness : 7; // 32
   };
   uint32_t v;
 } backup_0;
 
 void update_backup_data(void) {
   backup_0 bk = {
-    .points   = sweep_points,
-    .bw       = config._bandwidth,
-    .id       = lastsaveid,
-    .leveler  = lever_mode,
+    .points     = sweep_points,
+    .bw         = config._bandwidth,
+    .id         = lastsaveid,
+    .leveler    = lever_mode,
+    .brightness = config._brightness
   };
-  RTC->BKP0R = bk.v;
-  RTC->BKP1R = frequency0;
-  RTC->BKP2R = frequency1;
-  RTC->BKP3R = var_freq;
+  set_backup_data32(0, bk.v);
+  set_backup_data32(1, frequency0);
+  set_backup_data32(2, frequency1);
+  set_backup_data32(3, var_freq);
+  set_backup_data32(4, config._vna_mode);
 }
 
-static void load_start_properties(void) {
-  if (VNA_mode & VNA_MODE_BACKUP) {
-    backup_0 bk = {.v = RTC->BKP0R};
-    if (bk.v != 0 && bk.id < SAVEAREA_MAX) { // if backup data valid, and slot valid
-      if (caldata_recall(bk.id) == 0) {      // Load ok
-        sweep_points = bk.points;            // Restore settings depend from calibration data
-        lever_mode   = bk.leveler;
-        set_bandwidth(bk.bw);
-        frequency0 = RTC->BKP1R;
-        frequency1 = RTC->BKP2R;
-        var_freq   = RTC->BKP3R;
-      }
+static void load_settings(void) {
+  if (config_recall() == 0 && VNA_MODE(VNA_MODE_BACKUP)) { // Config loaded ok and need restore backup
+    backup_0 bk = {.v = get_backup_data32(0)};
+    if (bk.v != 0) {                                             // if backup data valid
+      if (bk.id < SAVEAREA_MAX && caldata_recall(bk.id) == 0) {  // Slot valid and Load ok
+        sweep_points = bk.points;                                // Restore settings depend from calibration data
+        frequency0 = get_backup_data32(1);
+        frequency1 = get_backup_data32(2);
+        var_freq   = get_backup_data32(3);
+      } else
+        caldata_recall(0);
       // Here need restore settings not depend from cal data
+      config._brightness = bk.brightness;
+      lever_mode         = bk.leveler;
+      config._vna_mode   = get_backup_data32(4) | (1<<VNA_MODE_BACKUP); // refresh backup settings
+      set_bandwidth(bk.bw);
     }
-    else
-      caldata_recall(0);
   }
   else
     caldata_recall(0);
@@ -1044,12 +1043,13 @@ static void load_start_properties(void) {
 #endif
 }
 #else
-static void load_start_properties(void) {
+static void load_settings(void) {
+  config_recall();
   load_properties(0);
 }
 #endif
 
-int load_properties(uint32_t id){
+int load_properties(uint32_t id) {
   int r = caldata_recall(id);
   update_frequencies();
 #ifdef __VNA_MEASURE_MODULE__
@@ -1059,11 +1059,11 @@ int load_properties(uint32_t id){
 }
 
 #ifdef ENABLED_DUMP_COMMAND
-int16_t *dump_buffer;
+audio_sample_t *dump_buffer;
 volatile int16_t dump_len = 0;
 int16_t dump_selection = 0;
 static void
-duplicate_buffer_to_dump(int16_t *p, size_t n)
+duplicate_buffer_to_dump(audio_sample_t *p, size_t n)
 {
   p+=dump_selection;
   while (n) {
@@ -1076,36 +1076,29 @@ duplicate_buffer_to_dump(int16_t *p, size_t n)
 }
 #endif
 
-//
-// DMA i2s callback function, called on get 'half' and 'full' buffer size data
-// need for process data, while DMA fill next buffer
-static volatile systime_t ready_time = 0;
+// DMA i2s callback function, called on get 'half' and 'full' buffer size data need for process data, while DMA fill next buffer
+static systime_t ready_time = 0;
+// sweep operation variables
+volatile uint16_t wait_count = 0;
+// i2s buffer must be 2x size (for process one while next buffer filled by DMA)
+static audio_sample_t rx_buffer[AUDIO_BUFFER_LEN * 2];
 
-void i2s_end_callback(I2SDriver *i2sp, size_t offset, size_t n)
-{
-  int16_t *p = &rx_buffer[offset];
-  (void)i2sp;
-  if (wait_count == 0 || chVTGetSystemTimeX() < ready_time) return;
-  if (wait_count == config._bandwidth+2)      // At this moment in buffer exist noise data, reset and wait next clean buffer
+void i2s_lld_serve_rx_interrupt(uint32_t flags) {
+//if ((flags & (STM32_DMA_ISR_TCIF|STM32_DMA_ISR_HTIF)) == 0) return;
+  uint16_t wait = wait_count;
+  if (wait == 0 || chVTGetSystemTimeX() < ready_time) return;
+  uint16_t count = AUDIO_BUFFER_LEN;
+  audio_sample_t *p = (flags & STM32_DMA_ISR_TCIF) ? rx_buffer + AUDIO_BUFFER_LEN : rx_buffer; // Full or Half transfer complete
+  if (wait >= config._bandwidth+2)      // At this moment in buffer exist noise data, reset and wait next clean buffer
     reset_dsp_accumerator();
-  else if (wait_count <= config._bandwidth+1) // Clean data ready, process it
-    dsp_process(p, n);
+  else
+    dsp_process(p, count);
 #ifdef ENABLED_DUMP_COMMAND
-  duplicate_buffer_to_dump(p, n);
+  duplicate_buffer_to_dump(p, count);
 #endif
   --wait_count;
 //  stat.callback_count++;
 }
-
-static const I2SConfig i2sconfig = {
-  NULL,                   // TX Buffer
-  rx_buffer,              // RX Buffer
-  AUDIO_BUFFER_LEN * 2,   // RX Buffer size
-  NULL,                   // tx callback
-  i2s_end_callback,       // rx callback
-  0,                      // i2scfgr
-  0                       // i2spr
-};
 
 #ifdef ENABLE_SI5351_TIMINGS
 extern uint16_t timings[16];
@@ -1119,22 +1112,30 @@ extern uint16_t timings[16];
 #define DSP_WAIT         while (wait_count) {__WFI();}
 #define RESET_SWEEP      {p_sweep = 0;}
 
-#define SWEEP_CH0_MEASURE           1
-#define SWEEP_CH1_MEASURE           2
-#define SWEEP_APPLY_EDELAY          4
-#define SWEEP_APPLY_CALIBRATION     8
-#define SWEEP_USE_INTERPOLATION    16
-#define SWEEP_USE_RENORMALIZATION  32
+#define SWEEP_CH0_MEASURE           0x01
+#define SWEEP_CH1_MEASURE           0x02
+#define SWEEP_APPLY_EDELAY          0x04
+#define SWEEP_APPLY_S21_OFFSET      0x08
+#define SWEEP_APPLY_CALIBRATION     0x10
+#define SWEEP_USE_INTERPOLATION     0x20
+#define SWEEP_USE_RENORMALIZATION   0x40
 
 static uint16_t get_sweep_mask(void){
   uint16_t ch_mask = 0;
+#if 0
+  // Sweep only used channels (FIXME strange bug in 400-500M on switch channels if only 1 Trace)
   int t;
   for (t = 0; t < TRACES_MAX; t++) {
     if (!trace[t].enabled)
       continue;
-    if (trace[t].channel == 0) ch_mask|=SWEEP_CH0_MEASURE;
-    if (trace[t].channel == 1) ch_mask|=SWEEP_CH1_MEASURE;
+    if ((trace[t].channel&1) == 0) ch_mask|= SWEEP_CH0_MEASURE;
+    else/*if (trace[t].channel == 1)*/ ch_mask|= SWEEP_CH1_MEASURE;
   }
+#else
+  // sweep 2 channels in any case
+  ch_mask|= SWEEP_CH0_MEASURE|SWEEP_CH1_MEASURE;
+#endif
+
 #ifdef __VNA_MEASURE_MODULE__
   // For measure calculations need data
   ch_mask|= plot_get_measure_channels();
@@ -1146,6 +1147,7 @@ static uint16_t get_sweep_mask(void){
   if (cal_status & CALSTAT_APPLY)        ch_mask|= SWEEP_APPLY_CALIBRATION;
   if (cal_status & CALSTAT_INTERPOLATED) ch_mask|= SWEEP_USE_INTERPOLATION;
   if (electrical_delay)                  ch_mask|= SWEEP_APPLY_EDELAY;
+  if (s21_offset)                        ch_mask|= SWEEP_APPLY_S21_OFFSET;
   return ch_mask;
 }
 
@@ -1154,6 +1156,11 @@ static void applyEDelay(float data[2], float s, float c){
   float imag = data[1];
   data[0] = real * c - imag * s;
   data[1] = imag * c + real * s;
+}
+
+static void applyOffset(float data[2], float offset){
+  data[0]*= offset;
+  data[1]*= offset;
 }
 
 #ifdef __VNA_Z_RENORMALIZATION__
@@ -1172,6 +1179,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
   // Blink LED while scanning
   palClearPad(GPIOC, GPIOC_LED);
   int delay = 0;
+  float offset = vna_expf(s21_offset * (logf(10.0f) / 20.0f));
 //  START_PROFILE;
   lcd_set_background(LCD_SWEEP_LINE_COLOR);
   // Wait some time for stable power
@@ -1187,12 +1195,10 @@ static bool sweep(bool break_on_operation, uint16_t mask)
       interpolation_idx = mask & SWEEP_USE_INTERPOLATION ? -1 : p_sweep;
       // Edelay calibration
       if (mask & SWEEP_APPLY_EDELAY)
-        vna_sincosf(electrical_delay * frequency * 1E-12, &s, &c);
-      // Set invalid value for check
-      c_data[0][0] = INFINITY;
+        vna_sincosf(electrical_delay * frequency, &s, &c);
     }
     // CH0:REFLECTION, reset and begin measure
-    if (mask & SWEEP_CH0_MEASURE){
+    if (mask & SWEEP_CH0_MEASURE) {
       tlv320aic3204_select(0);
       DSP_START(delay+st_delay);
       delay = DELAY_CHANNEL_CHANGE;
@@ -1210,11 +1216,11 @@ static bool sweep(bool break_on_operation, uint16_t mask)
         applyEDelay(&data[0], s, c);
     }
     // CH1:TRANSMISSION, reset and begin measure
-    if (mask & SWEEP_CH1_MEASURE){
+    if (mask & SWEEP_CH1_MEASURE) {
       tlv320aic3204_select(1);
       DSP_START(delay+st_delay);
-      // Get calibration data
-      if ((mask & SWEEP_APPLY_CALIBRATION) && c_data[0][0] == INFINITY)
+      // Get calibration data, only if not do this in 0 channel wait
+      if ((mask & SWEEP_APPLY_CALIBRATION) && !(mask & SWEEP_CH0_MEASURE))
         cal_interpolate(interpolation_idx, frequency, c_data);
       //================================================
       // Place some code thats need execute while delay
@@ -1225,6 +1231,8 @@ static bool sweep(bool break_on_operation, uint16_t mask)
         apply_CH1_error_term(data, c_data);
       if (mask & SWEEP_APPLY_EDELAY)         // Apply e-delay
         applyEDelay(&data[2], s, c);
+      if (mask & SWEEP_APPLY_S21_OFFSET)
+        applyOffset(&data[2], offset);
     }
 #ifdef __VNA_Z_RENORMALIZATION__
     if (mask & SWEEP_USE_RENORMALIZATION)
@@ -1255,6 +1263,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
     lcd_set_background(LCD_GRID_COLOR);
     lcd_fill(OFFSETX+CELLOFFSETX, OFFSETY, bar_start, 1);
   }
+
 //  STOP_PROFILE;
   // blink LED while scanning
   palSetPad(GPIOC, GPIOC_LED);
@@ -1265,9 +1274,9 @@ static bool sweep(bool break_on_operation, uint16_t mask)
 VNA_SHELL_FUNCTION(cmd_dump)
 {
   int i, j;
-  int16_t dump[96*2];
+  audio_sample_t dump[96*2];
   dump_buffer = dump;
-  dump_len = sizeof(dump) / sizeof(int16_t);
+  dump_len = ARRAY_COUNT(dump);
   int len = dump_len;
   if (argc == 1)
     dump_selection = my_atoi(argv[0]) == 1 ? 0 : 1;
@@ -1278,7 +1287,7 @@ VNA_SHELL_FUNCTION(cmd_dump)
   for (i = 0, j = 0; i < len; i++) {
     shell_printf("%6d ", dump[i]);
     if (++j == 12) {
-      shell_printf("\r\n");
+      shell_printf(VNA_SHELL_NEWLINE_STR);
       j = 0;
     }
   }
@@ -1291,7 +1300,7 @@ VNA_SHELL_FUNCTION(cmd_gain)
   int rvalue = 0;
   int lvalue = 0;
   if (argc == 0 && argc > 2) {
-    shell_printf("usage: gain {lgain(0-95)} [rgain(0-95)]\r\n");
+    shell_printf("usage: gain {lgain(0-95)} [rgain(0-95)]" VNA_SHELL_NEWLINE_STR);
     return;
   };
   lvalue = rvalue = my_atoui(argv[0]);
@@ -1333,7 +1342,7 @@ VNA_SHELL_FUNCTION(cmd_bandwidth)
     goto result;
   set_bandwidth(user_bw);
 result:
-  shell_printf("bandwidth %d (%uHz)\r\n", config._bandwidth, get_bandwidth_frequency(config._bandwidth));
+  shell_printf("bandwidth %d (%uHz)" VNA_SHELL_NEWLINE_STR, config._bandwidth, get_bandwidth_frequency(config._bandwidth));
 }
 
 void set_sweep_points(uint16_t points){
@@ -1399,6 +1408,7 @@ static bool needInterpolate(freq_t start, freq_t stop, uint16_t points){
 #define SCAN_MASK_OUT_DATA1      0b00000100
 #define SCAN_MASK_NO_CALIBRATION 0b00001000
 #define SCAN_MASK_NO_EDELAY      0b00010000
+#define SCAN_MASK_NO_S21OFFS     0b00100000
 #define SCAN_MASK_BINARY         0b10000000
 
 VNA_SHELL_FUNCTION(cmd_scan)
@@ -1406,20 +1416,20 @@ VNA_SHELL_FUNCTION(cmd_scan)
   freq_t start, stop;
   uint16_t points = sweep_points;
   if (argc < 2 || argc > 4) {
-    shell_printf("usage: scan {start(Hz)} {stop(Hz)} [points] [outmask]\r\n");
+    shell_printf("usage: scan {start(Hz)} {stop(Hz)} [points] [outmask]" VNA_SHELL_NEWLINE_STR);
     return;
   }
 
   start = my_atoui(argv[0]);
   stop = my_atoui(argv[1]);
   if (start == 0 || stop == 0 || start > stop) {
-      shell_printf("frequency range is invalid\r\n");
+      shell_printf("frequency range is invalid" VNA_SHELL_NEWLINE_STR);
       return;
   }
   if (argc >= 3) {
     points = my_atoui(argv[2]);
     if (points == 0 || points > POINTS_COUNT) {
-      shell_printf("sweep points exceeds range "define_to_STR(POINTS_COUNT)"\r\n");
+      shell_printf("sweep points exceeds range " define_to_STR(POINTS_COUNT) VNA_SHELL_NEWLINE_STR);
       return;
     }
     sweep_points = points;
@@ -1443,6 +1453,8 @@ VNA_SHELL_FUNCTION(cmd_scan)
 
   if ((cal_status & CALSTAT_APPLY) && !(mask&SCAN_MASK_NO_CALIBRATION)) sweep_ch|= SWEEP_APPLY_CALIBRATION;
   if (electrical_delay             && !(mask&SCAN_MASK_NO_EDELAY     )) sweep_ch|= SWEEP_APPLY_EDELAY;
+  if (s21_offset                   && !(mask&SCAN_MASK_NO_S21OFFS    )) sweep_ch|= SWEEP_APPLY_S21_OFFSET;
+
   if (needInterpolate(start, stop, sweep_points))
     sweep_ch|= SWEEP_USE_INTERPOLATION;
 
@@ -1454,12 +1466,12 @@ VNA_SHELL_FUNCTION(cmd_scan)
   // Output data after if set (faster data receive)
   if (mask) {
     if (mask&SCAN_MASK_BINARY){
-      streamWrite(shell_stream, (void *)&mask, sizeof(uint16_t));
-      streamWrite(shell_stream, (void *)&points, sizeof(uint16_t));
+      shell_write(&mask, sizeof(uint16_t));
+      shell_write(&points, sizeof(uint16_t));
       for (int i = 0; i < points; i++) {
-        if (mask & SCAN_MASK_OUT_FREQ ) {freq_t f = getFrequency(i); streamWrite(shell_stream, (void *)&f, sizeof(freq_t));}    // 4 bytes .. frequency
-        if (mask & SCAN_MASK_OUT_DATA0) streamWrite(shell_stream, (void *)&measured[0][i][0], sizeof(float)* 2);  // 4+4 bytes .. S11 real/imag
-        if (mask & SCAN_MASK_OUT_DATA1) streamWrite(shell_stream, (void *)&measured[1][i][0], sizeof(float)* 2);  // 4+4 bytes .. S21 real/imag
+        if (mask & SCAN_MASK_OUT_FREQ ) {freq_t f = getFrequency(i); shell_write(&f, sizeof(freq_t));} // 4 bytes .. frequency
+        if (mask & SCAN_MASK_OUT_DATA0) shell_write(&measured[0][i][0], sizeof(float)* 2);             // 4+4 bytes .. S11 real/imag
+        if (mask & SCAN_MASK_OUT_DATA1) shell_write(&measured[1][i][0], sizeof(float)* 2);             // 4+4 bytes .. S21 real/imag
       }
     }
     else{
@@ -1467,7 +1479,7 @@ VNA_SHELL_FUNCTION(cmd_scan)
         if (mask & SCAN_MASK_OUT_FREQ ) shell_printf("%u ", getFrequency(i));
         if (mask & SCAN_MASK_OUT_DATA0) shell_printf("%f %f ", measured[0][i][0], measured[0][i][1]);
         if (mask & SCAN_MASK_OUT_DATA1) shell_printf("%f %f ", measured[1][i][0], measured[1][i][1]);
-        shell_printf("\r\n");
+        shell_printf(VNA_SHELL_NEWLINE_STR);
       }
     }
   }
@@ -1486,14 +1498,17 @@ VNA_SHELL_FUNCTION(cmd_tcxo)
 {
   if (argc == 1)
     si5351_set_tcxo(my_atoui(argv[0]));
-  shell_printf("tcxo = %u Hz\r\n", config._xtal_freq);
+  shell_printf("tcxo = %u Hz" VNA_SHELL_NEWLINE_STR, config._xtal_freq);
 }
 
 void set_marker_index(int m, int idx)
 {
   if (m == MARKER_INVALID || (uint32_t)idx >= sweep_points) return;
-  markers[m].index = idx;
   markers[m].frequency = getFrequency(idx);
+  if (markers[m].index == idx) return;
+  request_to_draw_marker(markers[m].index); // Mark old marker position for erase
+  markers[m].index = idx;                   // Set new position
+  request_to_redraw(REDRAW_MARKER);
 }
 
 freq_t get_marker_frequency(int marker)
@@ -1538,6 +1553,7 @@ update_frequencies(void)
   freq_t stop  = get_sweep_frequency(ST_STOP);
 
   set_frequencies(start, stop, sweep_points);
+
   update_marker_index();
   // set grid layout
   update_grid();
@@ -1552,7 +1568,7 @@ update_frequencies(void)
 }
 
 void
-set_sweep_frequency(int type, freq_t freq)
+set_sweep_frequency(uint16_t type, freq_t freq)
 {
   // Check frequency for out of bounds (minimum SPAN can be any value)
   if (type < ST_SPAN && freq < START_MIN)
@@ -1615,23 +1631,10 @@ void reset_sweep_frequency(void){
   update_frequencies();
 }
 
-freq_t
-get_sweep_frequency(int type)
-{
-  switch (type) {
-    case ST_START:  return frequency0;
-    case ST_STOP:   return frequency1;
-    case ST_CENTER: return frequency0/2 + frequency1/2;
-    case ST_SPAN:   return frequency1 - frequency0;
-    case ST_CW:     return frequency0;
-  }
-  return 0;
-}
-
 VNA_SHELL_FUNCTION(cmd_sweep)
 {
   if (argc == 0) {
-    shell_printf("%u %u %d\r\n", get_sweep_frequency(ST_START), get_sweep_frequency(ST_STOP), sweep_points);
+    shell_printf("%u %u %d" VNA_SHELL_NEWLINE_STR, get_sweep_frequency(ST_START), get_sweep_frequency(ST_STOP), sweep_points);
     return;
   } else if (argc > 3) {
     goto usage;
@@ -1664,8 +1667,8 @@ VNA_SHELL_FUNCTION(cmd_sweep)
     set_sweep_points(value2);
   return;
 usage:
-  shell_printf("usage: sweep {start(Hz)} [stop(Hz)] [points]\r\n"\
-               "\tsweep {%s} {freq(Hz)}\r\n", sweep_cmd);
+  shell_printf("usage: sweep {start(Hz)} [stop(Hz)] [points]" VNA_SHELL_NEWLINE_STR \
+               "\tsweep {%s} {freq(Hz)}" VNA_SHELL_NEWLINE_STR, sweep_cmd);
 }
 
 
@@ -1684,33 +1687,6 @@ eterm_copy(int dst, int src)
 {
   memcpy(cal_data[dst], cal_data[src], sizeof cal_data[dst]);
 }
-
-#if 0
-const struct open_model {
-  float c0;
-  float c1;
-  float c2;
-  float c3;
-} open_model = { 50, 0, -300, 27 };
-#endif
-
-#if 0
-static void
-adjust_ed(void)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    // z=1/(jwc*z0) = 1/(2*pi*f*c*z0)  Note: normalized with Z0
-    // s11ao = (z-1)/(z+1) = (1-1/z)/(1+1/z) = (1-jwcz0)/(1+jwcz0)
-    // prepare 1/s11ao to avoid dividing complex
-    float c = 1000e-15;
-    float z0 = 50;
-    //float z = 2 * VNA_PI * frequencies[i] * c * z0;
-    float z = 0.02;
-    cal_data[ETERM_ED][i][0] += z;
-  }
-}
-#endif
 
 static void
 eterm_calc_es(void)
@@ -1933,9 +1909,10 @@ cal_collect(uint16_t type)
   // Set MAX settings for sweep_points on calibrate
 //  if (sweep_points != POINTS_COUNT)
 //    set_sweep_points(POINTS_COUNT);
-
+  uint16_t mask = (src == 0) ? SWEEP_CH0_MEASURE : SWEEP_CH1_MEASURE;
+  if (electrical_delay) mask|= SWEEP_APPLY_EDELAY;
   // Measure calibration data
-  sweep(false, (src == 0) ? SWEEP_CH0_MEASURE : SWEEP_CH1_MEASURE);
+  sweep(false, mask);
   // Copy calibration data
   memcpy(cal_data[dst], measured[src], sizeof measured[0]);
 
@@ -1948,10 +1925,11 @@ cal_collect(uint16_t type)
       cal_data[dst][j][1]+=measured[src][j][1];
     }
   }
-  if (i!=1){
+  if (i != 1){
+    float k = 1.0f / i;
     for (j = 0; j < sweep_points; j++){
-      cal_data[dst][j][0]/=i;
-      cal_data[dst][j][1]/=i;
+      cal_data[dst][j][0]*= k;
+      cal_data[dst][j][1]*= k;
     }
   }
 
@@ -1969,7 +1947,6 @@ cal_done(void)
   if (!(cal_status & CALSTAT_ISOLN))
     eterm_set(ETERM_EX, 0.0, 0.0);
 
-  //adjust_ed();
   // Precalculate Es and Er from Short and Open (and use Load/Ed data)
   if ((cal_status & CALSTAT_SHORT) && (cal_status & CALSTAT_OPEN)) {
     eterm_calc_es();
@@ -2068,7 +2045,7 @@ VNA_SHELL_FUNCTION(cmd_cal)
       if (cal_status & (1<<i))
         shell_printf("%s ", items[i]);
     }
-    shell_printf("\r\n");
+    shell_printf(VNA_SHELL_NEWLINE_STR);
     return;
   }
   request_to_redraw(REDRAW_CAL_STATUS);
@@ -2105,7 +2082,7 @@ VNA_SHELL_FUNCTION(cmd_cal)
     default:
       break;
   }
-  shell_printf("usage: cal [%s]\r\n", cmd_cal_list);
+  shell_printf("usage: cal [%s]" VNA_SHELL_NEWLINE_STR, cmd_cal_list);
 }
 
 VNA_SHELL_FUNCTION(cmd_save)
@@ -2121,7 +2098,7 @@ VNA_SHELL_FUNCTION(cmd_save)
   return;
 
  usage:
-  shell_printf("save {id}\r\n");
+  shell_printf("save {id}" VNA_SHELL_NEWLINE_STR);
 }
 
 VNA_SHELL_FUNCTION(cmd_recall)
@@ -2134,10 +2111,10 @@ VNA_SHELL_FUNCTION(cmd_recall)
     goto usage;
   // Check for success
   if (load_properties(id))
-    shell_printf("Err, default load\r\n");
+    shell_printf("Err, default load" VNA_SHELL_NEWLINE_STR);
   return;
  usage:
-  shell_printf("recall {id}\r\n");
+  shell_printf("recall {id}" VNA_SHELL_NEWLINE_STR);
 }
 
 static const char * const trc_channel_name[] = {
@@ -2146,44 +2123,47 @@ static const char * const trc_channel_name[] = {
 
 const char *get_trace_chname(int t)
 {
-  return trc_channel_name[trace[t].channel];
+  return trc_channel_name[trace[t].channel&1];
 }
 
-void set_trace_type(int t, int type)
+void set_trace_type(int t, int type, int channel)
 {
-  int enabled = type != TRC_OFF;
-  int force = FALSE;
-
-  if (trace[t].enabled != enabled) {
-    trace[t].enabled = enabled;
-    force = TRUE;
-  }
-  if (trace[t].type != type && enabled) {
+  channel&= 1;
+  bool update = trace[t].type != type || trace[t].channel != channel;
+  if (!update) return;
+  if (trace[t].type != type) {
     trace[t].type = type;
     // Set default trace refpos
     trace[t].refpos = trace_info_list[type].refpos;
     // Set default trace scale
     trace[t].scale  = trace_info_list[type].scale_unit;
-    force = TRUE;
   }
-  if (force)
-    plot_into_index(measured);
+  trace[t].channel = channel;
+  plot_into_index();
   request_to_redraw(REDRAW_AREA);
 }
 
 void set_trace_channel(int t, int channel)
 {
+  channel&= 1;
   if (trace[t].channel != channel) {
     trace[t].channel = channel;
-    plot_into_index(measured);
+    plot_into_index();
   }
+}
+
+void set_active_trace(int t) {
+  if (current_trace == t) return;
+  current_trace = t;
+  request_to_redraw(REDRAW_MARKER | REDRAW_GRID_VALUE);
 }
 
 void set_trace_scale(int t, float scale)
 {
   if (trace[t].scale != scale) {
     trace[t].scale = scale;
-    plot_into_index(measured);
+    plot_into_index();
+    request_to_redraw(REDRAW_MARKER | REDRAW_GRID_VALUE);
   }
 }
 
@@ -2191,29 +2171,50 @@ void set_trace_refpos(int t, float refpos)
 {
   if (trace[t].refpos != refpos) {
     trace[t].refpos = refpos;
-    plot_into_index(measured);
+    plot_into_index();
+    request_to_redraw(REDRAW_REFERENCE | REDRAW_GRID_VALUE);
   }
+}
+
+void set_trace_enable(int t, bool enable)
+{
+  trace[t].enabled = enable;
+  current_trace = enable ? t : TRACE_INVALID;
+  if (!enable) {
+    for (int i = 0; i < TRACES_MAX; i++)  // set first enabled as current trace
+      if (trace[i].enabled) {set_active_trace(i); break;}
+  }
+  request_to_redraw(REDRAW_AREA);
 }
 
 void set_electrical_delay(float picoseconds)
 {
+  picoseconds*= 1e-12;
   if (electrical_delay != picoseconds) {
     electrical_delay = picoseconds;
-    request_to_redraw(REDRAW_AREA);
+    request_to_redraw(REDRAW_MARKER);
+  }
+}
+
+void set_s21_offset(float offset)
+{
+  if (s21_offset != offset) {
+    s21_offset = offset;
+    request_to_redraw(REDRAW_MARKER);
   }
 }
 
 VNA_SHELL_FUNCTION(cmd_trace)
 {
-  int t;
+  uint32_t t;
   if (argc == 0) {
     for (t = 0; t < TRACES_MAX; t++) {
       if (trace[t].enabled) {
-        const char *type = get_trace_typename(trace[t].type);
+        const char *type = get_trace_typename(trace[t].type, 0);
         const char *channel = get_trace_chname(t);
         float scale = get_trace_scale(t);
         float refpos = get_trace_refpos(t);
-        shell_printf("%d %s %s %f %f\r\n", t, type, channel, scale, refpos);
+        shell_printf("%d %s %s %f %f" VNA_SHELL_NEWLINE_STR, t, type, channel, scale, refpos);
       }
     }
     return;
@@ -2222,33 +2223,46 @@ VNA_SHELL_FUNCTION(cmd_trace)
   if (get_str_index(argv[0], "all") == 0 &&
       argc > 1 && get_str_index(argv[1], "off") == 0) {
     for (t = 0; t < TRACES_MAX; t++)
-      set_trace_type(t, TRC_OFF);
+      set_trace_enable(t, false);
     return;
   }
 
-  t = my_atoi(argv[0]);
-  if (t < 0 || t >= TRACES_MAX)
+  t = (uint32_t)my_atoi(argv[0]);
+  if (t >= TRACES_MAX)
     goto usage;
   if (argc == 1) {
-    const char *type = get_trace_typename(trace[t].type);
+    const char *type = get_trace_typename(trace[t].type, 0);
     const char *channel = get_trace_chname(t);
-    shell_printf("%d %s %s\r\n", t, type, channel);
+    shell_printf("%d %s %s" VNA_SHELL_NEWLINE_STR, t, type, channel);
     return;
   }
-#if MAX_TRACE_TYPE != 22
+  if (get_str_index(argv[1], "off") == 0) {
+    set_trace_enable(t, false);
+    return;
+  }
+#if MAX_TRACE_TYPE != 28
 #error "Trace type enum possibly changed, check cmd_trace function"
 #endif
-  // enum TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_Z, TRC_G, TRC_B, TRC_Y, TRC_Rp, TRC_Xp, TRC_sC, TRC_sL, TRC_pC, TRC_pL, TRC_Q, TRC_OFF
-  static const char cmd_type_list[] = "logmag|phase|delay|smith|polar|linear|swr|real|imag|r|x|z|g|b|y|rp|xp|sc|sl|pc|pl|q|off";
+  // enum TRC_LOGMAG, TRC_PHASE, TRC_DELAY, TRC_SMITH, TRC_POLAR, TRC_LINEAR, TRC_SWR, TRC_REAL, TRC_IMAG, TRC_R, TRC_X, TRC_Z, TRC_ZPHASE, TRC_G, TRC_B, TRC_Y, TRC_Rp, TRC_Xp, TRC_sC, TRC_sL, TRC_pC, TRC_pL, TRC_Q, TRC_Rser, TRC_Xser,TRC_Rsh, TRC_Xsh, TRC_Qs21
+  static const char cmd_type_list[] = "logmag|phase|delay|smith|polar|linear|swr|real|imag|r|x|z|zp|g|b|y|rp|xp|sc|sl|pc|pl|q|rser|xser|rsh|xsh|q21";
   int type = get_str_index(argv[1], cmd_type_list);
   if (type >= 0) {
+    int src = trace[t].channel;
     if (argc > 2) {
-      int src = my_atoi(argv[2]);
-      if (src != 0 && src != 1)
+      src = my_atoi(argv[2]);
+      if ((uint32_t)src > 1)
         goto usage;
-      set_trace_channel(t, src);
     }
-    set_trace_type(t, type);
+    set_trace_type(t, type, src);
+    set_trace_enable(t, true);
+    return;
+  }
+
+  static const char cmd_marker_smith[] = "lin|log|ri|rx|rlc|gb|glc|rpxp|rplc|rxsh|rxser";
+  // Set marker smith format
+  int format = get_str_index(argv[1], cmd_marker_smith);
+  if (format >=0) {
+    trace[t].smith_format = format;
     return;
   }
   //                                            0      1
@@ -2263,29 +2277,37 @@ VNA_SHELL_FUNCTION(cmd_trace)
   }
   return;
 usage:
-  shell_printf("trace {0|1|2|3|all} [%s] [src]\r\n"\
-               "trace {0|1|2|3} {%s} {value}\r\n", cmd_type_list, cmd_scale_ref_list);
+  shell_printf("trace {0|1|2|3|all} [%s] [src]" VNA_SHELL_NEWLINE_STR \
+               "trace {0|1|2|3} [%s]" VNA_SHELL_NEWLINE_STR\
+               "trace {0|1|2|3} {%s} {value}" VNA_SHELL_NEWLINE_STR, cmd_type_list, cmd_marker_smith, cmd_scale_ref_list);
 }
 
 VNA_SHELL_FUNCTION(cmd_edelay)
 {
   if (argc != 1) {
-    shell_printf("%f\r\n", electrical_delay);
+    shell_printf("%f" VNA_SHELL_NEWLINE_STR, electrical_delay * (1.0f / 1e-12f)); // return in picoseconds
     return;
   }
-  set_electrical_delay(my_atof(argv[0]));
+  set_electrical_delay(my_atof(argv[0])); // input value in picoseconds
 }
 
+VNA_SHELL_FUNCTION(cmd_s21offset)
+{
+  if (argc != 1) {
+    shell_printf("%f" VNA_SHELL_NEWLINE_STR, s21_offset); // return in dB
+    return;
+  }
+  set_s21_offset(my_atof(argv[0]));     // input value in dB
+}
 
 VNA_SHELL_FUNCTION(cmd_marker)
 {
   static const char cmd_marker_list[] = "on|off";
-  static const char cmd_marker_smith[] = "lin|log|ri|rx|rlc|gb|glc|rpxp|rplc";
   int t;
   if (argc == 0) {
     for (t = 0; t < MARKERS_MAX; t++) {
       if (markers[t].enabled) {
-        shell_printf("%d %d %u\r\n", t+1, markers[t].index, markers[t].frequency);
+        shell_printf("%d %d %u" VNA_SHELL_NEWLINE_STR, t+1, markers[t].index, markers[t].frequency);
       }
     }
     return;
@@ -2299,17 +2321,12 @@ VNA_SHELL_FUNCTION(cmd_marker)
       markers[t].enabled = enable == 0;
     return;
   }
-  // Set marker smith format
-  int format = get_str_index(argv[0], cmd_marker_smith);
-  if (format >=0){
-    marker_smith_format = format;
-    return;
-  }
+
   t = my_atoi(argv[0])-1;
   if (t < 0 || t >= MARKERS_MAX)
     goto usage;
   if (argc == 1) {
-    shell_printf("%d %d %u\r\n", t+1, markers[t].index, markers[t].frequency);
+    shell_printf("%d %d %u" VNA_SHELL_NEWLINE_STR, t+1, markers[t].index, markers[t].frequency);
     active_marker = t;
     // select active marker
     markers[t].enabled = TRUE;
@@ -2328,15 +2345,14 @@ VNA_SHELL_FUNCTION(cmd_marker)
       return;
   }
  usage:
-  shell_printf("marker [n] [%s|{index}]\r\n"
-               "marker [%s]\r\n", cmd_marker_list, cmd_marker_smith);
+  shell_printf("marker [n] [%s|{index}]" VNA_SHELL_NEWLINE_STR, cmd_marker_list);
 }
 
 #if 0
 VNA_SHELL_FUNCTION(cmd_grid)
 {
   if (argc != 1) {
-    shell_printf("grid %s\r\n", config._mode&VNA_MODE_SHOW_GRID ? "on" : "off");
+    shell_printf("grid %s" VNA_SHELL_NEWLINE_STR, config._mode&VNA_MODE_SHOW_GRID ? "on" : "off");
     return;
   }
   if (my_atoi(argv[0]))
@@ -2350,18 +2366,11 @@ VNA_SHELL_FUNCTION(cmd_touchcal)
 {
   (void)argc;
   (void)argv;
-  //extern int16_t touch_cal[4];
-  int i;
-
   shell_printf("first touch upper left, then lower right...");
   touch_cal_exec();
-  shell_printf("done\r\n");
-
-  shell_printf("touch cal params:");
-  for (i = 0; i < 4; i++) {
-    shell_printf(" %d", config._touch_cal[i]);
-  }
-  shell_printf("\r\n");
+  shell_printf("done" VNA_SHELL_NEWLINE_STR \
+               "touch cal params: %d %d %d %d" VNA_SHELL_NEWLINE_STR,
+               config._touch_cal[0], config._touch_cal[1], config._touch_cal[2], config._touch_cal[3]);
   request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
 }
 
@@ -2378,7 +2387,7 @@ VNA_SHELL_FUNCTION(cmd_frequencies)
   (void)argc;
   (void)argv;
   for (i = 0; i < sweep_points; i++) {
-    shell_printf("%u\r\n", getFrequency(i));
+    shell_printf("%u" VNA_SHELL_NEWLINE_STR, getFrequency(i));
   }
 }
 
@@ -2415,37 +2424,21 @@ VNA_SHELL_FUNCTION(cmd_transform)
   static const char cmd_transform_list[] = "on|off|impulse|step|bandpass|minimum|normal|maximum";
   for (i = 0; i < argc; i++) {
     switch (get_str_index(argv[i], cmd_transform_list)) {
-      case 0:
-        set_domain_mode(DOMAIN_TIME);
-        return;
-      case 1:
-        set_domain_mode(DOMAIN_FREQ);
-        return;
-      case 2:
-        set_timedomain_func(TD_FUNC_LOWPASS_IMPULSE);
-        return;
-      case 3:
-        set_timedomain_func(TD_FUNC_LOWPASS_STEP);
-        return;
-      case 4:
-        set_timedomain_func(TD_FUNC_BANDPASS);
-        return;
-      case 5:
-        set_timedomain_window(TD_WINDOW_MINIMUM);
-        return;
-      case 6:
-        set_timedomain_window(TD_WINDOW_NORMAL);
-        return;
-      case 7:
-        set_timedomain_window(TD_WINDOW_MAXIMUM);
-        return;
+      case 0: set_domain_mode(DOMAIN_TIME); break;
+      case 1: set_domain_mode(DOMAIN_FREQ); break;
+      case 2: set_timedomain_func(TD_FUNC_LOWPASS_IMPULSE); break;
+      case 3: set_timedomain_func(TD_FUNC_LOWPASS_STEP); break;
+      case 4: set_timedomain_func(TD_FUNC_BANDPASS); break;
+      case 5: set_timedomain_window(TD_WINDOW_MINIMUM); break;
+      case 6: set_timedomain_window(TD_WINDOW_NORMAL); break;
+      case 7: set_timedomain_window(TD_WINDOW_MAXIMUM); break;
       default:
         goto usage;
     }
   }
   return;
 usage:
-  shell_printf("usage: transform {%s} [...]\r\n", cmd_transform_list);
+  shell_printf("usage: transform {%s} [...]" VNA_SHELL_NEWLINE_STR, cmd_transform_list);
 }
 #endif
 
@@ -2486,22 +2479,22 @@ VNA_SHELL_FUNCTION(cmd_test)
 
 #if 0
   //extern adcsample_t adc_samples[2];
-  //shell_printf("adc: %d %d\r\n", adc_samples[0], adc_samples[1]);
+  //shell_printf("adc: %d %d" VNA_SHELL_NEWLINE_STR, adc_samples[0], adc_samples[1]);
   int i;
   int x, y;
   for (i = 0; i < 50; i++) {
     test_touch(&x, &y);
-    shell_printf("adc: %d %d\r\n", x, y);
+    shell_printf("adc: %d %d" VNA_SHELL_NEWLINE_STR, x, y);
     chThdSleepMilliseconds(200);
   }
   //extern int touch_x, touch_y;
-  //shell_printf("adc: %d %d\r\n", touch_x, touch_y);
+  //shell_printf("adc: %d %d" VNA_SHELL_NEWLINE_STR, touch_x, touch_y);
 #endif
 #if 0
   while (argc > 1) {
     int16_t x, y;
     touch_position(&x, &y);
-    shell_printf("touch: %d %d\r\n", x, y);
+    shell_printf("touch: %d %d" VNA_SHELL_NEWLINE_STR, x, y);
     chThdSleepMilliseconds(200);
   }
 #endif
@@ -2513,7 +2506,7 @@ VNA_SHELL_FUNCTION(cmd_port)
 {
   int port;
   if (argc != 1) {
-    shell_printf("usage: port {0:TX 1:RX}\r\n");
+    shell_printf("usage: port {0:TX 1:RX}" VNA_SHELL_NEWLINE_STR);
     return;
   }
   port = my_atoi(argv[0]);
@@ -2574,18 +2567,18 @@ VNA_SHELL_FUNCTION(cmd_stat)
     stat.rms[1] = vna_sqrtf(acc1 / count);
     stat.ave[0] = ave0;
     stat.ave[1] = ave1;
-    shell_printf("Ch: %d\r\n", ch);
-    shell_printf("average:   r: %6d s: %6d\r\n", stat.ave[0], stat.ave[1]);
-    shell_printf("rms:       r: %6d s: %6d\r\n", stat.rms[0], stat.rms[1]);
-//    shell_printf("min:     ref %6d ch %6d\r\n", minr, mins);
-//    shell_printf("max:     ref %6d ch %6d\r\n", maxr, maxs);
+    shell_printf("Ch: %d" VNA_SHELL_NEWLINE_STR, ch);
+    shell_printf("average:   r: %6d s: %6d" VNA_SHELL_NEWLINE_STR, stat.ave[0], stat.ave[1]);
+    shell_printf("rms:       r: %6d s: %6d" VNA_SHELL_NEWLINE_STR, stat.rms[0], stat.rms[1]);
+//    shell_printf("min:     ref %6d ch %6d" VNA_SHELL_NEWLINE_STR, minr, mins);
+//    shell_printf("max:     ref %6d ch %6d" VNA_SHELL_NEWLINE_STR, maxr, maxs);
   }
-  //shell_printf("callback count: %d\r\n", stat.callback_count);
-  //shell_printf("interval cycle: %d\r\n", stat.interval_cycles);
-  //shell_printf("busy cycle: %d\r\n", stat.busy_cycles);
-  //shell_printf("load: %d\r\n", stat.busy_cycles * 100 / stat.interval_cycles);
+  //shell_printf("callback count: %d" VNA_SHELL_NEWLINE_STR, stat.callback_count);
+  //shell_printf("interval cycle: %d" VNA_SHELL_NEWLINE_STR, stat.interval_cycles);
+  //shell_printf("busy cycle: %d" VNA_SHELL_NEWLINE_STR, stat.busy_cycles);
+  //shell_printf("load: %d" VNA_SHELL_NEWLINE_STR, stat.busy_cycles * 100 / stat.interval_cycles);
 //  extern int awd_count;
-//  shell_printf("awd: %d\r\n", awd_count);
+//  shell_printf("awd: %d" VNA_SHELL_NEWLINE_STR, awd_count);
 }
 #endif
 
@@ -2599,21 +2592,21 @@ VNA_SHELL_FUNCTION(cmd_version)
 {
   (void)argc;
   (void)argv;
-  shell_printf("%s\r\n", NANOVNA_VERSION);
+  shell_printf("%s" VNA_SHELL_NEWLINE_STR, NANOVNA_VERSION);
 }
 
 VNA_SHELL_FUNCTION(cmd_vbat)
 {
   (void)argc;
   (void)argv;
-  shell_printf("%d mV\r\n", adc_vbat_read());
+  shell_printf("%d m" S_VOLT VNA_SHELL_NEWLINE_STR, adc_vbat_read());
 }
 
 #ifdef ENABLE_VBAT_OFFSET_COMMAND
 VNA_SHELL_FUNCTION(cmd_vbat_offset)
 {
   if (argc != 1) {
-    shell_printf("%d\r\n", config._vbat_offset);
+    shell_printf("%d" VNA_SHELL_NEWLINE_STR, config._vbat_offset);
     return;
   }
   config._vbat_offset = (int16_t)my_atoi(argv[0]);
@@ -2634,7 +2627,7 @@ VNA_SHELL_FUNCTION(cmd_si5351time)
 VNA_SHELL_FUNCTION(cmd_si5351reg)
 {
   if (argc != 2) {
-    shell_printf("usage: si reg data\r\n");
+    shell_printf("usage: si reg data" VNA_SHELL_NEWLINE_STR);
     return;
   }
   uint8_t reg = my_atoui(argv[0]);
@@ -2643,12 +2636,6 @@ VNA_SHELL_FUNCTION(cmd_si5351reg)
   si5351_bulk_write(buf, 2);
 }
 #endif
-
-static void set_I2C_timings(uint32_t timings) {
-  I2CD1.i2c->CR1 &=~I2C_CR1_PE;
-  I2CD1.i2c->TIMINGR = timings;
-  I2CD1.i2c->CR1 |= I2C_CR1_PE;
-}
 
 #ifdef ENABLE_I2C_TIMINGS
 VNA_SHELL_FUNCTION(cmd_i2ctime)
@@ -2668,7 +2655,7 @@ VNA_SHELL_FUNCTION(cmd_info)
   (void)argv;
   int i = 0;
   while (info_about[i])
-    shell_printf("%s\r\n", info_about[i++]);
+    shell_printf("%s" VNA_SHELL_NEWLINE_STR, info_about[i++]);
 }
 #endif
 
@@ -2678,11 +2665,11 @@ VNA_SHELL_FUNCTION(cmd_color)
   uint32_t color;
   uint16_t i;
   if (argc != 2) {
-    shell_printf("usage: color {id} {rgb24}\r\n");
+    shell_printf("usage: color {id} {rgb24}" VNA_SHELL_NEWLINE_STR);
     for (i=0; i < MAX_PALETTE; i++) {
       color = GET_PALTETTE_COLOR(i);
       color = HEXRGB(color);
-      shell_printf(" %2d: 0x%06x\r\n", i, color);
+      shell_printf(" %2d: 0x%06x" VNA_SHELL_NEWLINE_STR, i, color);
     }
     return;
   }
@@ -2699,7 +2686,7 @@ VNA_SHELL_FUNCTION(cmd_color)
 #ifdef ENABLE_I2C_COMMAND
 VNA_SHELL_FUNCTION(cmd_i2c){
   if (argc != 3) {
-    shell_printf("usage: i2c page reg data\r\n");
+    shell_printf("usage: i2c page reg data" VNA_SHELL_NEWLINE_STR);
     return;
   }
   uint8_t page = my_atoui(argv[0]);
@@ -2713,7 +2700,7 @@ VNA_SHELL_FUNCTION(cmd_i2c){
 VNA_SHELL_FUNCTION(cmd_band){
   static const char cmd_sweep_list[] = "mode|freq|div|mul|omul|pow|opow|l|r|lr|adj";
   if (argc != 3){
-    shell_printf("cmd error\r\n");
+    shell_printf("cmd error" VNA_SHELL_NEWLINE_STR);
     return;
   }
   int idx = my_atoui(argv[0]);
@@ -2729,7 +2716,7 @@ VNA_SHELL_FUNCTION(cmd_lcd){
   for (int i=0;i<argc;i++)
     d[i] =  my_atoui(argv[i]);
   uint32_t ret = lcd_send_command(d[0], argc-1, &d[1]);
-  shell_printf("ret = 0x%08X\r\n", ret);
+  shell_printf("ret = 0x%08X" VNA_SHELL_NEWLINE_STR, ret);
   chThdSleepMilliseconds(5);
 }
 #endif
@@ -2744,7 +2731,7 @@ VNA_SHELL_FUNCTION(cmd_threads)
   thread_t *tp;
   (void)argc;
   (void)argv;
-  shell_printf("stklimit|   stack|stk free|    addr|refs|prio|    state|        name"VNA_SHELL_NEWLINE_STR);
+  shell_printf("stklimit|   stack|stk free|    addr|refs|prio|    state|        name" VNA_SHELL_NEWLINE_STR);
   tp = chRegFirstThread();
   do {
     uint32_t max_stack_use = 0U;
@@ -2756,7 +2743,7 @@ VNA_SHELL_FUNCTION(cmd_threads)
 #else
     uint32_t stklimit = 0U;
 #endif
-    shell_printf("%08x|%08x|%08x|%08x|%4u|%4u|%9s|%12s"VNA_SHELL_NEWLINE_STR,
+    shell_printf("%08x|%08x|%08x|%08x|%4u|%4u|%9s|%12s" VNA_SHELL_NEWLINE_STR,
              stklimit, (uint32_t)tp->ctx.sp, max_stack_use, (uint32_t)tp,
              (uint32_t)tp->refs - 1, (uint32_t)tp->prio, states[tp->state],
              tp->name == NULL ? "" : tp->name);
@@ -2772,17 +2759,16 @@ VNA_SHELL_FUNCTION(cmd_usart_cfg)
   if (argc != 1) goto result;
   uint32_t speed = my_atoui(argv[0]);
   if (speed < 300) speed = 300;
-  config._serial_speed = speed;
-  shell_update_speed();
+  shell_update_speed(speed);
 result:
-  shell_printf("Serial: %u baud\r\n", config._serial_speed);
+  shell_printf("Serial: %u baud" VNA_SHELL_NEWLINE_STR, config._serial_speed);
 }
 
 VNA_SHELL_FUNCTION(cmd_usart)
 {
-  uint32_t time = 2000; // 200ms wait answer by default
-  if (argc == 0 || argc > 2 || (VNA_mode & VNA_MODE_SERIAL)) return;
-  if (argc == 2) time = my_atoui(argv[1])*10;
+  uint32_t time = MS2ST(200); // 200ms wait answer by default
+  if (argc == 0 || argc > 2 || VNA_MODE(VNA_MODE_SERIAL)) return;
+  if (argc == 2) time = MS2ST(my_atoui(argv[1]));
   sdWriteTimeout(&SD1, (uint8_t *)argv[0], strlen(argv[0]), time);
   sdWriteTimeout(&SD1, (uint8_t *)VNA_SHELL_NEWLINE_STR, sizeof(VNA_SHELL_NEWLINE_STR)-1, time);
   uint32_t size;
@@ -2797,9 +2783,9 @@ VNA_SHELL_FUNCTION(cmd_usart)
 void send_region(remote_region_t *rd, uint8_t * buf, uint16_t size)
 {
   if (SDU1.config->usbp->state == USB_ACTIVE) {
-    streamWrite(shell_stream, (void*) rd, sizeof(remote_region_t));
-    streamWrite(shell_stream, (void*) buf, size);
-    streamWrite(shell_stream, (void*)"ch> \r\n", 6);
+    shell_write(rd, sizeof(remote_region_t));
+    shell_write(buf, size);
+    shell_write(VNA_SHELL_PROMPT_STR VNA_SHELL_NEWLINE_STR, 6);
   }
   else
     sweep_mode&=~SWEEP_REMOTE;
@@ -2833,15 +2819,15 @@ VNA_SHELL_FUNCTION(cmd_release)
 }
 #endif
 
-#ifdef ENABLE_SD_CARD_CMD
+#ifdef ENABLE_SD_CARD_COMMAND
 #ifndef __USE_SD_CARD__
-#error "Need enable SD card support __USE_SD_CARD__ in nanovna.h, for use ENABLE_SD_CARD_CMD"
+#error "Need enable SD card support __USE_SD_CARD__ in nanovna.h, for use ENABLE_SD_CARD_COMMAND"
 #endif
 
 static FRESULT cmd_sd_card_mount(void){
   const FRESULT res = f_mount(fs_volume, "", 1);
   if (res != FR_OK)
-    shell_printf("err: no card\r\n");
+    shell_printf("err: no card" VNA_SHELL_NEWLINE_STR);
   return res;
 }
 
@@ -2859,13 +2845,13 @@ VNA_SHELL_FUNCTION(cmd_sd_list)
   switch (argc){
     case 0: search =   "*.*";break;
     case 1: search = argv[0];break;
-    default: shell_printf("usage: sd_list {pattern}\r\n"); return;
+    default: shell_printf("usage: sd_list {pattern}" VNA_SHELL_NEWLINE_STR); return;
   }
-  shell_printf("sd_list:\r\n");
+  shell_printf("sd_list:" VNA_SHELL_NEWLINE_STR);
   res = f_findfirst(&dj, &fno, "", search);
   while (res == FR_OK && fno.fname[0])
   {
-    shell_printf("%s %u\r\n", fno.fname, fno.fsize);
+    shell_printf("%s %u" VNA_SHELL_NEWLINE_STR, fno.fname, fno.fsize);
     res = f_findnext(&dj, &fno);
   }
   f_closedir(&dj);
@@ -2876,7 +2862,7 @@ VNA_SHELL_FUNCTION(cmd_sd_read)
   char *buf = (char *)spi_buffer;
   if (argc != 1)
   {
-     shell_printf("usage: sd_read {filename}\r\n");
+     shell_printf("usage: sd_read {filename}" VNA_SHELL_NEWLINE_STR);
      return;
   }
   const char *filename = argv[0];
@@ -2884,17 +2870,17 @@ VNA_SHELL_FUNCTION(cmd_sd_read)
     return;
 
   if (f_open(fs_file, filename, FA_OPEN_EXISTING | FA_READ) != FR_OK){
-    shell_printf("err: no file\r\n");
+    shell_printf("err: no file" VNA_SHELL_NEWLINE_STR);
     return;
   }
-  // shell_printf("sd_read: %s\r\n", filename);
+  // shell_printf("sd_read: %s" VNA_SHELL_NEWLINE_STR, filename);
   // number of bytes to follow (file size)
   uint32_t filesize = f_size(fs_file);
-  streamWrite(shell_stream, (void *)&filesize, 4);
+  shell_write(&filesize, 4);
   UINT size = 0;
   // file data (send all data from file)
   while (f_read(fs_file, buf, 512, &size) == FR_OK && size > 0)
-    streamWrite(shell_stream, (void *)buf, size);
+    shell_write(buf, size);
 
   f_close(fs_file);
   return;
@@ -2904,14 +2890,14 @@ VNA_SHELL_FUNCTION(cmd_sd_delete)
 {
   FRESULT res;
   if (argc != 1) {
-     shell_printf("usage: sd_delete {filename}\r\n");
+     shell_printf("usage: sd_delete {filename}" VNA_SHELL_NEWLINE_STR);
      return;
   }
   if (cmd_sd_card_mount() != FR_OK)
     return;
   const char *filename = argv[0];
   res = f_unlink(filename);
-  shell_printf("delete: %s %s\r\n", filename, res == FR_OK ? "OK" : "err");
+  shell_printf("delete: %s %s" VNA_SHELL_NEWLINE_STR, filename, res == FR_OK ? "OK" : "err");
   return;
 }
 #endif
@@ -2954,10 +2940,10 @@ static const VNAShellCommand commands[] =
 #ifdef __USE_RTC__
     {"time"        , cmd_time        , CMD_RUN_IN_UI},
 #endif
-#ifdef ENABLE_SD_CARD_CMD
-    { "sd_list",   cmd_sd_list,   CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
-    { "sd_read",   cmd_sd_read,   CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
-    { "sd_delete", cmd_sd_delete, CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+#ifdef ENABLE_SD_CARD_COMMAND
+    { "sd_list",   cmd_sd_list       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+    { "sd_read",   cmd_sd_read       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+    { "sd_delete", cmd_sd_delete     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
 #endif
 #ifdef __VNA_ENABLE_DAC__
     {"dac"         , cmd_dac         , CMD_RUN_IN_LOAD},
@@ -2991,8 +2977,8 @@ static const VNAShellCommand commands[] =
     {"recall"      , cmd_recall      , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
     {"trace"       , cmd_trace       , CMD_RUN_IN_LOAD},
     {"marker"      , cmd_marker      , CMD_RUN_IN_LOAD},
-//  {"grid"        , cmd_grid        , CMD_RUN_IN_LOAD},
     {"edelay"      , cmd_edelay      , CMD_RUN_IN_LOAD},
+    {"s21offset"   , cmd_s21offset   , CMD_RUN_IN_LOAD},
     {"capture"     , cmd_capture     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
 #ifdef __REMOTE_DESKTOP__
     {"refresh"     , cmd_refresh     , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
@@ -3004,6 +2990,9 @@ static const VNAShellCommand commands[] =
     {"reset"       , cmd_reset       , CMD_RUN_IN_LOAD},
 #ifdef __USE_SMOOTH__
     {"smooth"      , cmd_smooth      , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+#endif
+#ifdef ENABLE_CONFIG_COMMAND
+    {"config"      , cmd_config      , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
 #endif
 #ifdef __USE_SERIAL_CONSOLE__
 #ifdef ENABLE_USART_COMMAND
@@ -3075,14 +3064,13 @@ VNA_SHELL_FUNCTION(cmd_help)
 #endif
 
 // Before start process command from shell, need select input stream
-#define PREPARE_STREAM shell_stream = (VNA_mode & VNA_MODE_SERIAL) ? (BaseSequentialStream *)&SD1 : (BaseSequentialStream *)&SDU1;
+#define PREPARE_STREAM shell_stream = VNA_MODE(VNA_MODE_CONNECTION) ? (BaseSequentialStream *)&SD1 : (BaseSequentialStream *)&SDU1;
 
 // Update Serial connection speed and settings
-void shell_update_speed(void){
+void shell_update_speed(uint32_t speed){
+  config._serial_speed = speed;
   // Update Serial speed settings
-  SerialConfig s_config = {config._serial_speed, 0, USART_CR2_STOP1_BITS, 0 };
-  sdStop(&SD1);
-  sdStart(&SD1, &s_config);  // USART config
+  sdSetBaudrate(&SD1, speed);
 }
 
 // Check USB connection status
@@ -3094,36 +3082,40 @@ static bool usb_IsActive(void){
 void shell_reset_console(void){
   // Reset I/O queue over USB (for USB need also connect/disconnect)
   if (usb_IsActive()){
-    if (VNA_mode & VNA_MODE_SERIAL)
+    if (VNA_MODE(VNA_MODE_CONNECTION))
       sduDisconnectI(&SDU1);
     else
       sduConfigureHookI(&SDU1);
   }
   // Reset I/O queue over Serial
-  oqResetI(&SD1.oqueue);
-  iqResetI(&SD1.iqueue);
+  qResetI(&SD1.oqueue);
+  qResetI(&SD1.iqueue);
+  // Prepare I/O for shell_stream
+  PREPARE_STREAM;
 }
 
 // Check active connection for Shell
 static bool shell_check_connect(void){
   // Serial connection always active
-  if (VNA_mode & VNA_MODE_SERIAL)
+  if (VNA_MODE(VNA_MODE_CONNECTION))
     return true;
   // USB connection can be USB_SUSPENDED
   return usb_IsActive();
 }
 
 static void shell_init_connection(void){
+  osalThreadQueueObjectInit(&shell_thread);
 /*
  * Initializes and start serial-over-USB CDC driver SDU1, connected to USBD1
  */
   sduObjectInit(&SDU1);
   sduStart(&SDU1, &serusbcfg);
-
+  SerialConfig s_config = {config._serial_speed, 0, USART_CR2_STOP1_BITS, 0 };
+  sdStart(&SD1, &s_config);
 /*
  * Set Serial speed settings for SD1
  */
-  shell_update_speed();
+  shell_update_speed(config._serial_speed);
 
 /*
  * Activates the USB driver and then the USB bus pull-up on D+.
@@ -3135,10 +3127,7 @@ static void shell_init_connection(void){
   usbStart(&USBD1, &usbcfg);
   usbConnectBus(&USBD1);
 
-/*
- *  Set I/O stream (SDU1 or SD1) for shell
- */
-  PREPARE_STREAM;
+  shell_reset_console();
 }
 
 #else
@@ -3175,29 +3164,48 @@ static void shell_init_connection(void){
 }
 #endif
 
+static inline char* vna_strpbrk(char *s1, const char *s2) {
+  do {
+    const char *s = s2;
+    do {
+      if (*s == *s1) return s1;
+      s++;
+    } while (*s);
+    s1++;
+  } while(*s1);
+  return s1;
+}
+
+/*
+ * Split line by arguments, return arguments count
+ */
+int parse_line(char *line, char* args[], int max_cnt) {
+  char *lp = line, c;
+  const char *brk;
+  uint16_t nargs = 0;
+  while ((c = *lp) != 0) {                   // While not end
+    if (c != ' ' && c != '\t') {             // Skipping white space and tabs.
+      if (c == '"') {lp++; brk = "\""; }     // string end is next quote or end
+      else          {      brk = " \t";}     // string end is tab or space or end
+      if (nargs < max_cnt) args[nargs] = lp; // Put pointer in args buffer (if possible)
+      nargs++;                               // Substring count
+      lp = vna_strpbrk(lp, brk);             // search end
+      if (*lp == 0) break;                   // Stop, end of input string
+      *lp = 0;                               // Set zero at the end of substring
+    }
+    lp++;
+  }
+  return nargs;
+}
+
 static const VNAShellCommand *VNAShell_parceLine(char *line){
   // Parse and execute line
-  char *lp = line, *ep;
-  shell_nargs = 0;
-  while (*lp != 0) {
-    // Skipping white space and tabs at string begin.
-    while (*lp == ' ' || *lp == '\t') lp++;
-    // If an argument starts with a double quote then its delimiter is another quote, else
-    // delimiter is white space.
-    ep = (*lp == '"') ? strpbrk(++lp, "\"") : strpbrk(lp, " \t");
-    // Store in args string
-    shell_args[shell_nargs++] = lp;
-    // Stop, end of input string
-    if ((lp = ep) == NULL) break;
-    // Argument limits check
-    if (shell_nargs > VNA_SHELL_MAX_ARGUMENTS) {
-      shell_printf("too many arguments, max " define_to_STR(VNA_SHELL_MAX_ARGUMENTS) "" VNA_SHELL_NEWLINE_STR);
-      return NULL;
-    }
-    // Set zero at the end of string and continue check
-    *lp++ = 0;
+  shell_nargs = parse_line(line, shell_args, ARRAY_COUNT(shell_args));
+  if (shell_nargs > ARRAY_COUNT(shell_args)) {
+    shell_printf("too many arguments, max " define_to_STR(VNA_SHELL_MAX_ARGUMENTS) "" VNA_SHELL_NEWLINE_STR);
+    return NULL;
   }
-  if (shell_nargs){
+  if (shell_nargs > 0) {
     const VNAShellCommand *scp;
     for (scp = commands; scp->sc_name != NULL; scp++)
       if (get_str_index(scp->sc_name, shell_args[0]) == 0)
@@ -3209,19 +3217,17 @@ static const VNAShellCommand *VNAShell_parceLine(char *line){
 //
 // Read command line from shell_stream
 //
+static const char backspace[] = {0x08, 0x20, 0x08, 0x00};
 static int VNAShell_readLine(char *line, int max_size)
 {
   // send backspace, space for erase, backspace again
-  char backspace[] = {0x08, 0x20, 0x08, 0x00};
   uint8_t c;
-  // Prepare I/O for shell_stream
-  PREPARE_STREAM;
   uint16_t j = 0;
   // Return 0 only if stream not active
-  while (streamRead(shell_stream, &c, 1)) {
+  while (shell_read(&c, 1)) {
     // Backspace or Delete
     if (c == 0x08 || c == 0x7f) {
-      if (j > 0) {shell_printf(backspace); j--;}
+      if (j > 0) {shell_write(backspace, sizeof(backspace)); j--;}
       continue;
     }
     // New line (Enter)
@@ -3232,7 +3238,7 @@ static int VNAShell_readLine(char *line, int max_size)
     }
     // Others (skip) or too long - skip
     if (c < ' ' || j >= max_size - 1) continue;
-    streamPut(shell_stream, c); // Echo
+    shell_write(&c, 1); // Echo
     line[j++] = (char)c;
   }
   return 0;
@@ -3243,34 +3249,41 @@ static int VNAShell_readLine(char *line, int max_size)
 //
 static void VNAShell_executeLine(char *line)
 {
-//  DEBUG_LOG(0, line); // debug console log
+  DEBUG_LOG(0, line); // debug console log
   // Execute line
   const VNAShellCommand *scp = VNAShell_parceLine(line);
   if (scp) {
     uint16_t cmd_flag = scp->flags;
     // Skip wait mutex if process UI
-    if ((cmd_flag& CMD_RUN_IN_UI) && (sweep_mode&SWEEP_UI_MODE)) cmd_flag&=~CMD_WAIT_MUTEX;
+    if ((cmd_flag & CMD_RUN_IN_UI) && (sweep_mode&SWEEP_UI_MODE)) cmd_flag&=~CMD_WAIT_MUTEX;
     // Wait
     if (cmd_flag & CMD_WAIT_MUTEX) {
       shell_function = scp->sc_function;
       if (scp->flags & CMD_BREAK_SWEEP) operation_requested|=OP_CONSOLE;
       // Wait execute command in sweep thread
-      do {
-        chThdSleepMilliseconds(10);
-      } while (shell_function);
-      return;
-    }
-    scp->sc_function(shell_nargs - 1, &shell_args[1]);
+      osalThreadEnqueueTimeoutS(&shell_thread, TIME_INFINITE);
+//      do {
+//        chThdSleepMilliseconds(10);
+//      } while (shell_function);
+    } else
+      scp->sc_function(shell_nargs - 1, &shell_args[1]);
 //  DEBUG_LOG(10, "ok");
-    return;
-  }
-  if (**shell_args) // unknown command (not empty), ignore <CR>
+  } else if (**shell_args) // unknown command (not empty), ignore <CR>
     shell_printf("%s?" VNA_SHELL_NEWLINE_STR, shell_args[0]);
+}
+
+void VNAShell_executeCMDLine(char *line) {
+  // Disable shell output (not allow shell_printf write, but not block other output!!)
+  shell_stream = NULL;
+  const VNAShellCommand *scp = VNAShell_parceLine(line);
+  if (scp && (scp->flags & CMD_RUN_IN_LOAD))
+    scp->sc_function(shell_nargs - 1, &shell_args[1]);
+  PREPARE_STREAM;
 }
 
 #ifdef __SD_CARD_LOAD__
 #ifndef __USE_SD_CARD__
-#error "Need enable SD card support __USE_SD_CARD__ in nanovna.h, for use ENABLE_SD_CARD_CMD"
+#error "Need enable SD card support __USE_SD_CARD__ in nanovna.h, for use __SD_CARD_LOAD__"
 #endif
 bool sd_card_load_config(void){
   // Mount card
@@ -3280,7 +3293,7 @@ bool sd_card_load_config(void){
   if (f_open(fs_file, "config.ini", FA_OPEN_EXISTING | FA_READ) != FR_OK)
     return FALSE;
 
-  // Disable shell output
+  // Disable shell output (not allow shell_printf write, but not block other output!!)
   shell_stream = NULL;
   char *buf = (char *)spi_buffer;
   UINT size = 0;
@@ -3331,67 +3344,6 @@ THD_FUNCTION(myshellThread, p)
 }
 #endif
 
-/*
- * I2C bus settings
- */
-#if STM32_I2C1_CLOCK == 8    // STM32_I2C1SW == STM32_I2C1SW_HSI     (HSI=8MHz)
-#if   STM32_I2C_SPEED == 400 // 400kHz @ HSI 8MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
- #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(0U)  |\
-                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(1U) |\
-                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)  |\
-                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(1U) |\
-                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
-#endif
-#elif  STM32_I2C1_CLOCK == 48 // STM32_I2C1SW == STM32_I2C1SW_SYSCLK  (SYSCLK = 48MHz)
- #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(5U) |\
-                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |\
-                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
-
- #if   STM32_I2C_SPEED == 400 // 400kHz @ SYSCLK 48MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(5U)  |\
-                            STM32_TIMINGR_SCLDEL(3U) | STM32_TIMINGR_SDADEL(3U) |\
-                            STM32_TIMINGR_SCLH(3U)   | STM32_TIMINGR_SCLL(9U)
- #elif STM32_I2C_SPEED == 600 // 600kHz @ SYSCLK 48MHz, manually get values, x1.5 I2C speed
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
-                            STM32_TIMINGR_SCLH(30U)   | STM32_TIMINGR_SCLL(50U)
- #elif STM32_I2C_SPEED == 900 // 900kHz @ SYSCLK 48MHz, manually get values, x2 I2C speed
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
-                            STM32_TIMINGR_SCLH(23U)   | STM32_TIMINGR_SCLL(30U)
- #endif
-#elif  STM32_I2C1_CLOCK == 72 // STM32_I2C1SW == STM32_I2C1SW_SYSCLK  (SYSCLK = 72MHz)
- #define STM32_I2C_INIT_T   STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(20U) | STM32_TIMINGR_SDADEL(20U) |\
-                            STM32_TIMINGR_SCLH(80U)   | STM32_TIMINGR_SCLL(100U)
-
- #if   STM32_I2C_SPEED == 400 // ~400kHz @ SYSCLK 72MHz (Use 26.4.10 I2C_TIMINGR register configuration examples from STM32 RM0091 Reference manual)
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
-                            STM32_TIMINGR_SCLH(80U)   | STM32_TIMINGR_SCLL(100U)
- #elif STM32_I2C_SPEED == 600 // ~600kHz @ SYSCLK 72MHz, manually get values, x1.5 I2C speed
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
-                            STM32_TIMINGR_SCLH(40U)   | STM32_TIMINGR_SCLL(80U)
- #elif STM32_I2C_SPEED == 900 // ~900kHz @ SYSCLK 72MHz, manually get values, x2 I2C speed
- #define STM32_I2C_TIMINGR  STM32_TIMINGR_PRESC(0U)   |\
-                            STM32_TIMINGR_SCLDEL(10U) | STM32_TIMINGR_SDADEL(10U) |\
-                            STM32_TIMINGR_SCLH(30U)   | STM32_TIMINGR_SCLL(40U)
- #endif
-#endif
-
-#ifndef STM32_I2C_TIMINGR
-#error "Need define I2C bus TIMINGR settings"
-#endif
-
-// I2C clock bus setting: depend from STM32_I2C1SW in mcuconf.h
-static const I2CConfig i2ccfg = {
-  .timingr = STM32_I2C_INIT_T,  // TIMINGR register initialization. (use I2C timing configuration tool for STM32F3xx and STM32F0xx microcontrollers (AN4235))
-  .cr1 = 0,                      // CR1 register initialization.
-  .cr2 = 0                       // CR2 register initialization.
-};
-
 // Main thread stack size defined in makefile USE_PROCESS_STACKSIZE = 0x200
 // Profile stack usage (enable threads command by def ENABLE_THREADS_COMMAND) show:
 // Stack maximum usage = 472 bytes (need test more and run all commands), free stack = 40 bytes
@@ -3405,19 +3357,49 @@ int main(void)
   chSysInit();
 
 /*
- * SPI bus and LCD Initialize
+ * Init used hardware
  */
-  lcd_init();
+/*
+ *  Init DMA channels (used for direct send data, used for i2s and spi)
+ */
+  rccEnableDMA1(false);
+//rccEnableDMA2(false);
 
 /*
- * Restore config
+ * Init GPIO (pin control)
  */
-  config_recall();
+#if HAL_USE_PAL == FALSE
+  initPal();
+#endif
 
 /*
- * restore frequencies and calibration 0 slot / backup id properties from flash memory
+ * Initialize RTC library (not used ChibiOS RTC module)
  */
-  load_start_properties();
+#ifdef __USE_RTC__
+  rtc_init();
+#endif
+
+/*
+ * Starting DAC1 driver, setting up the output pin as analog as suggested by the Reference Manual.
+ */
+#if defined(__VNA_ENABLE_DAC__) ||  defined(__LCD_BRIGHTNESS__)
+  dac_init();
+#endif
+
+/*
+ * restore config and calibration 0 slot from flash memory, also if need use backup data
+ */
+  load_settings();
+
+/*
+ * I2C bus
+ */
+  i2c_start();
+
+/*
+ * Start si5351
+ */
+  si5351_init();
 
 /*
  * Set frequency offset
@@ -3431,35 +3413,19 @@ int main(void)
   shell_init_connection();
 
 /*
- * I2C bus
+ * SPI bus and LCD Initialize
  */
-  i2cStart(&I2CD1, &i2ccfg);
-
-/*
- * Start si5351
- */
-  si5351_init();
-
-/*
- * Initialize RTC library (not used ChibiOS RTC module)
- */
-#ifdef __USE_RTC__
-  rtc_init();
-#endif
+  lcd_init();
 
 /*
  * tlv320aic Initialize (audio codec)
  */
   tlv320aic3204_init();
-//  chThdSleepMilliseconds(100);
-
+  chThdSleepMilliseconds(200); // Wait for aic codec start
 /*
  * I2S Initialize
  */
-  i2sInit();
-  i2sObjectInit(&I2SD2);
-  i2sStart(&I2SD2, &i2sconfig);
-  i2sStartExchange(&I2SD2);
+  initI2S(rx_buffer, ARRAY_COUNT(rx_buffer) * sizeof(audio_sample_t) / sizeof(int16_t));
 
 /*
  * SD Card init (if inserted) allow fix issues
@@ -3470,16 +3436,9 @@ int main(void)
 #endif
 
 /*
- * Starting DAC1 driver, setting up the output pin as analog as suggested by the Reference Manual.
- */
-#ifdef  __VNA_ENABLE_DAC__
-  dac_init();
-#endif
-
-/*
  * I2C bus run on work speed
  */
-  set_I2C_timings(STM32_I2C_TIMINGR);
+  i2c_set_timings(STM32_I2C_TIMINGR);
 
 /*
  * Startup sweep thread
@@ -3488,7 +3447,7 @@ int main(void)
 
   while (1) {
     if (shell_check_connect()) {
-      shell_printf(VNA_SHELL_NEWLINE_STR"NanoVNA Shell"VNA_SHELL_NEWLINE_STR);
+      shell_printf(VNA_SHELL_NEWLINE_STR "NanoVNA Shell" VNA_SHELL_NEWLINE_STR);
 #ifdef VNA_SHELL_THREAD
 #if CH_CFG_USE_WAITEXIT == FALSE
 #error "VNA_SHELL_THREAD use chThdWait, need enable CH_CFG_USE_WAITEXIT in chconf.h"
@@ -3566,7 +3525,7 @@ void hard_fault_handler_c(uint32_t *sp)
   lcd_printf(x, y+=FONT_STR_HEIGHT, "PC  0x%08x",  pc);
   lcd_printf(x, y+=FONT_STR_HEIGHT, "PSR 0x%08x", psr);
 
-  shell_printf("===================================\r\n");
+  shell_printf("===================================" VNA_SHELL_NEWLINE_STR);
 #else
   (void)sp;
 #endif

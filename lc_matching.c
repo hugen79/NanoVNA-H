@@ -325,6 +325,7 @@ static void draw_lc_match(int x0, int y0)
   }
 }
 #endif // __USE_LC_MATCHING__
+
 #ifdef __S21_MEASURE__
 typedef struct {
   char *header;
@@ -457,7 +458,7 @@ static void draw_serial_result(int x0, int y0){
   if (s21_measure->freq)
   {
     cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Fs=%qHz", s21_measure->freq);
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Ls=%FH  Cs=%FF  Rs=%F" S_OHM, s21_measure->l, s21_measure->c, s21_measure->r);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Lm=%FH  Cm=%FF  Rm=%F" S_OHM, s21_measure->l, s21_measure->c, s21_measure->r);
     cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Q=%.3f", s21_measure->q);
 //  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "tan45=%.4f", s21_measure->tan45);
 //  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "F1=%qHz F2=%qHz", s21_measure->f1, s21_measure->f2);
