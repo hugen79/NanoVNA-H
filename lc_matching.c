@@ -425,7 +425,7 @@ static void analysis_lcseries(void) {
   s21_measure->l = reff / ((2 * VNA_PI) * bw);
   s21_measure->c = bw / ((2 * VNA_PI) * fpeak * fpeak * reff);
   // q = 2*pi * Fp * Ls / R
-  s21_measure->q = (2 * VNA_PI) * fpeak * s21_measure->l / s21_measure->r;
+  s21_measure->q = (2 * VNA_PI) * fpeak * s21_measure->l / reff;
 
 //  s21_measure->f1 = f1;
 //  s21_measure->f2 = f2;
