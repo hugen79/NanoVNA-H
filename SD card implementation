@@ -1,0 +1,11 @@
+I possess a nanoVNA-H4 with HW version 4.2.1 (printed on the PCB inside), bought at about the midst of 2021 from alibaba. 
+There are already solder points on the board for the implementation of a sd card socket. 
+I want to ask whether I have to implement/change some additional hardware components or wires to successfully integrate the sd card.
+In addition I want to know the firmware version I have to update for a successful integration of the sd card.
+My current running software version is 1.2.00 [p:401, IF:12k, ADC:384k, Lcd:480x320] 
+Architecture: ARMv7E-M Core Variant: Cortex-M4F
+Platform: STM32F303xC Analog & DSP 
+TCXO = 26.000 000 MHz
+
+In addition my date and time is not working correctly.
+What do I need to change/implement?
