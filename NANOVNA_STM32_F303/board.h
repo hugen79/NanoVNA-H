@@ -38,11 +38,9 @@
  */
 #define STM32F303xC
 
-#define STM32F303xC_SYSTEM_MEMORY 0x1FFFD800
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20009FF0
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
-//#define SYSTEM_BOOT_MSP *(uint32_t *)0  // 0x20001258
-#define SYSTEM_BOOT_MSP 0x20001258
+#define STM32F303xC_SYSTEM_MEMORY            0x1FFFD800
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20009FFC
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC         0xDEADBEEF
 
 /*
  * IO pins assignments
@@ -52,8 +50,8 @@
 
 #define GPIOA_BUTTON			0
 #define GPIOA_LEVER1			1
-#define GPIOA_LEVER2			2
-#define GPIOA_PUSH				3
+#define GPIOA_PUSH				2
+#define GPIOA_LEVER2			3
 #define GPIOA_VBUS			    4
 #define GPIOA_DAC2				5
 #define GPIOA_XP				6
@@ -794,6 +792,7 @@
 extern "C" {
 #endif
   void boardInit(void);
+  void boardDFUEnter(void);
 #ifdef __cplusplus
 }
 #endif

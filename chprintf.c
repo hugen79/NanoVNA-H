@@ -35,23 +35,26 @@
 // Enable [flags], support:
 // ' ' Prepends a space for positive signed-numeric types. positive = ' ', negative = '-'. This flag is ignored if the + flag exists.
 #define CHPRINTF_USE_SPACE_FLAG
+// for %q format use uint32_t or uint64_t
 //#define CHPRINTF_FREQUENCY_SIZE_64
+// allow use int64_t values for %D %U %O %X or %ld %lu %lo %lx type
 //#define CHPRINTF_USE_INT_64
 
-// Force putting trailing zeros on float value
+// Force putting trailing zeros on float value (for %0.f format)
 #define CHPRINTF_FORCE_TRAILING_ZEROS
 
-#define MAX_FILLER 11
+// Maximum digits for values 11.11 + 1 for float, int64 need 21 digit (use MAX_FILLER * 2 + 1)
+#define MAX_FILLER             11
 #define FLOAT_PRECISION         9
 #define FLOAT_PREFIX_PRECISION  3
 
-#ifdef CHPRINTF_USE_INT_64
+#ifdef CHPRINTF_FREQUENCY_SIZE_64
 typedef uint64_t pfreq_t;
 #else
 typedef uint32_t pfreq_t;
 #endif
 
-#ifdef CHPRINTF_FREQUENCY_SIZE_64
+#ifdef CHPRINTF_USE_INT_64
 typedef uint64_t ulongval_t;
 typedef int64_t longval_t;
 #else
@@ -93,11 +96,11 @@ static char *long_to_string_with_divisor(char *p,
   return p;
 }
 
-// default prescision = 13
-// g.mmm kkk hhh
+// default frequency prescision = 14
+// gg.mmm kkk hhh
 #define MAX_FREQ_PRESCISION 14
-#define FREQ_PSET           1
-#define FREQ_PREFIX_SPACE   2
+#define FREQ_PSET            1
+#define FREQ_PREFIX_SPACE    2
 
 static char *
 ulong_freq(char *p, pfreq_t freq, int precision)
@@ -163,7 +166,7 @@ ulong_freq(char *p, pfreq_t freq, int precision)
     if (!(flag & FREQ_PSET) && precision-- < 0) break;
     *p++ = c;
   } while (--i);
-  // Put pref (amd space before it if need)
+  // Put pref (and space before it if need)
   if ((flag & FREQ_PREFIX_SPACE) && s != ' ')
     *p++ = ' ';
   *p++ = s;
@@ -229,7 +232,7 @@ static char *ftoaS(char *p, float num, int16_t precision) {
  * @brief   System formatted output function.
  * @details This function implements a minimal @p vprintf()-like functionality
  *          with output on a @p BaseSequentialStream.
- *          The general parameters format is: %[-][width|*][.precision|*][l|L]p.
+ *          The general parameters format is: %[flags][width|*][.precision|*][l|L]p.
  *          The following parameter types (p) are supported:
  *          - <b>x</b> hexadecimal int32.
  *          - <b>X</b> hexadecimal int64.
@@ -241,7 +244,9 @@ static char *ftoaS(char *p, float num, int16_t precision) {
  *          - <b>U</b> decimal unsigned int64.
  *          - <b>c</b> char.
  *          - <b>s</b> string.
- *          .
+ *          - <b>f</b> float.
+ *          - <b>F</b> float (use prefix formatting)
+ *          - <b>q</b> uint32 or uint64 frequency formatting (depend from defined or not CHPRINTF_FREQUENCY_SIZE_64).
  *
  * @param[in] chp       pointer to a @p BaseSequentialStream implementing object
  * @param[in] fmt       formatting string
@@ -286,7 +291,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
       n++;
       continue;
     }
-    // Parse %[flags][width][.precision][length]type
+    // Parse %[flags][width|*][.precision|*]
     p = tmpbuf;
     s = tmpbuf;
     state = 0;
@@ -298,6 +303,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     // '+' Prepends a  plus for positive signed-numeric types. positive = '+', negative = '-'.
     // ' ' Prepends a space for positive signed-numeric types. positive = ' ', negative = '-'. This flag is ignored if the + flag exists.
     // '0' When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.)
+    // 'j' Then add 'j' before '+' or '-', need for complex values.
     while (true){
       if (*fmt == '-')
         state|=LEFT_ALIGN;
@@ -317,7 +323,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
         break;
       fmt++;
     }
-    // Get [width] - The Width field specifies a minimum number of characters to output
+    // Get [width|*] - The Width field specifies a minimum number of characters to output
     // if set *, get width as argument
     while (true) {
       c = *fmt++;
@@ -329,7 +335,8 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
         break;
       width = width * 10 + c;
     }
-    // Get [.precision]
+    // Get [.precision|*]
+    // if set *, get precision as argument
     if (c == '.') {
       while (true) {
         c = *fmt++;
@@ -344,8 +351,8 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     }
     else
       state|=DEFAULT_PRESCISION;
-    //Get [length]
-#ifdef CHPRINTF_FREQUENCY_SIZE_64
+    // Get type (or skip [l|L] for int64_t) support
+#ifdef CHPRINTF_USE_INT_64
     if (c == 'l' || c == 'L') {
       state|=IS_LONG;
       if (*fmt)
@@ -373,7 +380,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     case 'd':
     case 'I':
     case 'i':
-#ifdef CHPRINTF_FREQUENCY_SIZE_64
+#ifdef CHPRINTF_USE_INT_64
       if (state & IS_LONG)
         value.l = va_arg(ap, int64_t);
       else
@@ -395,11 +402,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
       p = long_to_string_with_divisor(p, value.l, 10, 0);
       break;
     case 'q':
-#ifdef CHPRINTF_FREQUENCY_SIZE_64
-      p=ulong_freq(p, va_arg(ap, uint64_t), precision);
-#else
-      p=ulong_freq(p, va_arg(ap, uint32_t), precision);
-#endif
+      p=ulong_freq(p, va_arg(ap, pfreq_t), precision);
       break;
 #if CHPRINTF_USE_FLOAT
     case 'F':
@@ -450,7 +453,7 @@ int chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
     case 'o':
       c = 8;
 unsigned_common:
-#ifdef CHPRINTF_FREQUENCY_SIZE_64
+#ifdef CHPRINTF_USE_INT_64
       if (state & IS_LONG)
         value.u = va_arg(ap, int64_t);
       else

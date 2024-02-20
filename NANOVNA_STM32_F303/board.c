@@ -62,63 +62,17 @@ const PALConfig pal_default_config = {
 };
 #endif
 
+void boardDFUEnter(void) {
+  __set_MSP(*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY)));
+  ((void (*)(void))(*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY + 4))))(); // jump to DFU
+}
+
 /*
  * Early initialization code.
  * This initialization must be performed just after stack setup and before
  * any other initialization.
  */
 void __early_init(void) {
-  // Refer to thess pages for how to start dfu from software
-  // https://community.st.com/s/question/0D50X00009XkeeWSAR/stm32l476rg-jump-to-bootloader-from-software
-  // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
-#if 0
-  if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
-    // require irq
-    // __enable_irq();
-    // reset magic bytes
-    *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = 0;
-   #if 1
-    // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
-    // Step: Disable systick timer and reset it to default values
-    #if 0
-    SysTick->CTRL = 0;
-    SysTick->LOAD = 0;
-    SysTick->VAL = 0;
-    #endif
-    // Step: Disable all interrupts
-    __disable_irq();
-    // Remap system memory to address 0x0000 0000 in address space
-    typedef void (*pFunction)(void);
-    pFunction bootloader;
-    uint32_t msp;
-    uint32_t foo = SYSCFG->CFGR1;
-    foo = (foo & ~SYSCFG_CFGR1_MEM_MODE) || SYSCFG_CFGR1_MEM_MODE_0;
-    SYSCFG->CFGR1 = foo;
-    //foo = SYSCFG->CFGR1;
-    __DSB();
-    __ISB();
-    //__DSB();
-    //__ISB();
-    #if 1
-    bootloader = (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4)));
-    //msp = *(uint32_t *) STM32F303xC_SYSTEM_MEMORY;
-    msp = 0x20002250;
-    #else
-    bootloader = (void (*)(void)) (*((uint32_t *)(4)));
-    //msp = *(uint32_t *) 0;
-    msp = 0x20002250;
-    #endif
-    __set_MSP(msp);
-    bootloader();
-    while(1);
-   #else
-    __set_MSP(SYSTEM_BOOT_MSP); 
-    ( (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4))) )();
-    while(1);
-   #endif
-  }
-#endif
-
   stm32_clock_init();
 }
 

@@ -20,9 +20,6 @@ USE_OPT = -O2 -fno-inline-small-functions -ggdb -fomit-frame-pointer -falign-fun
 endif
 # additional options, use math optimisations
 USE_OPT+= -ffast-math -fsingle-precision-constant
-
-USE_OPT+= -D__BAND_MODE__
-
 #USE_OPT+= -D__MS5351__
 
 
@@ -101,7 +98,11 @@ endif
 #
 
 # Define project name here
-PROJECT = ch
+ifeq ($(TARGET),F303)
+  PROJECT = H4
+else
+  PROJECT = H
+endif
 
 # Imported source files and paths
 #CHIBIOS = ../ChibiOS-RT
@@ -154,7 +155,7 @@ CSRC = $(STARTUPSRC) \
        FatFs/ff.c \
        FatFs/ffunicode.c \
        usbcfg.c \
-       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont20x22.c Font5x7.c Font6x10.c Font7x11b.c Font11x14.c data_storage.c hardware.c vna_math.c
+       main.c si5351.c tlv320aic3204.c dsp.c plot.c ui.c ili9341.c numfont16x22.c Font5x7.c Font6x10.c Font7x11b.c Font11x14.c data_storage.c hardware.c vna_math.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -249,7 +250,7 @@ endif
 UDEFS+= -DVNA_AUTO_SELECT_RTC_SOURCE
 #Enable if install external 32.768kHz clock quartz on PC14 and PC15 pins on STM32 CPU and no VNA_AUTO_SELECT_RTC_SOURCE
 #UDEFS+= -DVNA_USE_LSE
-#UDEFS+= -D__VNA_Z_RENORMALIZATION__ -D__SD_FILE_BROWSER__ -D__VNA_FAST_LINES__
+#UDEFS+= -D__VNA_Z_RENORMALIZATION__ -D__VNA_FAST_LINES__
 
 # Define ASM defines here
 UADEFS =
@@ -270,8 +271,8 @@ ULIBS = -lm
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC
 include $(RULESPATH)/rules.mk
 
-flash: build/ch.bin
-	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/ch.bin
+flash: build/$(PROJECT).bin
+	dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build/$(PROJECT).bin
 
 dfu:
 	-@printf "reset dfu\r" >/dev/cu.usbmodem401

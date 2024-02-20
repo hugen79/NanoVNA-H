@@ -127,7 +127,7 @@ void adc_init(void)
 //ADC3_4_COMMON->CCR = STM32_ADC_ADC34_CLOCK_MODE;
 }
 
-#define ADC_AVERAGE_N 3
+#define ADC_AVERAGE_N 4
 static void adcStartMeasure(ADC_TypeDef *adc, uint32_t sqr0, uint16_t *samples) {
   // ADC setup
   adc->ISR   = adc->ISR;            // reset interrupts

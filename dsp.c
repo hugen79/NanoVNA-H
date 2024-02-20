@@ -209,15 +209,13 @@ dsp_process(audio_sample_t *capture, size_t length)
 #endif
 
 void
-calculate_gamma(float gamma[2])
+calculate_gamma(float *gamma)
 {
-#if 1
   // calculate reflection coeff. by samp divide by ref
 #if 0
   measure_t rs = acc_ref_s;
   measure_t rc = acc_ref_c;
   measure_t rr = rs * rs + rc * rc;
-  //rr = vna_sqrtf(rr) * 1e8;
   measure_t ss = acc_samp_s;
   measure_t sc = acc_samp_c;
   gamma[0] =  (sc * rc + ss * rs) / rr;
@@ -226,28 +224,21 @@ calculate_gamma(float gamma[2])
   measure_t rs_rc = (measure_t) acc_ref_s / acc_ref_c;
   measure_t sc_rc = (measure_t)acc_samp_c / acc_ref_c;
   measure_t ss_rc = (measure_t)acc_samp_s / acc_ref_c;
-  measure_t rr = rs_rc * rs_rc + 1.0;
-  gamma[0] = (sc_rc + ss_rc*rs_rc) / rr;
-  gamma[1] = (ss_rc - sc_rc*rs_rc) / rr;
-#endif
-#elif 0
-  gamma[0] =  acc_samp_s;
-  gamma[1] =  acc_samp_c;
-#else
-  gamma[0] =  acc_ref_s;
-  gamma[1] =  acc_ref_c;
+  measure_t rr = rs_rc * rs_rc + 1.0f;
+  gamma[0] = (sc_rc + ss_rc * rs_rc) / rr;
+  gamma[1] = (ss_rc - sc_rc * rs_rc) / rr;
 #endif
 }
 
 void
-fetch_amplitude(float gamma[2])
+fetch_amplitude(float *gamma)
 {
   gamma[0] =  acc_samp_s * 1e-9;
   gamma[1] =  acc_samp_c * 1e-9;
 }
 
 void
-fetch_amplitude_ref(float gamma[2])
+fetch_amplitude_ref(float *gamma)
 {
   gamma[0] =  acc_ref_s * 1e-9;
   gamma[1] =  acc_ref_c * 1e-9;

@@ -62,13 +62,38 @@ const PALConfig pal_default_config = {
 };
 #endif
 
+static bool needDFU(void) {
+  // Magick data in memory before reset
+  if (*((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC)
+    return true;
+  // init PortA (leveler port) and check press
+  rccEnableAHB(STM32_GPIO_EN_MASK, FALSE);
+  GPIOA->OTYPER  = VAL_GPIOA_OTYPER;
+//  GPIOA->OSPEEDR = VAL_GPIOA_OSPEEDR;
+  GPIOA->PUPDR   = VAL_GPIOA_PUPDR;
+  GPIOA->ODR     = VAL_GPIOA_ODR;
+//  GPIOA->AFR[0]  = VAL_GPIOA_AFRL;
+//  GPIOA->AFR[1]  = VAL_GPIOA_AFRH;
+  GPIOA->MODER   = VAL_GPIOA_MODER;
+  if (GPIOA->IDR & (1<<GPIOA_PUSH)) {
+    while(GPIOA->IDR & (1<<GPIOA_PUSH)) {}; // Wait press
+    return true;
+  }
+  return false;
+}
+
+void boardDFUEnter(void) {
+  *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
+  NVIC_SystemReset();
+}
+
 /*
  * Early initialization code.
  * This initialization must be performed just after stack setup and before
  * any other initialization.
  */
 void __early_init(void) {
-  if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
+  if (needDFU()) {
     // require irq
     __enable_irq();
     // reset magic bytes
@@ -79,7 +104,7 @@ void __early_init(void) {
     // set msp for system memory
     __set_MSP(SYSTEM_BOOT_MSP); 
     // jump to system memory
-    ( (void (*)(void)) (*((uint32_t *)(STM32F072xB_SYSTEM_MEMORY+4))) )();
+    ((void (*)(void))(*((uint32_t *)(STM32F072xB_SYSTEM_MEMORY + 4))))();
     while (1);
   }
 

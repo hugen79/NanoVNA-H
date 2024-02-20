@@ -36,10 +36,10 @@
  */
 #define STM32F072xB
 
-#define STM32F072xB_SYSTEM_MEMORY 0x1FFFC800
+#define STM32F072xB_SYSTEM_MEMORY            0x1FFFC800
 #define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20003FF0
-#define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
-#define SYSTEM_BOOT_MSP 0x20002250
+#define BOOT_FROM_SYTEM_MEMORY_MAGIC         0xDEADBEEF
+#define SYSTEM_BOOT_MSP                      0x20002250
 
 /*
  * IO pins assignments
@@ -49,8 +49,8 @@
 
 #define GPIOA_BUTTON			0 // (not used)
 #define GPIOA_LEVER1			1
-#define GPIOA_LEVER2			2
-#define GPIOA_PUSH				3
+#define GPIOA_PUSH				2
+#define GPIOA_LEVER2			3
 #define GPIOA_DAC2				5
 #define GPIOA_XP				6
 #define GPIOA_YP				7
@@ -131,8 +131,8 @@
  */
 #define VAL_GPIOA_MODER             (PIN_MODE_INPUT(0U) |                  \
                                      PIN_MODE_INPUT(GPIOA_LEVER1) |        \
-                                     PIN_MODE_INPUT(GPIOA_LEVER2) |        \
                                      PIN_MODE_INPUT(GPIOA_PUSH) |          \
+                                     PIN_MODE_INPUT(GPIOA_LEVER2) |        \
                                      PIN_MODE_INPUT(4U) |                  \
                                      PIN_MODE_ANALOG(GPIOA_DAC2) |         \
                                      PIN_MODE_ANALOG(GPIOA_XP) |           \
@@ -147,8 +147,8 @@
                                      PIN_MODE_OUTPUT(GPIOA_LCD_RESET))
 #define VAL_GPIOA_OTYPER            (PIN_OTYPE_PUSHPULL(0U) |              \
                                      PIN_OTYPE_PUSHPULL(GPIOA_LEVER1) |    \
-                                     PIN_OTYPE_PUSHPULL(GPIOA_LEVER2) |    \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PUSH) |      \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_LEVER2) |    \
                                      PIN_OTYPE_PUSHPULL(4U) |              \
                                      PIN_OTYPE_PUSHPULL(GPIOA_DAC2) |      \
                                      PIN_OTYPE_PUSHPULL(GPIOA_XP) |        \
@@ -163,8 +163,8 @@
                                      PIN_OTYPE_PUSHPULL(GPIOA_LCD_RESET))
 #define VAL_GPIOA_OSPEEDR           (PIN_OSPEED_2M(0) |                    \
                                      PIN_OSPEED_2M(GPIOA_LEVER1) |         \
-                                     PIN_OSPEED_2M(GPIOA_LEVER2) |         \
                                      PIN_OSPEED_2M(GPIOA_PUSH) |           \
+                                     PIN_OSPEED_2M(GPIOA_LEVER2) |         \
                                      PIN_OSPEED_2M(4) |                    \
                                      PIN_OSPEED_2M(GPIOA_DAC2) |           \
                                      PIN_OSPEED_2M(GPIOA_XP) |             \
@@ -179,8 +179,8 @@
                                      PIN_OSPEED_100M(GPIOA_LCD_RESET))
 #define VAL_GPIOA_PUPDR           (PIN_PUPDR_PULLDOWN(0) |                 \
                                      PIN_PUPDR_PULLDOWN(GPIOA_LEVER1) |    \
-                                     PIN_PUPDR_PULLDOWN(GPIOA_LEVER2) |    \
                                      PIN_PUPDR_PULLDOWN(GPIOA_PUSH) |      \
+                                     PIN_PUPDR_PULLDOWN(GPIOA_LEVER2) |    \
                                      PIN_PUPDR_PULLUP(4) |                 \
                                      PIN_PUPDR_FLOATING(GPIOA_DAC2) |      \
                                      PIN_PUPDR_FLOATING(GPIOA_XP) |        \
@@ -195,8 +195,8 @@
                                      PIN_PUPDR_PULLDOWN(GPIOA_LCD_RESET))
 #define VAL_GPIOA_ODR             (PIN_ODR_HIGH(0) |                       \
                                      PIN_ODR_HIGH(GPIOA_LEVER1) |          \
-                                     PIN_ODR_HIGH(GPIOA_LEVER2) |          \
                                      PIN_ODR_HIGH(GPIOA_PUSH) |            \
+                                     PIN_ODR_HIGH(GPIOA_LEVER2) |          \
                                      PIN_ODR_HIGH(4) |                     \
                                      PIN_ODR_LOW(GPIOA_DAC2) |             \
                                      PIN_ODR_HIGH(GPIOA_XP) |              \
@@ -211,8 +211,8 @@
                                      PIN_ODR_HIGH(GPIOA_LCD_RESET))
 #define VAL_GPIOA_AFRL              (PIN_AFIO_AF(0, 0) |                   \
                                      PIN_AFIO_AF(GPIOA_LEVER1, 0) |        \
-                                     PIN_AFIO_AF(GPIOA_LEVER2, 0) |        \
                                      PIN_AFIO_AF(GPIOA_PUSH, 0) |          \
+                                     PIN_AFIO_AF(GPIOA_LEVER2, 0) |        \
                                      PIN_AFIO_AF(4, 0) |                   \
                                      PIN_AFIO_AF(GPIOA_DAC2, 0) |          \
                                      PIN_AFIO_AF(GPIOA_XP, 0) |            \
@@ -769,6 +769,7 @@
 extern "C" {
 #endif
   void boardInit(void);
+  void boardDFUEnter(void);
 #ifdef __cplusplus
 }
 #endif

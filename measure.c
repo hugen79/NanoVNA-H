@@ -1,11 +1,21 @@
 /*
- *   (c) Yury Kuchura
- *   kuchura@gmail.com
+ * Copyright (c) 2019-2023, Dmitry (DiSlord) dislordlive@gmail.com
+ * All rights reserved.
  *
- *   This code can be used on terms of WTFPL Version 2 (http://www.wtfpl.net/).
+ * This is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3, or (at your option)
+ * any later version.
  *
- *   Heavily messed about with by OneOfEleven July 2020
- *   DiSlord adaptation to use on NanoVNA
+ * The software is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with GNU Radio; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street,
+ * Boston, MA 02110-1301, USA.
  */
 
 #ifdef __VNA_MEASURE_MODULE__
@@ -14,8 +24,7 @@ static char measure_memory[128];
 
 // Measure math functions
 // quadratic function solver
-static void match_quadratic_equation(float a, float b, float c, float *x)
-{
+static void match_quadratic_equation(float a, float b, float c, float *x){
   const float a_x_2 = 2.0f * a;
   const float d = (b * b) - (2.0f * a_x_2 * c);
   if (d < 0){
@@ -35,7 +44,7 @@ typedef float (*get_value_t)(uint16_t idx);
 // Used bilinear interpolation, return value = frequency of this point
 #define MEASURE_SEARCH_LEFT  -1
 #define MEASURE_SEARCH_RIGHT  1
-static float measure_search_value(uint16_t *idx, float y, get_value_t get, int16_t mode){
+static float measure_search_value(uint16_t *idx, float y, get_value_t get, int16_t mode) {
   uint16_t x = *idx;
   float y1, y2, y3;
   y1 = y2 = y3 = get(x);
@@ -86,7 +95,7 @@ static float search_peak_value(uint16_t *xp, get_value_t get, bool mode){
 //  const float b = 0.5f * (y3 - y1);
 //  const float c = y2;
 //  return c - b*b/(4*a);
-  const float a = 8*(y1 - 2*y2 + y3);
+  const float a = 8.0f * (y1 - 2.0f * y2 + y3);
   const float b = y3 - y1;
   const float c = y2;
   return c - b * b / a;
@@ -112,7 +121,7 @@ static bool measure_get_value(uint16_t ch, freq_t f, float *data){
   freq_t src_f0 = frequency0 + (v       ) / _points;
   freq_t src_f1 = frequency0 + (v + span) / _points;
   freq_t delta = src_f1 - src_f0;
-  float k1 = (delta == 0) ? 0.0 : (float)(f - src_f0) / delta;
+  float k1 = (delta == 0) ? 0.0f : (float)(f - src_f0) / delta;
 #if 1
   // Bilinear interpolation by k1
   data[0] = bilinear_interpolation(measured[ch][idx-1][0], measured[ch][idx  ][0], measured[ch][idx+1][0],k1);
@@ -148,10 +157,8 @@ typedef struct
 static lc_match_array_t *lc_match_array = (lc_match_array_t *)measure_memory;
 
 // Calculate two solutions for ZL where (R + X * X / R) > R0
-static void lc_match_calc_hi(float R0, float RL, float XL, t_lc_match *matches)
-{
+static void lc_match_calc_hi(float R0, float RL, float XL, t_lc_match *matches) {
   float xp[2];
-
   const float a = R0 - RL;
   const float b = 2.0f * XL * R0;
   const float c = R0 * (XL * XL + RL * RL);
@@ -160,26 +167,19 @@ static void lc_match_calc_hi(float R0, float RL, float XL, t_lc_match *matches)
   // found two impedances parallel to load
   //
   // now calculate serial impedances
-  const float RL1 = -XL * xp[0];
-  const float XL1 =  RL * xp[0];
-  const float RL2 =  RL;// + 0.0f;
-  const float XL2 =  XL + xp[0];
-  matches[0].xs  = (RL1 * XL2 - RL2 * XL1) / (RL2 * RL2 + XL2 * XL2);
+  const float XL1 = XL + xp[0];
+  matches[0].xs  = xp[0] * xp[0] * XL1 / (RL * RL + XL1 * XL1) - xp[0];
   matches[0].xps = 0.0f;
   matches[0].xpl = xp[0];
 
-  const float RL3 = -XL * xp[1];
-  const float XL3 =  RL * xp[1];
-  const float RL4 =  RL;// + 0.0f;
-  const float XL4 =  XL + xp[1];
-  matches[1].xs  = (RL3 * XL4 - RL4 * XL3) / (RL4 * RL4 + XL4 * XL4);
+  const float XL2 = XL + xp[1];
+  matches[1].xs  = xp[1] * xp[1] * XL2 / (RL * RL + XL2 * XL2) - xp[1];
   matches[1].xps = 0.0f;
   matches[1].xpl = xp[1];
 }
 
 // Calculate two solutions for ZL where R < R0
-static void lc_match_calc_lo(float R0, float RL, float XL, t_lc_match *matches)
-{
+static void lc_match_calc_lo(float R0, float RL, float XL, t_lc_match *matches) {
   float xs[2];
   // Calculate Xs
   const float a = 1.0f;
@@ -190,29 +190,19 @@ static void lc_match_calc_lo(float R0, float RL, float XL, t_lc_match *matches)
   // got two serial impedances that change ZL to the Y.real = 1/R0
   //
   // now calculate impedances parallel to source
-  const float RL1 = RL;//  + 0.0f;
-  const float XL1 = XL  + xs[0];
-  const float RL3 = RL1 * R0;
-  const float XL3 = XL1 * R0;
-  const float RL5 = RL1 - R0;
-  const float XL5 = XL1;// - 0.0f;
+  const float XL1 = XL + xs[0];
+  const float RL1 = RL - R0;
   matches[0].xs  = xs[0];
-  matches[0].xps = (RL5 * XL3 - RL3 * XL5) / (RL5 * RL5 + XL5 * XL5);
+  matches[0].xps = - R0 * R0 * XL1 / (RL1 * RL1 + XL1 * XL1);
   matches[0].xpl = 0.0f;
 
-  const float RL2 = RL;//  + 0.0f;
-  const float XL2 = XL  + xs[1];
-  const float RL4 = RL2 * R0;
-  const float XL4 = XL2 * R0;
-  const float RL6 = RL2 - R0;
-  const float XL6 = XL2;// - 0.0f;
+  const float XL2 = XL + xs[1];
   matches[1].xs  = xs[1];
-  matches[1].xps = (RL6 * XL4 - RL4 * XL6) / (RL6 * RL6 + XL6 * XL6);
+  matches[1].xps = - R0 * R0 * XL2 / (RL1 * RL1 + XL2 * XL2);
   matches[1].xpl = 0.0f;
 }
 
-static int lc_match_calc(int index)
-{
+static int16_t lc_match_calc(int index) {
   const float R0 = lc_match_array->R0;
   // compute the impedance at the chosen frequency
   const float *coeff = measured[0][index];
@@ -231,31 +221,23 @@ static int lc_match_calc(int index)
   // only one solution is enough: just a serial reactance
   // this gives SWR < 1.1 if R is within the range 0.91 .. 1.1 of R0
   t_lc_match *matches = lc_match_array->matches;
-  if ((RL * 1.1f) > R0  && RL < (R0 * 1.1f)){
+  if ((RL * 1.1f) > R0 && RL < (R0 * 1.1f)) {
     matches[0].xpl = 0.0f;
     matches[0].xps = 0.0f;
     matches[0].xs  = -XL;
     return 1;
   }
-
-  if (RL >= R0)
-  {   // two Hi-Z solutions
-    lc_match_calc_hi(R0, RL, XL, &matches[0]);
-    return 2;
+  int16_t n = 0;
+  if (RL >= R0 || RL * RL + XL * XL > R0 * RL) {
+    lc_match_calc_hi(R0, RL, XL, &matches[0]); // Compute Hi-Z solutions
+    if (RL >= R0) return 2;                    // Only Hi-Z solution present
+    n = 2;
   }
-
-  // compute Lo-Z solutions
-  lc_match_calc_lo(R0, RL, XL, &matches[0]);
-  if ((RL + (XL * q_factor)) <= R0)
-    return 2;
-
-  // two more Hi-Z solutions exist
-  lc_match_calc_hi(R0, RL, XL, &matches[2]);
-  return 4;
+  lc_match_calc_lo(R0, RL, XL, &matches[n]);   // Compute Lo-Z solutions
+  return n + 2;
 }
 
-static void prepare_lc_match(uint8_t mode, uint8_t update_mask)
-{
+static void prepare_lc_match(uint8_t mode, uint8_t update_mask) {
   (void)mode;
   (void)update_mask;
   // Made calculation only one time for current sweep and frequency
@@ -263,17 +245,14 @@ static void prepare_lc_match(uint8_t mode, uint8_t update_mask)
   if (freq == 0)// || lc_match_array->Hz == freq)
     return;
 
-  lc_match_array->R0 = 50.0f;
+  lc_match_array->R0 = PORT_Z; // 50.0f
   lc_match_array->Hz = freq;
-
   // compute the possible LC matches
   lc_match_array->num_matches = lc_match_calc(markers[active_marker].index);
 
   // Mark to redraw area under L/C match text
-  int n = lc_match_array->num_matches;
-  if (n < 0) n = 0;
   invalidate_rect(STR_MEASURE_X                        , STR_MEASURE_Y,
-                  STR_MEASURE_X + 3 * STR_MEASURE_WIDTH, STR_MEASURE_Y + (n + 2)*STR_MEASURE_HEIGHT);
+                  STR_MEASURE_X + 3 * STR_MEASURE_WIDTH, STR_MEASURE_Y + (4 + 2) * STR_MEASURE_HEIGHT);
 }
 
 //
@@ -285,11 +264,11 @@ static void lc_match_x_str(uint32_t FHz, float X, int xp, int yp)
   char type;
 #if 0
   float val;
-  if (X < 0.0f) {val = 1.0f / (2.0f * VNA_PI * FHz * -X); type = 'F';}
-  else          {val =    X / (2.0f * VNA_PI * FHz);      type = 'H';}
+  if (X < 0.0f) {val = 1.0f / (2.0f * VNA_PI * FHz * -X); type = S_FARAD[0];}
+  else          {val =    X / (2.0f * VNA_PI * FHz);      type = S_HENRY[0];}
 #else
-  if (X < 0.0f) {X = -1.0 / X; type = 'F';}
-  else          {              type = 'H';}
+  if (X < 0.0f) {X = -1.0f / X; type = S_FARAD[0];}
+  else          {               type = S_HENRY[0];}
   float val = X / ((2.0f * VNA_PI) * FHz);
 #endif
   cell_printf(xp, yp, "%4.2F%c", val, type);
@@ -300,10 +279,10 @@ static void draw_lc_match(int x0, int y0)
 {
   int xp = STR_MEASURE_X - x0;
   int yp = STR_MEASURE_Y - y0;
-  cell_printf(xp, yp, "L/C match for source Z0 = %0.1f"S_OHM, lc_match_array->R0);
+  cell_printf(xp, yp, "L/C match for source Z0 = %0.1f" S_OHM, lc_match_array->R0);
 #if 0
   yp += STR_MEASURE_HEIGHT;
-  cell_printf(xp, yp, "%qHz %0.1f %c j%0.1f"S_OHM, match_array->Hz, match_array->RL, (match_array->XL >= 0) ? '+' : '-', vna_fabsf(match_array->XL));
+  cell_printf(xp, yp, "%q" S_Hz " %0.1f %c j%0.1f" S_OHM, match_array->Hz, match_array->RL, (match_array->XL >= 0) ? '+' : '-', vna_fabsf(match_array->XL));
 #endif
   yp += STR_MEASURE_HEIGHT;
   if (yp >= CELLHEIGHT) return;
@@ -328,7 +307,7 @@ static void draw_lc_match(int x0, int y0)
 
 #ifdef __S21_MEASURE__
 typedef struct {
-  char *header;
+  const char *header;
   freq_t freq;    // resonant frequency
   freq_t freq1;   // fp
   float l;
@@ -364,11 +343,11 @@ static void analysis_lcshunt(void) {
   float ypeak = search_peak_value(&xp, s21pow2, MEASURE_SEARCH_MIN);
   // peak frequency, R
   float att = vna_sqrtf(ypeak);
-  s21_measure->r = config._measure_r * att / (2 * (1 - att));
-  if(s21_measure->r < 0) return;
+  s21_measure->r = config._measure_r * att / (2.0f * (1.0f - att));
+  if(s21_measure->r < 0.0f) return;
   set_marker_index(0, xp);
 
-  float tan45 = config._measure_r/(config._measure_r + 4 * s21_measure->r);
+  float tan45 = config._measure_r/(config._measure_r + 4.0f * s21_measure->r);
 //  s21_measure->tan45 = tan45;
   // -45 degree search at left
   x2 = xp;
@@ -382,13 +361,13 @@ static void analysis_lcshunt(void) {
   if (f2 == 0) return;
   set_marker_index(2, x2);
 
-  // L,C,Q calculations
+  // L, C, Q calculations
   float bw = f2 - f1;
   float fpeak = vna_sqrtf(f2 * f1);
   s21_measure->freq = fpeak;
   s21_measure->q = fpeak / bw;
-  s21_measure->l = s21_measure->q * s21_measure->r / ((2 * VNA_PI) * fpeak);
-  s21_measure->c = 1 / ((2 * VNA_PI) * fpeak * s21_measure->q * s21_measure->r);
+  s21_measure->l = s21_measure->r / ((2.0f * VNA_PI) * bw);
+  s21_measure->c = bw / ((2.0f * VNA_PI) * fpeak * fpeak * s21_measure->r);
 }
 
 static void analysis_lcseries(void) {
@@ -402,7 +381,7 @@ static void analysis_lcseries(void) {
   if(s21_measure->r < 0) return;
   set_marker_index(0, xp);
 
-  const float tan45 = 1.0f; // tand(45) = 1.0f
+  const float tan45 = 1.0f; // tang(45) = 1.0f
   // Lookup +45 phase at left of xp index
   x2 = xp;
   float f1 = measure_search_value(&x2,  tan45, s21tan, MEASURE_SEARCH_LEFT);
@@ -415,18 +394,17 @@ static void analysis_lcseries(void) {
   if (f2 == 0) return; // not found
   set_marker_index(2, x2);
 
-  // L,C,Q calculation
+  // L, C, Q calculation
   float bw = f2 - f1;
-  float fpeak = vna_sqrtf(f2*f1);
+  float fpeak = vna_sqrtf(f2 * f1);
   // The total resistance, REFF, seen by the crystal is the sum of the load resistance (input and output) and the motional resistance, Rm:
-  float reff = 2 * config._measure_r + s21_measure->r;
+  float reff = 2.0f * config._measure_r + s21_measure->r;
 
   s21_measure->freq = fpeak;
-  s21_measure->l = reff / ((2 * VNA_PI) * bw);
-  s21_measure->c = bw / ((2 * VNA_PI) * fpeak * fpeak * reff);
-  // q = 2*pi * Fp * Ls / R
-  s21_measure->q = (2 * VNA_PI) * fpeak * s21_measure->l / s21_measure->r;
-
+  s21_measure->l = reff / ((2.0f * VNA_PI) * bw);
+  s21_measure->c = bw / ((2.0f * VNA_PI) * fpeak * fpeak * reff);
+  // q = 2 * pi * Fp * Ls / R
+  s21_measure->q = (2.0f * VNA_PI) * fpeak * s21_measure->l / s21_measure->r;
 //  s21_measure->f1 = f1;
 //  s21_measure->f2 = f2;
 }
@@ -443,8 +421,8 @@ static void analysis_xtalseries(void) {
   freq_t freq1 = getFrequency(xp);
   if(freq1 < s21_measure->freq) return;
   s21_measure->freq1 = freq1;
-  // df = f * c / (2*c1) => c1 = f * c / (2*df)
-  s21_measure->c1 = s21_measure->c * s21_measure->freq / (2*(s21_measure->freq1 - s21_measure->freq));
+  // df = f * c / (2 * c1) => c1 = f * c / (2 * df)
+  s21_measure->c1 = s21_measure->c * s21_measure->freq / (2.0f * (s21_measure->freq1 - s21_measure->freq));
 }
 
 static void draw_serial_result(int x0, int y0){
@@ -457,15 +435,15 @@ static void draw_serial_result(int x0, int y0){
   }
   if (s21_measure->freq)
   {
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Fs=%qHz", s21_measure->freq);
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Lm=%FH  Cm=%FF  Rm=%F" S_OHM, s21_measure->l, s21_measure->c, s21_measure->r);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Fs=%q" S_Hz, s21_measure->freq);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Lm=%F" S_HENRY "  Cm=%F" S_FARAD "  Rm=%F" S_OHM, s21_measure->l, s21_measure->c, s21_measure->r);
     cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Q=%.3f", s21_measure->q);
 //  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "tan45=%.4f", s21_measure->tan45);
-//  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "F1=%qHz F2=%qHz", s21_measure->f1, s21_measure->f2);
+//  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "F1=%q" S_Hz " F2=%q" S_Hz, s21_measure->f1, s21_measure->f2);
   }
   if (s21_measure->freq1){
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Fp=%qHz", s21_measure->freq1);
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Cp=%FF", s21_measure->c1);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Fp=%q" S_Hz, s21_measure->freq1);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Cp=%F" S_FARAD, s21_measure->c1);
   }
 }
 
@@ -494,10 +472,12 @@ typedef struct {
   float R;
   float len;
   float loss;
+  float vf;
   float C0;
   float a, b, c;
 } s11_cable_measure_t;
 static s11_cable_measure_t *s11_cable = (s11_cable_measure_t *)measure_memory;
+float real_cable_len = 0.0f;
 
 static float s11imag(uint16_t i) {
   return measured[0][i][1];
@@ -509,11 +489,13 @@ static void draw_s11_cable(int x0, int y0){
   cell_printf(xp, yp, "S11 CABLE");
   if (s11_cable->R){
     cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Z0 = %F" S_OHM, s11_cable->R);
-//    cell_printf(xp, yp+=FONT_STR_HEIGHT, "C0 = %FF", s11_cable->C0);
+//    cell_printf(xp, yp+=FONT_STR_HEIGHT, "C0 = %F" S_FARAD, s11_cable->C0);
   }
-  if (s11_cable->len)
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Length = %Fm (K=%d%%)", s11_cable->len, velocity_factor);
-  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Loss = %FdB", s11_cable->loss);
+  if (s11_cable->vf)
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "VF=%.2f%% (Length = %F" S_METRE ")", s11_cable->vf, real_cable_len);
+  else if (s11_cable->len)
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Length = %F" S_METRE " (VF=%d%%)", s11_cable->len, velocity_factor);
+  cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "Loss = %F" S_dB, s11_cable->loss);
 }
 
 static void prepare_s11_cable(uint8_t type, uint8_t update_mask)
@@ -523,10 +505,13 @@ static void prepare_s11_cable(uint8_t type, uint8_t update_mask)
   if (update_mask & MEASURE_UPD_SWEEP) {
     s11_cable->R = 0.0f;
     s11_cable->len = 0.0f;
+    s11_cable->vf = 0.0f;
     uint16_t x = 0;
     f1 = measure_search_value(&x,  0, s11imag, MEASURE_SEARCH_RIGHT);
     if (f1){
-      s11_cable->len = velocity_factor * (SPEED_OF_LIGHT / 400.0f) / f1;
+      float electric_lengh = (SPEED_OF_LIGHT / 400.0f) / f1;
+      s11_cable->len = velocity_factor * electric_lengh;
+      if (real_cable_len != 0.0f) s11_cable->vf = real_cable_len / electric_lengh;
       float data[2];
       if (measure_get_value(0, f1/2, data)){
         s11_cable->R = vna_fabsf(reactance(0, data));
@@ -536,7 +521,7 @@ static void prepare_s11_cable(uint8_t type, uint8_t update_mask)
   }
   if ((update_mask & MEASURE_UPD_ALL) && active_marker != MARKER_INVALID) {
     int idx = markers[active_marker].index;
-    s11_cable->loss = vna_fabsf(logmag(idx, measured[0][idx]) / 2);
+    s11_cable->loss = vna_fabsf(logmag(idx, measured[0][idx]) / 2.0f);
   }
   // Prepare for update
   invalidate_rect(STR_MEASURE_X                        , STR_MEASURE_Y,
@@ -575,7 +560,7 @@ static void draw_s11_resonance(int x0, int y0){
     return;
   }
   for (int i = 0; i < s11_resonance->count; i++)
-    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "%qHz, %F%+jF" S_OHM, s11_resonance->data[i].f, s11_resonance->data[i].r, s11_resonance->data[i].x);
+    cell_printf(xp, yp+=STR_MEASURE_HEIGHT, "%q" S_Hz ", %F%+jF" S_OHM, s11_resonance->data[i].f, s11_resonance->data[i].r, s11_resonance->data[i].x);
 }
 
 static bool add_resonance_value(int i, uint16_t x, freq_t f) {
@@ -619,4 +604,4 @@ static void prepare_s11_resonance(uint8_t type, uint8_t update_mask)
 }
 #endif //__S11_RESONANCE_MEASURE__
 
-#endif // __VNA_MEASURE__
+#endif // __VNA_MEASURE_MODULE__

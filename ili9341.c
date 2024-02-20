@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020, Dmitry (DiSlord) dislordlive@gmail.com
+ * Copyright (c) 2019-2023, Dmitry (DiSlord) dislordlive@gmail.com
  * Based on TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
@@ -44,6 +44,10 @@
 #ifdef LCD_DRIVER_ILI9341
 // Set SPI bus speed for LCD
 #define LCD_SPI_SPEED    SPI_BR_DIV2
+#ifdef DISPLAY_ST7789
+#define LCD_SPI_RX_SPEED SPI_BR_DIV16
+#endif
+
 // Read speed, need more slow, not define if need use some as Tx speed
 //#define LCD_SPI_RX_SPEED SPI_BR_DIV4
 // Allow enable DMA for read display data (can not stable on full speed, on less speed slower)
@@ -73,6 +77,10 @@ pixel_t background_color = 0;
 //*****************************************************
 // SPI functions, settings and data
 //*****************************************************
+void spi_TxByte(const uint8_t data) {
+  while (SPI_TX_IS_NOT_EMPTY(LCD_SPI));
+  SPI_WRITE_8BIT(LCD_SPI, data);
+}
 // Transmit buffer to SPI bus  (len should be > 0)
 void spi_TxBuffer(const uint8_t *buffer, uint16_t len) {
   while(len--) {
@@ -100,7 +108,7 @@ void spi_RxBuffer(uint8_t *buffer, uint16_t len) {
 
 void spi_DropRx(void) {
   // Drop Rx buffer after tx and wait tx complete
-#if 0
+#if 1
   while (SPI_RX_IS_NOT_EMPTY(LCD_SPI)||SPI_IS_BUSY(LCD_SPI))
     (void)SPI_READ_8BIT(LCD_SPI);
   (void)SPI_READ_8BIT(LCD_SPI);
@@ -167,8 +175,8 @@ static void spi_init(void) {
                | SPI_CR1_SSM       // Software slave management (The external NSS pin is free for other application uses)
                | SPI_CR1_SSI       // Internal slave select (This bit has an effect only when the SSM bit is set. Allow use NSS pin as I/O)
                | LCD_SPI_SPEED     // Baud rate control
-//             | SPI_CR1_CPHA      // Clock Phase
-//             | SPI_CR1_CPOL      // Clock Polarity
+               | SPI_CR1_CPHA      // Clock Phase
+               | SPI_CR1_CPOL      // Clock Polarity
                ;
   LCD_SPI->CR2 = SPI_CR2_8BIT      // SPI data size, set to 8 bit
                | SPI_CR2_FRXTH     // SPI_SR_RXNE generated every 8 bit data
@@ -290,12 +298,6 @@ static void spi_init(void) {
 #define ILI9341_MADCTL_MH  0x04
 #define ILI9341_MADCTL_RGB 0x00
 
-#define DISPLAY_ROTATION_270   (ILI9341_MADCTL_MX | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_90    (ILI9341_MADCTL_MY | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_0     (ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_180   (ILI9341_MADCTL_MX | ILI9341_MADCTL_MY  \
-                              | ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
-
 // Disable inline for this function
 static void ili9341_send_command(uint8_t cmd, uint16_t len, const uint8_t *data) {
 // Uncomment on low speed SPI (possible get here before previous tx complete)
@@ -331,7 +333,135 @@ uint32_t lcd_send_command(uint8_t cmd, uint8_t len, const uint8_t *data) {
   return ret;
 }
 
-#ifdef LCD_DRIVER_ILI9341
+#define ST7789V_NOP               0x00 // No Operation
+#define ST7789V_SWRESET           0x01 // Software reset
+#define ST7789V_RDDID             0x04 // Read Display ID
+#define ST7789V_RDDST             0x09 // Read Display Status
+#define ST7789V_RDDPM             0x0A // Read Display Power Mode
+#define ST7789V_RDDMADCTL         0x0B // Read Display MADCTL
+#define ST7789V_RDDCOLMOD         0x0C // Read Display Pixel Format
+#define ST7789V_RDDIM             0x0D // Read Display Image Mode
+#define ST7789V_RDDSM             0x0E // Read Display Signal Mode
+#define ST7789V_RDDSDR            0x0F // Read Display Self-Diagnostic Result
+#define ST7789V_SLPIN             0x10 // Sleep In
+#define ST7789V_SLPOUT            0x11 // Sleep Out
+#define ST7789V_PTLON             0x12 // Partial Display Mode On
+#define ST7789V_NORON             0x13 // Normal Display Mode On
+#define ST7789V_INVOFF            0x20 // Display Inversion Off
+#define ST7789V_INVON             0x21 // Display Inversion On
+#define ST7789V_GAMSET            0x26 // Gamma Set
+#define ST7789V_DISPOFF           0x28 // Display Off
+#define ST7789V_DISPON            0x29 // Display On
+#define ST7789V_CASET             0x2A // Column Address Set
+#define ST7789V_RASET             0x2B // Row Address Set
+#define ST7789V_RAMWR             0x2C // Memory Write
+#define ST7789V_RAMRD             0x2E // Memory Read
+#define ST7789V_PTLAR             0x30 // Partial Area
+#define ST7789V_VSCRDEF           0x33 // Vertical Scrolling Definition
+#define ST7789V_TEOFF             0x34 // Tearing Effect Line OFF
+#define ST7789V_TEON              0x35 // Tearing Effect Line ON
+#define ST7789V_MADCTL            0x36 // Memory Data Access Control
+#define ST7789V_VSCSAD            0x37 // Vertical Scroll Start Address of RAM
+#define ST7789V_IDMOFF            0x38 // Idle Mode Off
+#define ST7789V_IDMON             0x39 // Idle Mode On
+#define ST7789V_COLMOD            0x3A // Interface Pixel Format
+#define ST7789V_WRMEMC            0x3C // Write Memory Continue
+#define ST7789V_RDMEMC            0x3E // Read Memory Continue
+#define ST7789V_STE               0x44 // Set Tear Scanline
+#define ST7789V_GSCAN             0x45 // Get Scanline
+#define ST7789V_WRDISBV           0x51 // Write Display Brightness
+#define ST7789V_RDDISBV           0x52 // Read Display Brightness
+#define ST7789V_WRCTRLD           0x53 // Write CTRL Display
+#define ST7789V_RDCTRLD           0x54 // Read CTRL Value Display
+#define ST7789V_WRCACE            0x55 // Write Content Adaptive Brightness Control and Color Enhancement
+#define ST7789V_RDCABC            0x56 // Read Content Adaptive Brightness Control
+#define ST7789V_WRCABCMB          0x5E // Write CABC Minimum Brightness
+#define ST7789V_RDCABCMB          0x5F // Read CABC Minimum Brightness
+#define ST7789V_RDABCSDR          0x68 // Read Automatic Brightness Control Self-Diagnostic Result
+#define ST7789V_RDID1             0xDA // Read ID1 Value
+#define ST7789V_RDID2             0xDB // Read ID2 Value
+#define ST7789V_RDID3             0xDC // Read ID3 Value
+
+#define ST7789V_RAMCTRL           0xB0 // RAM Control
+#define ST7789V_RGBCTRL           0xB1 // RGB Interface Control
+#define ST7789V_PORCTRL           0xB2 // Porch Setting
+#define ST7789V_FRCTRL1           0xB3 // Frame Rate Control 1 (In partial mode/ idle colors)
+#define ST7789V_GCTRL             0xB7 // Gate Control
+#define ST7789V_DGMEN             0xBA // Digital Gamma Enable
+#define ST7789V_VCOMS             0xBB // VCOM Setting
+#define ST7789V_LCMCTRL           0xC0 // LCM Control
+#define ST7789V_IDSET             0xC1 // ID Code Setting
+#define ST7789V_VDVVRHEN          0xC2 // VDV and VRH Command Enable
+#define ST7789V_VRHS              0xC3 // VRH Set
+#define ST7789V_VDVS              0xC4 // VDV Set
+#define ST7789V_VCMOFSET          0xC5 // VCOM Offset Set
+#define ST7789V_FRCTRL2           0xC6 // Frame Rate Control in Normal Mode
+#define ST7789V_CABCCTRL          0xC7 // CABC Control
+#define ST7789V_REGSEL1           0xC8 // Register Value Selection 1
+#define ST7789V_REGSEL2           0xCA // Register Value Selection 2
+#define ST7789V_PWMFRSEL          0xCC // PWM Frequency Selection
+#define ST7789V_PWCTRL1           0xD0 // Power Control 1
+#define ST7789V_VAPVANEN          0xD2 // Enable VAP/VAN signal output
+#define ST7789V_CMD2EN            0xDF // Command 2 Enable
+#define ST7789V_PVGAMCTRL         0xE0 // Positive Voltage Gamma Control
+#define ST7789V_NVGAMCTRL         0xE1 // Negative Voltage Gamma Control
+#define ST7789V_DGMLUTR           0xE2 // Digital Gamma Look-up Table for Red
+#define ST7789V_DGMLUTB           0xE3 // Digital Gamma Look-up Table for Blue
+#define ST7789V_GATECTRL          0xE4 // Gate Control
+#define ST7789V_SPI2EN            0xE7 // SPI2 Enable
+#define ST7789V_PWCTRL2           0xE8 // Power Control 2
+#define ST7789V_EQCTRL            0xE9 // Equalize time control
+#define ST7789V_PROMCTRL          0xEC // Program Mode Control
+#define ST7789V_PROMEN            0xFA // Program Mode Enable
+#define ST7789V_NVMSET            0xFC // NVM Setting
+#define ST7789V_PROMACT           0xFE // Program action
+
+
+#define LCD_MADCTL_MY  0x80
+#define LCD_MADCTL_MX  0x40
+#define LCD_MADCTL_MV  0x20
+#define LCD_MADCTL_ML  0x10
+#define LCD_MADCTL_BGR 0x08
+#define LCD_MADCTL_MH  0x04
+#define LCD_MADCTL_RGB 0x00
+
+#ifdef DISPLAY_ST7789
+/*
+ * ST7789 init
+ */
+#define DISPLAY_ROTATION_0   (LCD_MADCTL_MX | LCD_MADCTL_MV | LCD_MADCTL_RGB)
+#define DISPLAY_ROTATION_90  (                                LCD_MADCTL_RGB)
+#define DISPLAY_ROTATION_180 (LCD_MADCTL_MY | LCD_MADCTL_MV | LCD_MADCTL_RGB)
+#define DISPLAY_ROTATION_270 (LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_RGB)
+static const uint8_t ST7796S_init_seq[] = {
+  // cmd, len, data...,
+  // SW reset
+  ST7789V_SWRESET,  0,
+  // display off
+  ST7789V_DISPOFF,  0,
+  ST7789V_MADCTL,   1, DISPLAY_ROTATION_0,
+  ST7789V_COLMOD,   1, 0x55,
+//ST7789V_PORCTRL,  5, 0x0C, 0x0C, 0x00, 0x33, 0x33,
+//ST7789V_GCTRL,    1, 0x35,
+  ST7789V_VCOMS,    1, 0x1F,                         // default 0x20
+//ST7789V_LCMCTRL,  1, 0x2C,
+  ST7789V_VDVVRHEN, 2, 0x01, 0xC3,                   // default 0x01, 0xFF !!! why need C3? datasheet say 0xFF
+//ST7789V_VDVS,     1, 0x20,
+//ST7789V_FRCTRL2,  1, 0x0F,
+//ST7789V_PWCTRL1,  2, 0xA4, 0xA1,
+  ST7789V_SLPOUT,   0,
+  // display on
+  ST7789V_DISPON,   0,
+  0 // sentinel
+};
+#define LCD_INIT ST7796S_init_seq
+#else
+
+#define DISPLAY_ROTATION_270   (ILI9341_MADCTL_MX | ILI9341_MADCTL_BGR)
+#define DISPLAY_ROTATION_90    (ILI9341_MADCTL_MY | ILI9341_MADCTL_BGR)
+#define DISPLAY_ROTATION_0     (ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
+#define DISPLAY_ROTATION_180   (ILI9341_MADCTL_MX | ILI9341_MADCTL_MY  \
+                              | ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
 static const uint8_t ili9341_init_seq[] = {
   // cmd, len, data...,
   // SW reset
@@ -687,11 +817,17 @@ void lcd_clear_screen(void) {
   lcd_fill(0, 0, LCD_WIDTH, LCD_HEIGHT);
 }
 
+
 void lcd_set_foreground(uint16_t fg_idx) {
   foreground_color = GET_PALTETTE_COLOR(fg_idx);
 }
 
 void lcd_set_background(uint16_t bg_idx) {
+  background_color = GET_PALTETTE_COLOR(bg_idx);
+}
+
+void lcd_set_colors(uint16_t fg_idx, uint16_t bg_idx) {
+  foreground_color = GET_PALTETTE_COLOR(fg_idx);
   background_color = GET_PALTETTE_COLOR(bg_idx);
 }
 
@@ -708,7 +844,7 @@ void ili9341_set_rotation(uint8_t r) {
 }
 
 void lcd_blitBitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *b) {
-#if 0
+#if 1 // Use this for remote desctop (in this case bulk operation send to remote)
   pixel_t *buf = spi_buffer;
   uint8_t bits = 0;
   for (uint32_t c = 0; c < height; c++) {
@@ -841,9 +977,39 @@ int lcd_printfV(int16_t x, int16_t y, const char *fmt, ...) {
   return retval;
 }
 
+void lcd_blitBitmapScale(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t size, const uint8_t *b) {
+  ili9341_setWindow(x, y, w * size, h * size, ILI9341_MEMORY_WRITE);
+  for (int c = 0; c < h; c++) {
+    const uint8_t *ptr = b; uint8_t bits = 0;
+    for (int i = 0; i < size; i++) {
+      ptr = b;
+      for (int r = 0; r < w; r++, bits <<= 1) {
+        if ((r&7) == 0) bits = *ptr++;
+        for (int j = 0; j < size; j++) {
+          while (SPI_TX_IS_NOT_EMPTY(LCD_SPI));
+          SPI_WRITE_16BIT(LCD_SPI, (0x80 & bits) ? foreground_color : background_color);
+        }
+      }
+    }
+    b = ptr;
+  }
+}
+
 int lcd_drawchar_size(uint8_t ch, int x, int y, uint8_t size) {
   const uint8_t *char_buf = FONT_GET_DATA(ch);
   uint16_t w = FONT_GET_WIDTH(ch);
+#if 1
+  pixel_t *buf = spi_buffer;
+  for (uint32_t c = 0; c < FONT_GET_HEIGHT; c++, char_buf++) {
+    for (uint32_t i = 0; i < size; i++) {
+      uint8_t bits = *char_buf;
+      for (uint32_t r = 0; r < w; r++, bits <<= 1)
+        for (uint32_t j = 0; j < size; j++)
+          *buf++ = (0x80 & bits) ? foreground_color : background_color;
+    }
+  }
+  lcd_bulk(x, y, w * size, FONT_GET_HEIGHT * size);
+#else
   ili9341_setWindow(x, y, w * size, FONT_GET_HEIGHT * size, ILI9341_MEMORY_WRITE);
   for (int c = 0; c < FONT_GET_HEIGHT; c++, char_buf++) {
     for (int i = 0; i < size; i++) {
@@ -855,6 +1021,7 @@ int lcd_drawchar_size(uint8_t ch, int x, int y, uint8_t size) {
         }
     }
   }
+#endif
   return w * size;
 }
 
@@ -951,14 +1118,16 @@ void ili9341_test(int mode) {
 #define CMD58    (0x40+58)    // READ_OCR
 #define CMD59    (0x40+59)    // CRC_ON_OFF
 // Then send after CMD55 (APP_CMD) interpret as ACMD
-#define ACMD41   (0x40+41)    // SEND_OP_COND (ACMD)
+#define ACMD41   (0xC0+41)    // SEND_OP_COND (ACMD)
 
-// MMC card type flags (MMC_GET_TYPE)
-#define CT_MMC      0x01      // MMC v3
-#define CT_SD1      0x02      // SDv1
-#define CT_SD2      0x04      // SDv2
-#define CT_SDC      0x06      // SD
-#define CT_BLOCK    0x08      // Block addressing
+// MMC card type and status flags
+#define CT_MMC       0x01      // MMC v3
+#define CT_SD1       0x02      // SDv1
+#define CT_SD2       0x04      // SDv2
+#define CT_SDC       0x06      // SD
+#define CT_BLOCK     0x08      // Block addressing
+#define CT_WRPROTECT 0x40      // Write protect flag
+#define CT_POWER_ON  0x80      // Power ON flag
 
 // 7.3.2 Responses
 // 7.3.2.1 Format R1 (1 byte)
@@ -1033,8 +1202,6 @@ void ili9341_test(int mode) {
 #define CSD_14_TMP_WRITE_PROTECT                 0b00010000
 #define CSD_14_FILE_FORMAT                       0b00001100
 #define CSD_15_CRC                               0b11111110
-
-
 // 7.3.3.1 Data Response Token
 #define SD_TOKEN_DATA_ACCEPTED                     ((uint8_t)0x05) // Data accepted
 #define SD_TOKEN_WRITE_CRC_ERROR                   ((uint8_t)0x0b) // Data rejected due to a CRC error
@@ -1052,9 +1219,6 @@ void ili9341_test(int mode) {
 //*****************************************************
 //             SD card module settings
 //*****************************************************
-// Additional state flag definition
-#define STA_POWER_ON       0x80   // Power ON flag
-
 // Use for enable CRC check of Tx and Rx data on SPI
 // If enable both CRC check, on initialization send SD command - CRC_ON_OFF vs ON
 // And Card begin check received data and answer on CRC errors
@@ -1086,8 +1250,7 @@ void ili9341_test(int mode) {
 #define SD_INIT_SPI_SPEED   SPI_BR_DIV256
 
 // Local values for SD card state
-static DSTATUS Stat = STA_NOINIT;  // Disk Status
-static uint8_t CardType  = 0;      // Type 0:MMC, 1:SDC, 2:Block addressing
+static uint8_t CardStatus  = 0;      // Status: power on, write protect and Type 0:MMC, 1:SDC, 2:Block addressing
 
 // Debug functions, 0 to disable
 #define DEBUG    0
@@ -1101,8 +1264,8 @@ uint32_t r_time;
 uint32_t total_time;
 uint32_t crc_time;
 void testLog(void){
-  DEBUG_PRINT(" Read  speed = %d Byte/s (count %d, time %d)\r\n", r_cnt*512*10000/r_time, r_cnt, r_time);
-  DEBUG_PRINT(" Write speed = %d Byte/s (count %d, time %d)\r\n", w_cnt*512*10000/w_time, w_cnt, w_time);
+  DEBUG_PRINT(" Read  speed = %d Byte/s (count %d, time %d)\r\n", r_cnt*512*100000/r_time, r_cnt, r_time);
+  DEBUG_PRINT(" Write speed = %d Byte/s (count %d, time %d)\r\n", w_cnt*512*100000/w_time, w_cnt, w_time);
   DEBUG_PRINT(" Total time = %d\r\n", chVTGetSystemTimeX() - total_time);
   DEBUG_PRINT(" CRC16 time %d\r\n", crc_time);
 }
@@ -1115,12 +1278,14 @@ void testLog(void){
 #define SD_CS_HIGH    palSetPad(GPIOB, GPIOB_SD_CS)
 
 static void SD_Select_SPI(uint32_t speed) {
+  while (SPI_IS_BUSY(LCD_SPI));
   LCD_CS_HIGH;               // Unselect LCD
   SPI_BR_SET(SD_SPI, speed); // Set Baud rate control for SD card
   SD_CS_LOW;                 // Select SD Card
 }
 
 static void SD_Unselect_SPI(void) {
+  while (SPI_IS_BUSY(SD_SPI));
   SD_CS_HIGH;                         // Unselect SD Card
   spi_RxByte();                       // Dummy read/write one Byte recommend for SD after CS up
   SPI_BR_SET(LCD_SPI, LCD_SPI_SPEED); // Restore Baud rate for LCD
@@ -1188,7 +1353,7 @@ static uint16_t crc16(const uint8_t *ptr, uint16_t count) {
 #endif
 
 // Wait and read R1 answer from SD
-static inline uint8_t SD_ReadR1(uint32_t cnt) {
+static uint8_t SD_ReadR1(uint32_t cnt) {
   uint8_t r1;
    // 8th bit R1 always zero, check it
   spi_DropRx();
@@ -1198,26 +1363,19 @@ static inline uint8_t SD_ReadR1(uint32_t cnt) {
 }
 
 // Wait SD ready token answer (wait time in systick)
-static inline bool SD_WaitDataToken(uint8_t token, uint32_t wait_time) {
+static bool SD_WaitDataToken(uint8_t token, uint32_t wait_time) {
   uint8_t res;
   uint32_t time = chVTGetSystemTimeX();
-  uint8_t count = 0;
   spi_DropRx();
-  do{
-    if ((res = spi_RxByte()) == token)
-      return true;
-    count++;
-    // Check timeout only every 256 bytes read (~8ms)
-    if (count == 0 && (chVTGetSystemTimeX() - time) > wait_time)
-      break;
-  }while (res == 0xFF);
-  return false;
+  while((res = spi_RxByte()) != token && chVTGetSystemTimeX() - time < wait_time)
+    ;
+  return res == token;
 }
 
-static inline uint8_t SD_WaitDataAccept(uint32_t cnt) {
+static uint8_t SD_WaitDataAccept(uint32_t cnt) {
   uint8_t res;
   spi_DropRx();
-  while ((res = spi_RxByte()) == 0xFF && --cnt)
+  while((res = spi_RxByte()) == 0xFF && --cnt)
     ;
   return res&0x1F;
 }
@@ -1226,16 +1384,11 @@ static inline uint8_t SD_WaitDataAccept(uint32_t cnt) {
 static uint8_t SD_WaitNotBusy(uint32_t wait_time) {
   uint8_t res;
   uint32_t time = chVTGetSystemTimeX();
-  uint8_t count = 0;
   spi_DropRx();
-  do{
+  do {
     if ((res = spi_RxByte()) == 0xFF)
       return res;
-    count++;
-    // Check timeout only every 256 bytes read (~8ms)
-    if (count == 0 && (chVTGetSystemTimeX() - time) > wait_time)
-      break;
-  }while (1);
+  } while(chVTGetSystemTimeX() - time < wait_time);
   return 0;
 }
 
@@ -1256,8 +1409,8 @@ static bool SD_RxDataBlock(uint8_t *buff, uint16_t len, uint8_t token) {
   uint16_t crc; spi_RxBuffer((uint8_t*)&crc, 2);
 #ifdef SD_USE_DATA_CRC
   uint16_t bcrc = crc16(buff, len);
-  if (crc!=bcrc){
-    DEBUG_PRINT("CRC = %04x , hcalc = %04x, calc = %04x\r\n", (uint32_t)crc, (uint32_t)bcrc, (uint32_t)crc16(buff, len));
+  if (crc != bcrc){
+    DEBUG_PRINT("CRC = %04x , calc = %04x\r\n", (uint32_t)crc, (uint32_t)bcrc);
     return FALSE;
   }
 #endif
@@ -1266,59 +1419,53 @@ static bool SD_RxDataBlock(uint8_t *buff, uint16_t len, uint8_t token) {
 
 // Transmit data block to SD
 static bool SD_TxDataBlock(const uint8_t *buff, uint16_t len, uint8_t token) {
-  uint8_t resp;
+  uint8_t r1;
   // Transmit token
-  SPI_WRITE_8BIT(SD_SPI, token);
-#if 0         // Not use multiple block tx
-  // if it's not STOP token, transmit data, in multiple block Tx
-   if (token == SD_TOKEN_STOP_BLOCK) return TRUE;
-#endif
-  uint16_t bcrc = 0xFFFF;
+  spi_TxByte(token);
 #ifdef __USE_SDCARD_DMA__
   spi_DMATxBuffer(buff, len, false);
-#ifdef  SD_USE_DATA_CRC
-  bcrc = crc16(buff, len);
-#endif
-  dmaChannelWaitCompletion(SD_DMA_TX);
 #else
   spi_TxBuffer((uint8_t*)buff, len);
+#endif
+  // Calculate and Send CRC
 #ifdef  SD_USE_DATA_CRC
-  bcrc = crc16(buff, len);
-#endif
-#endif
-  SPI_WRITE_16BIT(SD_SPI, bcrc); // Send CRC
-  // Receive transmit data response token on next 100 bytes
-  resp = SD_WaitDataAccept(100);
-  if (resp != SD_TOKEN_DATA_ACCEPTED){
-    goto error_tx;
-  }
-#if 0
-  // Wait busy (recommended timeout is 250ms (500ms for SDXC) set 250ms
-  resp = SD_WaitNotBusy(MS2ST(250));
-  if (resp == 0xFF)
-    return TRUE;
+  uint16_t bcrc = crc16(buff, len);
 #else
+  uint16_t bcrc = 0xFFFF;
+#endif
+#ifdef __USE_SDCARD_DMA__
+  dmaChannelWaitCompletion(SD_DMA_TX);
+#endif
+  spi_TxByte((bcrc>>0) & 0xFF); // Send CRC
+  spi_TxByte((bcrc>>8) & 0xFF);
+  // Receive transmit data response token on next 8 bytes
+  if ((r1 = SD_WaitDataAccept(100)) != SD_TOKEN_DATA_ACCEPTED) {
+    DEBUG_PRINT(" Tx accept error = %04x\n", (uint32_t)r1);
+    return FALSE;
+  }
+#if 0  // Wait busy in block transfer (recommended timeout is 250ms (500ms for SDXC) set 250ms
+  if (token == SD_TOKEN_START_M_BLOCK && (r1 = SD_WaitNotBusy(MS2ST(250))) != 0xFF) {
+    DEBUG_PRINT(" Tx busy error = %04\n", (uint32_t)r1);
+    return FALSE;
+  }
+#endif
   // Continue execute, wait not busy on next command
   return TRUE;
-#endif
-  DEBUG_PRINT(" Tx busy error = %04\r\n", (uint32_t)resp);
-  return FALSE;
-error_tx:
-  DEBUG_PRINT(" Tx accept error = %04x\r\n", (uint32_t)resp);
-  return FALSE;
 }
 
 // Transmit command to SD
 static uint8_t SD_SendCmd(uint8_t cmd, uint32_t arg) {
   uint8_t buf[6];
   uint8_t r1;
+  // Advanced command (ACMD__), need send CMD55 before
+  if ((cmd & 0x80) && (r1 = SD_SendCmd(CMD55, 0)) > 1) return r1;
   // wait SD ready after last Tx (recommended timeout is 250ms (500ms for SDXC) set 250ms
   if ((r1 = SD_WaitNotBusy(MS2ST(500))) != 0xFF) {
     DEBUG_PRINT(" SD_WaitNotBusy CMD%d err, %02x\r\n", cmd-0x40, (uint32_t)r1);
     return 0xFF;
   }
   // Transmit command
-  buf[0] = cmd;
+  buf[0] = cmd & 0x7F;
   buf[1] = (arg >> 24)&0xFF;
   buf[2] = (arg >> 16)&0xFF;
   buf[3] = (arg >>  8)&0xFF;
@@ -1334,41 +1481,15 @@ static uint8_t SD_SendCmd(uint8_t cmd, uint32_t arg) {
   spi_TxBuffer(buf, 6);
 // Skip a stuff byte when STOP_TRANSMISSION
   if (cmd == CMD12) spi_RxByte();
-  // Receive response register r1
+  // Receive response register r1 (need max 8 cycles, in tests answer on next read)
   r1 = SD_ReadR1(100);
-#if 1
   if (r1&(SD_R1_NOT_R1|SD_R1_CRC_ERROR|SD_R1_ERASE_RESET|SD_R1_ERR_ERASE_CLR)){
     DEBUG_PRINT(" SD_SendCmd err CMD%d, 0x%x, 0x%08x\r\n", (uint32_t)cmd-0x40, (uint32_t)r1, arg);
     return r1;
   }
   if (r1&(~SD_R1_IDLE))
     DEBUG_PRINT(" SD_SendCmd CMD%d, 0x%x, 0x%08x\r\n", (uint32_t)cmd-0x40, (uint32_t)r1, arg);
-#endif
   return r1;
-}
-
-// Power on SD
-static void SD_PowerOn(void) {
-  uint16_t n;
-  LCD_CS_HIGH;
-  // Dummy TxRx 80 bits for power up SD
-  for (n=0;n<10;n++)
-    spi_RxByte();
-  SD_Select_SPI(SD_INIT_SPI_SPEED);
-  // Set SD card to idle state
-  if (SD_SendCmd(CMD0, 0) == SD_R1_IDLE)
-    Stat|= STA_POWER_ON;
-  SD_Unselect_SPI();
-}
-
-// Power off SD
-static inline void SD_PowerOff(void) {
-  Stat &= ~STA_POWER_ON;
-}
-
-// Check power flag
-static inline uint8_t SD_CheckPower(void) {
-  return Stat & STA_POWER_ON;
 }
 
 //*******************************************************
@@ -1392,51 +1513,42 @@ DSTATUS disk_initialize(BYTE pdrv) {
   crc_time = 0;
   total_time = chVTGetSystemTimeX();
 #endif
-  if (pdrv != 0) return STA_NOINIT;
+  if (pdrv != 0) return disk_status(pdrv);
   // Start init SD card
-  Stat = STA_NOINIT;
-  // power on, try detect on bus, set card to idle state
-  SD_PowerOn();
-  if (!SD_CheckPower()) return Stat;
+  CardStatus = 0;
+  LCD_CS_HIGH;
+  // Power on, try detect on bus, set card to idle state:
+  //   Dummy TxRx 80 bits for power up SD
+  for(int n = 0; n < 10; n++)
+    spi_RxByte();
   // check disk type
   uint8_t  type = 0;
   uint32_t cnt = 100;
   // Set low SPI bus speed = PLL/256 (on 72MHz =281.250kHz)
   SD_Select_SPI(SD_INIT_SPI_SPEED);
   // send GO_IDLE_STATE command
-  if (SD_SendCmd(CMD0, 0) == SD_R1_IDLE)
-  {
+  if (SD_SendCmd(CMD0, 0) == SD_R1_IDLE) {
     DEBUG_PRINT(" CMD0 Ok\r\n");
     // SDC V2+ accept CMD8 command, http://elm-chan.org/docs/mmc/mmc_e.html
-    if (SD_SendCmd(CMD8, 0x00001AAU) == SD_R1_IDLE)
-    {
-      DEBUG_PRINT(" CMD8 Ok\r\n");
+    if (SD_SendCmd(CMD8, 0x00001AAU) == SD_R1_IDLE) {
       uint32_t ocr; spi_RxBuffer((uint8_t *)&ocr, 4);
       DEBUG_PRINT(" CMD8 0x%x\r\n", ocr);
       // operation condition register voltage range 2.7-3.6V
-      if (ocr == _OCR(0x00001AAU))
-      {
+      if (ocr == _OCR(0x00001AAU)) {
         // ACMD41 with HCS bit can be up to 200ms wait
-        do {
-          if (SD_SendCmd(CMD55,                0) <= 1 && // APP_CMD Get Ok or idle state
-              SD_SendCmd(ACMD41, SD_OCR_CAPACITY) == 0)   // Check OCR
-            break;
+        while (SD_SendCmd(ACMD41, SD_OCR_CAPACITY) != 0 && --cnt)   // Check OCR
           chThdSleepMilliseconds(10);
-        } while (--cnt);
-        DEBUG_PRINT(" CMD55 + ACMD41 %d\r\n", cnt);
+        DEBUG_PRINT(" ACMD41 %d\r\n", cnt);
         // READ_OCR
-        if (cnt && SD_SendCmd(CMD58, 0) == 0)
-        {
+        if (cnt && SD_SendCmd(CMD58, 0) == 0) {
           DWORD ocr; spi_RxBuffer((uint8_t *)&ocr, 4);
           DEBUG_PRINT(" CMD58 OCR = 0x%08x\r\n", _OCR(ocr));
           // Check CCS bit, SDv2 (HC or SC)
           type = (ocr & _OCR(SD_OCR_CAPACITY)) ? CT_SD2 | CT_BLOCK : CT_SD2;
         }
       }
-#ifdef SD_USE_COMMAND_CRC
-#ifdef SD_USE_DATA_CRC
+#if defined(SD_USE_COMMAND_CRC) && defined(SD_USE_DATA_CRC)
       SD_SendCmd(CMD59, 1); // Enable CRC check on card
-#endif
 #endif
 //      uint8_t csd[16];
 //      if (SD_SendCmd(CMD9, 0) == 0 && SD_RxDataBlock(csd, 16, SD_TOKEN_START_BLOCK)){
@@ -1445,63 +1557,48 @@ DSTATUS disk_initialize(BYTE pdrv) {
 //          DEBUG_PRINT(" %02x", csd[i]);
 //        DEBUG_PRINT("\r\n");
 //      }
-    } else {
-      DEBUG_PRINT(" CMD8 Fail\r\n");
-      // SDC V1 or MMC
-      type = (SD_SendCmd(CMD55,  0) <= 1 &&                  // APP_CMD
-              SD_SendCmd(ACMD41, 0) <= 1) ? CT_SD1 : CT_MMC;
-      DEBUG_PRINT(" CMD55 %d\r\n", type);
-      do{
-        if (type == CT_SD1)
-        {
-          if (SD_SendCmd(CMD55, 0) <= 1 && SD_SendCmd(ACMD41, 0) == 0) break; // ACMD41
-        }
-        else if (SD_SendCmd(CMD1, 0) == 0) break; // CMD1
+    } else { // SDC V1 or MMC
+      uint8_t cmd = (SD_SendCmd(ACMD41, 0) <= 1) ? ACMD41 : CMD1; // cmd for idle state
+      DEBUG_PRINT(" CMD8 Fail, cmd = 0x%02x\r\n", cmd);
+      while(SD_SendCmd(cmd, 0) && --cnt)                          // Wait idle state (depend from card type)
         chThdSleepMilliseconds(10);
-      } while (--cnt);
-      // SET_BLOCKLEN
-      if (!cnt || SD_SendCmd(CMD16, SD_SECTOR_SIZE) != 0) type = 0;
+      if (cnt && SD_SendCmd(CMD16, SD_SECTOR_SIZE) == 0)          // SET_BLOCKLEN and set type
+        type = cmd == ACMD41 ? CT_SD1 : CT_MMC;
       DEBUG_PRINT(" CMD16 %d %d\r\n", cnt, type);
     }
   }
   SD_Unselect_SPI();
-  CardType = type;
   DEBUG_PRINT("CardType %d\r\n", type);
-  // Clear STA_NOINIT
   if (type)
-    Stat&=~STA_NOINIT;
-  else // Initialization failed
-    SD_PowerOff();
-  return Stat;
+    CardStatus = CT_POWER_ON | type;
+  return disk_status(pdrv);
 }
 
 // diskio.c - Return disk status
 DSTATUS disk_status(BYTE pdrv) {
   if (pdrv != 0) return STA_NOINIT;
-  return Stat;
+  return CardStatus == 0 ? STA_NOINIT : 0;
 }
 
 // diskio.c - Read sector
 DRESULT disk_read(BYTE pdrv, BYTE* buff, DWORD sector, UINT count) {
   // No disk or wrong block count
-  if (pdrv != 0 || (Stat & STA_NOINIT)) return RES_NOTRDY;
+  if (pdrv != 0 || !(CardStatus & CT_POWER_ON)) return RES_NOTRDY;
 #if DEBUG == 1
-  r_cnt++;
+  r_cnt+= count;
   r_time-= chVTGetSystemTimeX();
 #endif
   SD_Select_SPI(SD_SPI_RX_SPEED);
-  uint8_t cmd = count == 1 ? CMD17 : CMD18;
-    // convert to byte address
-  if (!(CardType & CT_BLOCK)) sector*= SD_SECTOR_SIZE;
-  // Read single / multiple block
-  if (SD_SendCmd(cmd, sector) == 0) {
-    do {
-      if (SD_RxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK))
-        buff+= SD_SECTOR_SIZE;
-      else break;
-    } while(--count);
+  // convert to byte address if no block mode
+  if (!(CardStatus & CT_BLOCK)) sector*= SD_SECTOR_SIZE;
+  if (count == 1) {                               // Read single block
+    if (SD_SendCmd(CMD17, sector) == 0 && SD_RxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK))
+      count--;
+  } else if (SD_SendCmd(CMD18, sector) == 0) {    // Read multiple blocks
+    while(SD_RxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK) && --count)
+      buff+= SD_SECTOR_SIZE;
+    SD_SendCmd(CMD12, 0);                         // Finish multiple block read
   }
-  if (cmd == CMD18) SD_SendCmd(CMD12, 0);  // Finish multiple block transfer
   SD_Unselect_SPI();
 #if DEBUG == 1
   r_time+= chVTGetSystemTimeX();
@@ -1518,17 +1615,16 @@ DRESULT disk_read(BYTE pdrv, BYTE* buff, DWORD sector, UINT count) {
   }
 #endif
 #endif
-
   return count ? RES_ERROR : RES_OK;
 }
 
 // diskio.c - Write sector
 DRESULT disk_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count) {
-  // No disk or wrong count
-  if (pdrv != 0 || (Stat & STA_NOINIT)) return RES_NOTRDY;
+  // No disk or wrong block count
+  if (pdrv != 0 || !(CardStatus & CT_POWER_ON)) return RES_NOTRDY;
   // Write protection
-  if (Stat & STA_PROTECT) return RES_WRPRT;
-  #if DEBUG == 1
+  if (CardStatus & CT_WRPROTECT) return RES_WRPRT;
+#if DEBUG == 1
 #if 0
     DEBUG_PRINT("Sector write 0x%08x, %d\r\n", sector, count);
     for (UINT j = 0; j < 32; j++){
@@ -1537,21 +1633,29 @@ DRESULT disk_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count) {
       DEBUG_PRINT("\r\n");
     }
 #endif
-  w_cnt++;
+  w_cnt+=count;
   w_time-= chVTGetSystemTimeX();
 #endif
-
   SD_Select_SPI(SD_SPI_SPEED);
-  do {
-    // WRITE_SINGLE_BLOCK * count
-    uint32_t sect = (CardType & CT_BLOCK) ? sector : sector * SD_SECTOR_SIZE;
-    if ((SD_SendCmd(CMD24, sect) == 0) && SD_TxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK)) {
-      sector++;
+#if 1                                                 // Write multiple block mode
+  // convert to byte address if no block mode
+  if (!(CardStatus & CT_BLOCK)) sector*= SD_SECTOR_SIZE;
+  if (count == 1) {                                   // Write single block
+    if (SD_SendCmd(CMD24, sector) == 0 && SD_TxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK))
+      count--;
+  } else if (SD_SendCmd(CMD25, sector) == 0) {        // Write multiple blocks, wait busy
+    while (SD_TxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_M_BLOCK) && SD_WaitNotBusy(MS2ST(250)) == 0xFF && --count)
       buff+= SD_SECTOR_SIZE;
-    } else break;
-  } while (--count);
+    spi_TxByte(SD_TOKEN_STOP_M_BLOCK);                // Finish multiple block write
+  }
+#else
+  while(SD_SendCmd(CMD24, (CardStatus & CT_BLOCK) ? sector : sector * SD_SECTOR_SIZE) == 0 && // Write block command
+        SD_TxDataBlock(buff, SD_SECTOR_SIZE, SD_TOKEN_START_BLOCK) && --count) {              // Write data, dec count
+    sector++;
+    buff+= SD_SECTOR_SIZE;
+  }
+#endif
   SD_Unselect_SPI();
-
 #if DEBUG == 1
   w_time+= chVTGetSystemTimeX();
   if (count)
@@ -1567,7 +1671,7 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buff) {
   (void)buff;
   DRESULT res = RES_PARERR;
   // No disk or not ready
-  if (pdrv != 0 || Stat & STA_NOINIT) return RES_NOTRDY;
+  if (pdrv != 0 || !(CardStatus & CT_POWER_ON)) return RES_NOTRDY;
   SD_Select_SPI(SD_SPI_RX_SPEED);
   switch (cmd){
     // Makes sure that the device has finished pending write process.
@@ -1620,8 +1724,8 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buff) {
           n = 10;
         }
         else {                      // MMC or SDC V1
-          csize = ((uint32_t)csd[8]>>6)|((uint32_t)csd[7]<<2)|((uint32_t)(csd[6]&0x03)<<10);
-          n = ((csd[5]&0x0F)|((csd[10]&0x80)>>7)|((csd[9]&0x03)<<1)) + 2 - 9;
+          csize = ((uint32_t)csd[8]>>6)+((uint32_t)csd[7]<<2)+((uint32_t)(csd[6]&0x03)<<10);
+          n = (csd[5]&0x0F)+((csd[10]&0x80)>>7)+((csd[9]&0x03)<<1) + 2 - 9;
         }
         *(uint32_t*)buff = (csize+1)<<n;
         res = RES_OK;

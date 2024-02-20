@@ -30,9 +30,11 @@ uint16_t lastsaveid = 0;
 // properties CRC check cache (max 8 slots)
 static uint8_t checksum_ok = 0;
 
-static uint32_t
-checksum(const void *start, size_t len)
-{
+static uint32_t calibration_slot_area(int id) {
+  return SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE;
+}
+
+static uint32_t checksum(const void *start, size_t len) {
   uint32_t *p = (uint32_t*)start;
   uint32_t value = 0;
   // align by sizeof(uint32_t)
@@ -42,9 +44,7 @@ checksum(const void *start, size_t len)
   return value;
 }
 
-int
-config_save(void)
-{
+int config_save(void) {
   // Apply magic word and calculate checksum
   config.magic = CONFIG_MAGIC;
   config.checksum = checksum(&config, sizeof config - sizeof config.checksum);
@@ -54,9 +54,7 @@ config_save(void)
   return 0;
 }
 
-int
-config_recall(void)
-{
+int config_recall(void) {
   const config_t *src = (const config_t*)SAVE_CONFIG_ADDR;
 
   if (src->magic != CONFIG_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
@@ -66,49 +64,44 @@ config_recall(void)
   return 0;
 }
 
-int
-caldata_save(uint32_t id)
-{
+int caldata_save(uint32_t id) {
   if (id >= SAVEAREA_MAX)
     return -1;
 
   // Apply magic word and calculate checksum
-  current_props.magic = PROPS_MAGIC;
+  current_props.magic = PROPERTIES_MAGIC;
   current_props.checksum = checksum(&current_props, sizeof current_props - sizeof current_props.checksum);
 
   // write to flash
-  uint16_t *dst = (uint16_t*)(SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE);
+  uint16_t *dst = (uint16_t*)calibration_slot_area(id);
   flash_program_half_word_buffer(dst, (uint16_t*)&current_props, sizeof(properties_t));
 
   lastsaveid = id;
   return 0;
 }
 
-const properties_t *
-get_properties(uint32_t id)
-{
+const properties_t * get_properties(uint32_t id) {
   if (id >= SAVEAREA_MAX)
     return NULL;
   // point to saved area on the flash memory
-  properties_t *src = (properties_t*)(SAVE_PROP_CONFIG_ADDR + id * SAVE_PROP_CONFIG_SIZE);
+  properties_t *src = (properties_t*)calibration_slot_area(id);
   // Check crc cache mask (made it only 1 time)
   if (checksum_ok&(1<<id))
     return src;
-  if (src->magic != PROPS_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
+  if (src->magic != PROPERTIES_MAGIC || checksum(src, sizeof *src - sizeof src->checksum) != src->checksum)
     return NULL;
   checksum_ok|=1<<id;
   return src;
 }
 
-int
-caldata_recall(uint32_t id)
-{
+int caldata_recall(uint32_t id) {
   lastsaveid = NO_SAVE_SLOT;
-  if (id == NO_SAVE_SLOT) return 0;
+  if (id == NO_SAVE_SLOT)
+    return 0;
   // point to saved area on the flash memory
   const properties_t *src = get_properties(id);
   if (src == NULL){
-    load_default_properties();
+//  load_default_properties();
     return 1;
   }
   // active configuration points to save data on flash memory
@@ -118,16 +111,7 @@ caldata_recall(uint32_t id)
   return 0;
 }
 
-// Used in interpolate, get current calibration slot data
-const properties_t *
-caldata_reference(void)
-{
-  return get_properties(lastsaveid);
-}
-
-void
-clear_all_config_prop_data(void)
-{
+void clear_all_config_prop_data(void) {
   lastsaveid = NO_SAVE_SLOT;
   checksum_ok = 0;
   // unlock and erase flash pages

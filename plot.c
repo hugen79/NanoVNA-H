@@ -59,17 +59,17 @@ static map_t markmap[MAX_MARKMAP_Y];
 
 // Trace data cache, for faster redraw cells
 typedef struct {
-  uint16_t y;
   uint16_t x;
+  uint16_t y;
 } index_t;
-static index_t trace_index[TRACE_INDEX_COUNT][POINTS_COUNT];
+static index_t trace_index[TRACE_INDEX_COUNT][SWEEP_POINTS_MAX];
 
 #if 1
 // All used in plot v > 0
 #define float2int(v) ((int)((v)+0.5f))
 #else
-static int 
-float2int(float v) 
+static int
+float2int(float v)
 {
   if (v < 0) return v - 0.5;
   if (v > 0) return v + 0.5;
@@ -145,7 +145,7 @@ smith_grid(int x, int y)
 
   if (y < 0) y = -y; // mirror by y axis
   if (x >= 0) {                       // valid only if x >= 0
-    if (x >= r/2){                    // valid only if x >= P_RADIUS/2
+    if (x >= P_RADIUS/2){             // valid only if x >= P_RADIUS/2
       // Constant Reactance Circle: 2j : R/2 = P_RADIUS/2 (mirror by y)
       if (circle_inout(x - P_RADIUS, y - P_RADIUS/2, P_RADIUS/2) == 0) return 1;
 
@@ -216,8 +216,8 @@ cell_smith_grid(int x0, int y0, int w, int h, pixel_t color)
 {
   int x, y;
   // offset to center
-  x0 -= P_CENTER_X;
-  y0 -= P_CENTER_Y;
+  x0-= P_CENTER_X;
+  y0-= P_CENTER_Y;
   for (y = 0; y < h; y++)
     for (x = 0; x < w; x++)
       if (smith_grid(x + x0, y + y0)) cell_buffer[y * CELLWIDTH + x] = color;
@@ -228,35 +228,34 @@ cell_admit_grid(int x0, int y0, int w, int h, pixel_t color)
 {
   int x, y;
   // offset to center
-  x0  = P_CENTER_X - x0;
-  y0 -= P_CENTER_Y;
+  x0 = P_CENTER_X - x0;
+  y0-= P_CENTER_Y;
   for (y = 0; y < h; y++)
     for (x = 0; x < w; x++)
       if (smith_grid(- x + x0, y + y0)) cell_buffer[y * CELLWIDTH + x] = color;
 }
 
-void update_grid(void)
+void update_grid(freq_t fstart, freq_t fstop)
 {
-  freq_t gdigit = 100000000;
-  freq_t fstart = get_sweep_frequency(ST_START);
-  freq_t fspan  = get_sweep_frequency(ST_SPAN);
+  freq_t fspan = fstop - fstart;
   freq_t grid;
-
-  while (gdigit > 100) {
-    grid = 5 * gdigit;
-    if (fspan / grid >= 4)
-      break;
-    grid = 2 * gdigit;
-    if (fspan / grid >= 4)
-      break;
-    grid = gdigit;
-    if (fspan / grid >= 4)
-      break;
-    gdigit /= 10;
+  if (fspan < 1000) {
+    grid_offset = 0;
+    grid_width = 0;
+  } else {
+    freq_t gdigit = 100000000;
+    while (gdigit > 100) {
+      grid = 5 * gdigit;
+      if (fspan / grid >= 4) break;
+      grid = 2 * gdigit;
+      if (fspan / grid >= 4) break;
+      grid = gdigit;
+      if (fspan / grid >= 4) break;
+      gdigit /= 10;
+    }
+    grid_offset = (WIDTH) * ((fstart % grid) / 100) / (fspan / 100);
+    grid_width = (WIDTH) * (grid / 100) / (fspan / 1000);
   }
-
-  grid_offset = (WIDTH) * ((fstart % grid) / 100) / (fspan / 100);
-  grid_width = (WIDTH) * (grid / 100) / (fspan / 1000);
 }
 
 static inline int
@@ -282,33 +281,41 @@ rectangular_grid_y(int y)
 // This functions used for plot traces, and markers data output
 // Also can used in measure calculations
 //**************************************************************************************
+#ifdef __VNA_Z_RENORMALIZATION__
+#define PORT_Z current_props._portz
+#else
+#define PORT_Z 50.0f
+#endif
+// Help functions
+static float get_l(float re, float im) {return (re*re + im*im);}
+static float get_w(int i) {return 2 * VNA_PI * getFrequency(i);}
+static float get_s11_r(float re, float im, float z) {return vna_fabsf(2.0f * z * re / get_l(re, im) - z);}
+static float get_s21_r(float re, float im, float z) {return  1.0f * z * re / get_l(re, im) - z;}
+static float get_s11_x(float re, float im, float z) {return -2.0f * z * im / get_l(re, im);}
+static float get_s21_x(float re, float im, float z) {return -1.0f * z * im / get_l(re, im);}
+
+//**************************************************************************************
 // LINEAR = |S|
 //**************************************************************************************
-static float
-linear(int i, const float *v)
-{
+static float linear(int i, const float *v) {
   (void) i;
-  return vna_sqrtf(v[0]*v[0] + v[1]*v[1]);
+  return vna_sqrtf(get_l(v[0], v[1]));
 }
+
 //**************************************************************************************
 // LOGMAG = 20*log10f(|S|)
 //**************************************************************************************
-static float
-logmag(int i, const float *v)
-{
+static float logmag(int i, const float *v) {
   (void) i;
-  float x = v[0]*v[0] + v[1]*v[1];
-//  return log10f(x) *  10.0f;
-//  return vna_logf(x) * (10.0f / logf(10.0f));
-  return vna_log10f_x_10(x);
+//  return log10f(get_l(v[0], v[1])) *  10.0f;
+//  return vna_logf(get_l(v[0], v[1])) * (10.0f / logf(10.0f));
+  return vna_log10f_x_10(get_l(v[0], v[1]));
 }
 
 //**************************************************************************************
 // PHASE angle in degree = atan2(im, re) * 180 / PI
 //**************************************************************************************
-static float
-phase(int i, const float *v)
-{
+static float phase(int i, const float *v) {
   (void) i;
   return (180.0f / VNA_PI) * vna_atan2f(v[1], v[0]);
 }
@@ -316,11 +323,9 @@ phase(int i, const float *v)
 //**************************************************************************************
 // Group delay
 //**************************************************************************************
-static float
-groupdelay(const float *v, const float *w, uint32_t deltaf)
-{
+static float groupdelay(const float *v, const float *w, uint32_t deltaf) {
 #if 1
-  // atan(w)-atan(v) = atan((w-v)/(1+wv))
+  // atan(w)-atan(v) = atan((w-v)/(1+wv)), for complex v and w result q = v / w
   float r = w[0]*v[0] + w[1]*v[1];
   float i = w[0]*v[1] - w[1]*v[0];
   return vna_atan2f(i, r) / (2 * VNA_PI * deltaf);
@@ -332,9 +337,7 @@ groupdelay(const float *v, const float *w, uint32_t deltaf)
 //**************************************************************************************
 // REAL
 //**************************************************************************************
-static float
-real(int i, const float *v)
-{
+static float real(int i, const float *v) {
   (void) i;
   return v[0];
 }
@@ -342,9 +345,7 @@ real(int i, const float *v)
 //**************************************************************************************
 // IMAG
 //**************************************************************************************
-static float
-imag(int i, const float *v)
-{
+static float imag(int i, const float *v) {
   (void) i;
   return v[1];
 }
@@ -352,9 +353,7 @@ imag(int i, const float *v)
 //**************************************************************************************
 // SWR = (1 + |S|)/(1 - |S|)
 //**************************************************************************************
-static float
-swr(int i, const float *v)
-{
+static float swr(int i, const float *v) {
   (void) i;
   float x = linear(i, v);
   if (x > 0.99f)
@@ -362,87 +361,56 @@ swr(int i, const float *v)
   return (1 + x)/(1 - x);
 }
 
-#ifdef __VNA_Z_RENORMALIZATION__
-#define PORT_Z current_props._portz
-#else
-#define PORT_Z 50.0f
-#endif
-
-static float get_d(float re, float im) {return (1.0f - re)*(1.0f - re) + im*im;}
-static float get_r(float re, float im) {return (1.0f - re*re - im*im);}
-static float get_l(float re, float im) {return (re*re + im*im);}
-static float get_a(float re, float im) {return (re - re*re - im*im);}
-static float get_x(float im) {return 2.0f * im;}
-static float get_w(int i) {return 2 * VNA_PI * getFrequency(i);}
-
 //**************************************************************************************
-// Z parameters calculations from complex gamma
-// Z = R_ref * (1 + gamma) / (1 - gamma) = R + jX
-// Resolve this in complex give:
-//  R = z0 * (1 - re*re - im*im) / ((1-re)*(1-re) + im*im))
-//  X = z0 *               2*im  / ((1-re)*(1-re) + im*im))
+// Z parameters calculations from complex S
+// Z = z0 * (1 + S) / (1 - S) = R + jX
 // |Z| = sqrtf(R*R+X*X)
-//
-//  replace r = (1 - re*re - im*im); x = 2*im; d = ((1-re)*(1-re) + im*im))
-// R = z0 * r / d
-// X = z0 * x / d
-// |Z| = z0 * sqrt(4 * re / d + 1)
+// Resolve this in complex give:
+//   let S` = 1 - S  => re` = 1 - re and im` = -im
+//       l` = re` * re` + im` * im`
+// Z = z0 * (2 - S`) / S` = z0 * 2 / S` - z0
+//  R = z0 * 2 * re` / l` - z0
+//  X =-z0 * 2 * im` / l`
+// |Z| = z0 * sqrt(4 * re / l` + 1)
 // Z phase = atan(X, R)
 //**************************************************************************************
-static float
-resistance(int i, const float *v)
-{
+static float resistance(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float r = get_r(v[0], v[1]);
-  return d < 0.0f ? INFINITY : z0 * r / d;
+  return get_s11_r(1.0f - v[0], -v[1], PORT_Z);
 }
 
-static float
-reactance(int i, const float *v)
-{
+static float reactance(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float x = get_x(v[1]);
-  return z0 * x / d;
+  return get_s11_x(1.0f - v[0], -v[1], PORT_Z);
 }
 
-static float
-mod_z(int i, const float *v)
-{
+static float mod_z(int i, const float *v) {
   (void) i;
   const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  return z0 * vna_sqrtf(4 * v[0] / d + 1); // always >= 0
+  const float l = get_l(1.0f - v[0], v[1]);
+  return z0 * vna_sqrtf(4.0f * v[0] / l + 1.0f); // always >= 0
 }
 
-static float
-phase_z(int i, const float *v)
-{
+static float phase_z(int i, const float *v) {
   (void) i;
-  const float r = get_r(v[0], v[1]);
-  const float x = get_x(v[1]);
+  const float r = 1.0f - get_l(v[0], v[1]);
+  const float x = 2.0f * v[1];
   return (180.0f / VNA_PI) * vna_atan2f(x, r);
 }
+
 //**************************************************************************************
 // Use w = 2 * pi * frequency
 // Get Series L and C from X
 //  C = -1 / (w * X)
 //  L =  X / w
 //**************************************************************************************
-static float
-series_c(int i, const float *v)
-{
+static float series_c(int i, const float *v) {
   const float zi = reactance(i, v);
   const float w = get_w(i);
   return -1.0f / (w * zi);
 }
 
-static float
-series_l(int i, const float *v)
-{
+static float series_l(int i, const float *v) {
   const float zi = reactance(i, v);
   const float w = get_w(i);
   return zi / w;
@@ -450,73 +418,35 @@ series_l(int i, const float *v)
 
 //**************************************************************************************
 // Q factor = abs(X / R)
+// Q = 2 * im / (1 - re * re - im * im)
 //**************************************************************************************
-static float
-qualityfactor(int i, const float *v)
-{
+static float qualityfactor(int i, const float *v) {
   (void) i;
-  const float x = get_x(v[1]);
-  const float r = get_r(v[0], v[1]);
+  const float r = 1.0f - get_l(v[0], v[1]);
+  const float x = 2.0f * v[1];
   return vna_fabsf(x / r);
 }
 
 //**************************************************************************************
-// Y parameters (conductance and susceptance) calculations from complex Z
-// Y = 1 / Z = 1 / (R + jX) = B + jG
-//  G =  R / (R*R + X*X)
-//  B = -X / (R*R + X*X)
+// Y parameters (conductance and susceptance) calculations from complex S
+// Y = (1 / z0) * (1 - S) / (1 + S) = G + jB
+// Resolve this in complex give:
+//   let S` = 1 + S  => re` = 1 + re and im` = im
+//       l` = re` * re` + im` * im`
+//      z0` = (1 / z0)
+// Y = z0` * (2 - S`) / S` = 2 * z0` / S` - z0`
+//  G =  2 * z0` * re` / l` - z0`
+//  B = -2 * z0` * im` / l`
 // |Y| = 1 / |Z|
 //**************************************************************************************
-static float
-conductance(int i, const float *v)
-{
+static float conductance(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float r = get_r(v[0], v[1]);
-  const float x = get_x(v[1]);
-  const float rx = z0 * (r*r + x*x);
-  return /* rx == 0 ? INFINITY :*/ r * d / rx;
+  return get_s11_r(1.0f + v[0], v[1], 1.0f / PORT_Z);
 }
 
-static float
-susceptance(int i, const float *v)
-{
+static float susceptance(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float r = get_r(v[0], v[1]);
-  const float x = get_x(v[1]);
-  const float rx = z0 * (r*r + x*x);
-  return /* rx == 0 ? INFINITY :*/ -x * d / rx;
-}
-
-//**************************************************************************************
-// Use w = 2 * pi * frequency
-// Get Parallel L and C from B
-//  C =  B / w
-//  L = -1 / (w * B)
-//**************************************************************************************
-static float
-parallel_c(int i, const float *v)
-{
-  const float zi = susceptance(i, v);
-  const float w = get_w(i);
-  return zi / w;
-}
-
-static float
-parallel_l(int i, const float *v)
-{
-  const float zi = susceptance(i, v);
-  const float w = get_w(i);
-  return -1.0f / (w * zi);
-}
-
-static float
-mod_y(int i, const float *v)
-{
-  return 1.0f / mod_z(i, v); // always >= 0
+  return get_s11_x(1.0f + v[0], v[1], 1.0f / PORT_Z);
 }
 
 //**************************************************************************************
@@ -524,84 +454,101 @@ mod_y(int i, const float *v)
 // Rp = 1 / G
 // Xp =-1 / B
 //**************************************************************************************
-static float
-parallel_r(int i, const float *v)
-{
+static float parallel_r(int i, const float *v) {
 #if 1
   return 1.0f / conductance(i, v);
 #else
   (void) i;
+  const float re = 1.0f + v[0], im = v[1];
   const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float r = get_r(v[0], v[1]);
-  const float x = get_x(v[1]);
-  const float rx = z0 * (r*r + x*x);
-  return rx / (r * d);
+  const float l = get_l(re, im);
+  return z0 * l / (2.0f * re - l);
 #endif
 }
 
-static float
-parallel_x(int i, const float *v)
-{
+static float parallel_x(int i, const float *v) {
 #if 1
   return -1.0f / susceptance(i, v);
 #else
   (void) i;
   const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float r = get_r(v[0], v[1]);
-  const float x = get_x(v[1]);
-  const float rx = z0 * (r*r + x*x);
-  return  rx / (x * d);
+  return z0 * get_l(1.0f + v[0], v[1]) / (2.0f * v[1]);
 #endif
 }
 
 //**************************************************************************************
+// Use w = 2 * pi * frequency
+// Get Parallel L and C from B
+//  C =  B / w
+//  L = -1 / (w * B) = Xp / w
+//**************************************************************************************
+static float parallel_c(int i, const float *v) {
+  const float yi = susceptance(i, v);
+  const float w = get_w(i);
+  return yi / w;
+}
+
+static float parallel_l(int i, const float *v) {
+  const float xp = parallel_x(i, v);
+  const float w = get_w(i);
+  return xp / w;
+}
+
+static float mod_y(int i, const float *v) {
+  return 1.0f / mod_z(i, v); // always >= 0
+}
+
+//**************************************************************************************
 // S21 series and shunt
-// S21 shunt  Z = 0.5f * z0 * z / (1 - z)
-// S21 series Z = 2.0f * z0 * (1 - z) / z
+// S21 shunt  Z = 0.5f * z0 * S / (1 - S)
+//   replace S` = (1 - S)
+// S21 shunt  Z = 0.5f * z0 * (1 - S`) / S`
+// S21 series Z = 2.0f * z0 * (1 - S ) / S
+// Q21 = im / re
 //**************************************************************************************
 static float s21shunt_r(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  const float a = get_a(v[0], v[1]);
-  return 0.5f * z0 * a / d;
+  return get_s21_r(1.0f - v[0], -v[1], 0.5f * PORT_Z);
 }
 
 static float s21shunt_x(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float d = get_d(v[0], v[1]);
-  return 0.5f * z0 * v[1] / d;
+  return get_s21_x(1.0f - v[0], -v[1], 0.5f * PORT_Z);
+}
+
+static float s21shunt_z(int i, const float *v) {
+  (void) i;
+  float l1 = get_l(v[0], v[1]);
+  float l2 = get_l(1.0f - v[0], v[1]);
+  return 0.5f * PORT_Z * vna_sqrtf(l1 / l2);
 }
 
 static float s21series_r(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float l = get_l(v[0], v[1]);
-  return 2.0f * z0 * (v[0] - l) / l;
+  return get_s21_r(v[0], v[1], 2.0f * PORT_Z);
 }
 
 static float s21series_x(int i, const float *v) {
   (void) i;
-  const float z0 = PORT_Z;
-  const float l = get_l(v[0], v[1]);
-  return -2.0f * z0 * v[1] / l;
+  return get_s21_x(v[0], v[1], 2.0f * PORT_Z);
+}
+
+static float s21series_z(int i, const float *v) {
+  (void) i;
+  float l1 = get_l(v[0], v[1]);
+  float l2 = get_l(1.0f - v[0], v[1]);
+  return 2.0f * PORT_Z * vna_sqrtf(l2 / l1);
 }
 
 static float s21_qualityfactor(int i, const float *v) {
   (void) i;
-  const float a = get_a(v[0], v[1]);
-  return vna_fabsf(v[1] / a);
+  return vna_fabsf(v[1] / (v[0] - get_l(v[0], v[1])));
 }
 
 //**************************************************************************************
 // Group delay
 //**************************************************************************************
-float
-groupdelay_from_array(int i, const float *v)
-{
+float groupdelay_from_array(int i, const float *v) {
   int bottom = (i ==              0) ? 0 : -1; // get prev point
   int top    = (i == sweep_points-1) ? 0 :  1; // get next point
   freq_t deltaf = get_sweep_frequency(ST_SPAN) / ((sweep_points - 1) / (top - bottom));
@@ -609,8 +556,7 @@ groupdelay_from_array(int i, const float *v)
 }
 
 static inline void
-cartesian_scale(const float *v, int16_t *xp, int16_t *yp, float scale)
-{
+cartesian_scale(const float *v, int16_t *xp, int16_t *yp, float scale) {
   int16_t x = P_CENTER_X + float2int(v[0] * scale);
   int16_t y = P_CENTER_Y - float2int(v[1] * scale);
   if      (x <      0) x = 0;
@@ -621,14 +567,14 @@ cartesian_scale(const float *v, int16_t *xp, int16_t *yp, float scale)
   *yp = y;
 }
 
-#if MAX_TRACE_TYPE != 28
+#if MAX_TRACE_TYPE != 30
 #error "Redefined trace_type list, need check format_list"
 #endif
 
 const trace_info_t trace_info_list[MAX_TRACE_TYPE] = {
 // Type          name      format   delta format      symbol         ref   scale  get value
 [TRC_LOGMAG] = {"LOGMAG", "%.2f%s", S_DELTA "%.2f%s", S_dB,     NGRIDY-1,  10.0f, logmag               },
-[TRC_PHASE]  = {"PHASE",  "%.1f%s", S_DELTA "%.2f%s", S_DEGREE, NGRIDY/2,  90.0f, phase                },
+[TRC_PHASE]  = {"PHASE",  "%.2f%s", S_DELTA "%.2f%s", S_DEGREE, NGRIDY/2,  90.0f, phase                },
 [TRC_DELAY]  = {"DELAY",  "%.4F%s",         "%.4F%s", S_SECOND, NGRIDY/2,  1e-9f, groupdelay_from_array},
 [TRC_SMITH]  = {"SMITH",      NULL,             NULL, "",              0,  1.00f, NULL                 }, // Custom
 [TRC_POLAR]  = {"POLAR",      NULL,             NULL, "",              0,  1.00f, NULL                 }, // Custom
@@ -652,8 +598,10 @@ const trace_info_t trace_info_list[MAX_TRACE_TYPE] = {
 [TRC_Q]      = {"Q",      "%.4f%s", S_DELTA "%.3f%s", "",              0,  10.0f, qualityfactor        },
 [TRC_Rser]   = {"Rser",   "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21series_r          },
 [TRC_Xser]   = {"Xser",   "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21series_x          },
+[TRC_Zser]   = {"|Zser|", "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21series_z          },
 [TRC_Rsh]    = {"Rsh",    "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21shunt_r           },
 [TRC_Xsh]    = {"Xsh",    "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21shunt_x           },
+[TRC_Zsh]    = {"|Zsh|",  "%.3F%s", S_DELTA "%.3F%s", S_OHM,    NGRIDY/2, 100.0f, s21shunt_z           },
 [TRC_Qs21]   = {"Q",      "%.4f%s", S_DELTA "%.3f%s", "",              0,  10.0f, s21_qualityfactor    },
 };
 
@@ -669,7 +617,9 @@ const marker_info_t marker_info_list[MS_END] = {
 [MS_RpXp]      = {"Rp + jXp",   "%F%+jF" S_OHM,                parallel_r,  parallel_x  },
 [MS_RpLC]      = {"Rp + L/C",   "%F" S_OHM " %F%c",            parallel_r,  parallel_x  }, // use LC calc for imag
 [MS_SHUNT_RX]  = {"R+jX SHUNT", "%F%+jF" S_OHM,                s21shunt_r,  s21shunt_x  },
+[MS_SHUNT_RLC] = {"R+L/C SH..",  "%F" S_OHM " %F%c",            s21shunt_r,  s21shunt_x  }, // use LC calc for imag
 [MS_SERIES_RX] = {"R+jX SERIES","%F%+jF" S_OHM,                s21series_r, s21series_x },
+[MS_SERIES_RLC]= {"R+L/C SER..", "%F" S_OHM " %F%c",            s21series_r, s21series_x }, // use LC calc for imag
 };
 
 const char *get_trace_typename(int t, int marker_smith_format)
@@ -687,12 +637,11 @@ static void mark_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
   x1/= CELLWIDTH;  x2/= CELLWIDTH;
   y1/= CELLHEIGHT; y2/= CELLHEIGHT;
   if (x1 == x2 && y1 == y2) {
-    markmap[y1] |= 1 << x1;
+    markmap[y1]|= 1 << x1;
     return;
   }
-  uint32_t mask = 0;
   if (x1 > x2) SWAP(uint16_t, x1, x2);
-  for (; x1 <= x2; x1++) mask|= 1 << x1;
+  uint32_t mask = ((1 << (x2 - x1 + 1)) - 1) << x1;
   if (y1 > y2) SWAP(uint16_t, y1, y2);
   for (; y1 <= y2; y1++)
     markmap[y1]|= mask;
@@ -743,7 +692,7 @@ trace_into_index(int t) {
     return;
   }
   // Smith/Polar grid
-  if (type & ((1<<TRC_POLAR)|(1<<TRC_SMITH))) { // Need custom calculations
+  if (type & ROUND_GRID_MASK) { // Need custom calculations
     const float rscale = P_RADIUS / scale;
     int16_t y, x;
     for (i = start; i <= stop; i++){
@@ -802,9 +751,6 @@ trace_print_info(int xpos, int ypos, int t)
   int smith = trace[t].smith_format;
   const char *v = trace_info_list[trace[t].type].symbol;
   switch (type) {
-//    case TRC_LOGMAG:
-//    case TRC_PHASE:
-//    case TRC_ZPHASE: format = "%s %0.2f%s/"; break;
     case TRC_SMITH:
     case TRC_POLAR:  format = (scale != 1.0f) ? "%s %0.1fFS" : "%s "; break;
     default:         format = "%s %F%s/"; break;
@@ -818,39 +764,31 @@ static float time_of_index(int idx)
   return (idx * (sweep_points-1)) / ((float)FFT_SIZE * span);
 }
 
-static float distance_of_index(int idx)
-{
+static float distance_of_index(int idx) {
   return velocity_factor * (SPEED_OF_LIGHT / 200.0f) * time_of_index(idx);
 }
 
-static inline void
-clear_markmap(void)
-{
-  memset(markmap, 0, sizeof markmap);
+static inline void clear_markmap(void) {
+  int n = MAX_MARKMAP_Y - 1;
+  do {markmap[n] = (map_t)0;} while(n--);
 }
 
 /*
  * Force full screen update
  */
-static inline void
-force_set_markmap(void)
-{
-  memset(markmap, 0xff, sizeof markmap);
+static inline void force_set_markmap(void) {
+  int n = MAX_MARKMAP_Y - 1;
+  do {markmap[n] = (map_t)-1;} while(n--);
 }
 
 /*
  * Force region of screen update
  */
-static void
-invalidate_rect_func(int x0, int y0, int x1, int y1)
-{
-  if (y0 < 0            ) y0 = 0;
-  if (y1 >=MAX_MARKMAP_Y) y1 = MAX_MARKMAP_Y-1;
-  uint32_t mask = 0;
-  for (; x0 <= x1; x0++) mask|= 1 << x0;
+static void invalidate_rect_func(int x0, int y0, int x1, int y1) {
+  uint32_t mask = ((1 << (x1 - x0 + 1)) - 1) << x0;
   for (; y0 <= y1; y0++)
     if ((uint32_t)y0 < MAX_MARKMAP_Y)
-        markmap[y0]|= mask;
+      markmap[y0]|= mask;
 }
 #define invalidate_rect(x0, y0, x1, y1) invalidate_rect_func((x0)/CELLWIDTH, (y0)/CELLHEIGHT, (x1)/CELLWIDTH, (y1)/CELLHEIGHT)
 
@@ -900,7 +838,7 @@ static int marker_area_max(void) {
   int extra = 0;
   if (electrical_delay != 0.0f) extra+= 2;
   if (s21_offset != 0.0f) extra+= 2;
-#ifdef __VNA_Z_NORMALIZATION__
+#ifdef __VNA_Z_RENORMALIZATION__
   if (current_props._portz != 50.0f) extra+= 2;
 #endif
   if (extra < 2) extra = 2;
@@ -1027,11 +965,15 @@ cell_blit_bitmap_shadow(int16_t x, int16_t y, uint16_t w, uint16_t h, const uint
     return;
   // Prepare shadow bitmap
   uint16_t dst[16];
-  uint16_t p0 = 0, p1 = 0, c = 8 - w;
-  uint16_t mask = (0xFF>>c)<<c;
+  uint16_t p0 = 0, p1 = 0, c = 16 - w;
+  uint16_t mask = (0xFFFF>>c)<<c;
   if (h > ARRAY_COUNT(dst) - 2) h = ARRAY_COUNT(dst) - 2;
   for (i = 0; i < h; i++) {
-    c = (bmp[i] & mask)<<8;   // extend from 8 bit width to 16 bit
+#if 1
+    c = (bmp[i]<<8) & mask;                    // extend from 8 bit width to 16 bit
+#else
+    c = (((bmp[2*i]<<8)|bmp[2*i+1]) & mask);   // extend from 16 bit width to 16 bit
+#endif
     c|= (c>>1) | (c>>2);      // shadow horizontally
     c = (c>>8) | (c<<8);      // swap bytes (render do by 8 bit)
     dst[i] = c | p0 | p1;     // shadow vertically
@@ -1119,21 +1061,20 @@ static int cell_printf(int16_t x, int16_t y, const char *fmt, ...) {
 typedef void (*measure_cell_cb_t)(int x0, int y0);
 typedef void (*measure_prepare_cb_t)(uint8_t mode, uint8_t update_mask);
 
-static measure_cell_cb_t    measure_cell_handler = NULL;
 static uint8_t data_update = 0;
 
-#define MESAURE_NONE 0
-#define MESAURE_S11  1
-#define MESAURE_S21  2
-#define MESAURE_ALL  3
+#define MESAURE_NONE       0
+#define MESAURE_S11        1                            // For calculate need only S11 data
+#define MESAURE_S21        2                            // For calculate need only S21 data
+#define MESAURE_ALL        (MESAURE_S11 | MESAURE_S21)  // For calculate need S11 and S21 data
 
-#define MEASURE_UPD_SWEEP  1
-#define MEASURE_UPD_FREQ   2
-#define MEASURE_UPD_ALL    3
+#define MEASURE_UPD_SWEEP  1                            // Recalculate on sweep done
+#define MEASURE_UPD_FREQ   2                            // Recalculate on marker change position
+#define MEASURE_UPD_ALL    (MEASURE_UPD_SWEEP | MEASURE_UPD_FREQ)
 
-// Include L/C match functions
-#ifdef __USE_LC_MATCHING__
-  #include "lc_matching.c"
+// Include measure functions
+#ifdef __VNA_MEASURE_MODULE__
+  #include "measure.c"
 #endif
 
 static const struct {
@@ -1141,7 +1082,7 @@ static const struct {
   uint8_t update;
   measure_cell_cb_t    measure_cell;
   measure_prepare_cb_t measure_prepare;
-} measure[]={
+} measure[] = {
   [MEASURE_NONE]        = {MESAURE_NONE,                0,               NULL,             NULL },
 #ifdef __USE_LC_MATCHING__
   [MEASURE_LC_MATH]     = {MESAURE_NONE,  MEASURE_UPD_ALL,      draw_lc_match, prepare_lc_match },
@@ -1165,7 +1106,6 @@ static inline void measure_set_flag(uint8_t flag) {
 
 void plot_set_measure_mode(uint8_t mode) {
   if (mode >= MEASURE_END) return;
-  measure_cell_handler = measure[mode].measure_cell;
   current_props._measure = mode;
   data_update = 0xFF;
   request_to_redraw(REDRAW_AREA);
@@ -1176,7 +1116,7 @@ uint16_t plot_get_measure_channels(void) {
 }
 
 static void measure_prepare(void) {
-  if (current_props._measure == 0) return;
+  if (current_props._measure >= MEASURE_END) return;
   measure_prepare_cb_t measure_cb = measure[current_props._measure].measure_prepare;
   // Do measure and cache data only if update flags some
   if (measure_cb && (data_update & measure[current_props._measure].update))
@@ -1185,10 +1125,12 @@ static void measure_prepare(void) {
 }
 
 static void cell_draw_measure(int x0, int y0){
-  if (measure_cell_handler == NULL) return;
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_set_foreground(LCD_LC_MATCH_COLOR);
-  measure_cell_handler(x0, y0);
+  if (current_props._measure >= MEASURE_END) return;
+  measure_cell_cb_t measure_draw_cb = measure[current_props._measure].measure_cell;
+  if (measure_draw_cb) {
+    lcd_set_colors(LCD_MEASURE_COLOR, LCD_BG_COLOR);
+    measure_draw_cb(x0, y0);
+  }
 }
 #endif
 
@@ -1263,7 +1205,7 @@ marker_search_dir(int16_t from, int16_t dir)
   // Select compare function (depend from config settings)
   bool (*compare)(int x, int y) = VNA_MODE(VNA_MODE_SEARCH) ? _lesser : _greater;
   // Search next
-  for (i = from + dir,  value = index[from].y; i >= 0 && i < sweep_points; i+=dir) {
+  for (i = from + dir, value = index[from].y; i >= 0 && i < sweep_points; i+=dir) {
     if ((*compare)(value, index[i].y))
       break;
     value = index[i].y;
@@ -1306,7 +1248,7 @@ search_nearest_index(int x, int y, int t)
 //
 // Build graph data and cache it for output
 //
-void
+static void
 plot_into_index(void)
 {
   // Mark old markers for erase
@@ -1361,10 +1303,7 @@ static void markmap_grid_values(void) {
 #endif
 
 static void
-draw_cell(int m, int n)
-{
-  int x0 = m * CELLWIDTH;
-  int y0 = n * CELLHEIGHT;
+draw_cell(int x0, int y0) {
   int w = CELLWIDTH;
   int h = CELLHEIGHT;
   int x, y;
@@ -1384,7 +1323,7 @@ draw_cell(int m, int n)
 #if 0
   // use memset 350 system ticks for all screen calls
   // as understand it use 8 bit set, slow down on 32 bit systems
-  memset(spi_buffer,  GET_PALTETTE_COLOR(LCD_BG_COLOR), (h*CELLWIDTH)*sizeof(uint16_t));
+  memset(spi_buffer, GET_PALTETTE_COLOR(LCD_BG_COLOR), (h*CELLWIDTH)*sizeof(uint16_t));
 #else
   // use direct set  35 system ticks for all screen calls
 #if CELLWIDTH%8 != 0
@@ -1395,30 +1334,29 @@ draw_cell(int m, int n)
   int count = h*CELLWIDTH / 8;
   uint32_t *p = (uint32_t *)cell_buffer;
   uint32_t clr = GET_PALTETTE_COLOR(LCD_BG_COLOR) | (GET_PALTETTE_COLOR(LCD_BG_COLOR) << 16);
-  while (count--) {
+  do {
     p[0] = clr;
     p[1] = clr;
     p[2] = clr;
     p[3] = clr;
     p += 4;
-  }
+  } while(--count);
 #elif  LCD_PIXEL_SIZE == 1
   // Set DEFAULT_BG_COLOR for 16 pixels in one cycle
   int count = h*CELLWIDTH / 16;
   uint32_t *p = (uint32_t *)cell_buffer;
   uint32_t clr = (GET_PALTETTE_COLOR(LCD_BG_COLOR)<< 0)|(GET_PALTETTE_COLOR(LCD_BG_COLOR)<< 8) |
                  (GET_PALTETTE_COLOR(LCD_BG_COLOR)<<16)|(GET_PALTETTE_COLOR(LCD_BG_COLOR)<<24);
-  while (count--) {
+  do {
     p[0] = clr;
     p[1] = clr;
     p[2] = clr;
     p[3] = clr;
     p += 4;
-  }
+  } while(--count);
 #else
 #error "Write cell fill for different  LCD_PIXEL_SIZE"
 #endif
-
 #endif
 
 // Draw grid
@@ -1464,14 +1402,14 @@ draw_cell(int m, int n)
 //  PULSE;
 // Draw traces (50-600 system ticks for all screen calls, depend from lines count and size)
 #if 1
-  for (t = TRACE_INDEX_COUNT-1; t >=0; t--) {
+  for (t = TRACE_INDEX_COUNT-1; t >= 0; t--) {
     if (!needProcessTrace(t))
       continue;
     c = GET_PALTETTE_COLOR(LCD_TRACE_1_COLOR + t);
     index_t *index = trace_index[t];
     i0 = i1 = 0;
     // draw rectangular plot (search index range in cell, save 50-70 system ticks for all screen calls)
-    if (((1 << trace[t].type) & RECTANGULAR_GRID_MASK) && !enabled_store_trace){
+    if (((1 << trace[t].type) & RECTANGULAR_GRID_MASK) && !enabled_store_trace && sweep_points > 30){
       search_index_range_x(x0, x0 + w, index, &i0, &i1);
     }else{
       // draw polar plot (check all points)
@@ -1489,13 +1427,13 @@ draw_cell(int m, int n)
 #else
   for (x = 0; x < area_width; x += 6)
     cell_drawline(x - x0, 0 - y0, area_width - x - x0, area_height - y0,
-                  config.trace_color[0]);
+                                GET_PALTETTE_COLOR(LCD_TRACE_1_COLOR));
 #endif
 //  PULSE;
 
 #ifdef __USE_GRID_VALUES__
   // Only right cells
-  if (VNA_MODE(VNA_MODE_SHOW_GRID) && m >= (GRID_X_TEXT)/CELLWIDTH)
+  if (VNA_MODE(VNA_MODE_SHOW_GRID) && x0 > (GRID_X_TEXT - CELLWIDTH))
     cell_grid_line_info(x0, y0);
 #endif
 
@@ -1533,12 +1471,11 @@ draw_cell(int m, int n)
       }
     }
   }
-
 #endif
 
 #if 1
   // Draw trace and marker info on the top
-  if (n <= marker_area_max() / CELLHEIGHT)
+  if (y0 <= marker_area_max())
     cell_draw_marker_info(x0, y0);
 #endif
 
@@ -1587,7 +1524,7 @@ draw_all_cells(void)
     map_t update_map = markmap[n];
     for (m = 0; update_map; update_map>>=1, m++)
       if (update_map & 1)
-        draw_cell(m, n);
+        draw_cell(m * CELLWIDTH, n * CELLHEIGHT);
   }
 
 #if 0
@@ -1612,6 +1549,7 @@ draw_all(void)
   if (redraw_request & REDRAW_BACKUP)
     update_backup_data();
 #endif
+  if (redraw_request & REDRAW_PLOT) plot_into_index();
   if (area_width == 0) {redraw_request = 0; return;}
   if (redraw_request & REDRAW_CLRSCR){
     lcd_set_background(LCD_BG_COLOR);
@@ -1626,7 +1564,7 @@ draw_all(void)
     if (redraw_request & REDRAW_GRID_VALUE) markmap_grid_values();
 #endif
   }
-  if (redraw_request & (REDRAW_CELLS | REDRAW_MARKER | REDRAW_REFERENCE | REDRAW_AREA))
+  if (redraw_request & (REDRAW_CELLS | REDRAW_MARKER | REDRAW_GRID_VALUE | REDRAW_REFERENCE | REDRAW_AREA))
     draw_all_cells();
   if (redraw_request & REDRAW_FREQUENCY)
     draw_frequencies();
@@ -1657,7 +1595,7 @@ redraw_marker(int8_t marker) {
 }
 
 // Marker and trace data position
-static const struct {uint16_t x, y;} marker_pos[]={
+static const struct {uint16_t x, y;} marker_pos[MARKERS_MAX] = {
   { 1 +             CELLOFFSETX, 1                    }, { 1 + (WIDTH/2) + CELLOFFSETX, 1                    },
   { 1 +             CELLOFFSETX, 1 +   FONT_STR_HEIGHT}, { 1 + (WIDTH/2) + CELLOFFSETX, 1 +   FONT_STR_HEIGHT},
   { 1 +             CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT}, { 1 + (WIDTH/2) + CELLOFFSETX, 1 + 2*FONT_STR_HEIGHT},
@@ -1744,7 +1682,7 @@ cell_draw_marker_info(int x0, int y0)
     // draw marker delta
     if (!(props_mode & TD_MARKER_DELTA) && active_marker != previous_marker) {
       int previous_marker_idx = markers[previous_marker].index;
-      cell_printf(xpos, ypos, S_DELTA"%d-%d:", active_marker+1, previous_marker+1);
+      cell_printf(xpos, ypos, S_DELTA "%d-%d:", active_marker+1, previous_marker+1);
       xpos += 5*FONT_WIDTH + 2;
       if ((props_mode & DOMAIN_MODE) == DOMAIN_FREQ) {
         freq_t freq  = get_marker_frequency(active_marker);
@@ -1763,7 +1701,6 @@ cell_draw_marker_info(int x0, int y0)
       cell_printf(xpos, ypos, S_SARROW);
     xpos += FONT_WIDTH;
     cell_printf(xpos, ypos, "M%d:", active_marker+1);
-    //cell_drawstring(buf, xpos, ypos);
     xpos += 3*FONT_WIDTH + 4;
     if ((props_mode & DOMAIN_MODE) == DOMAIN_FREQ)
       cell_printf(xpos, ypos, "%q" S_Hz, get_marker_frequency(active_marker));
@@ -1798,9 +1735,8 @@ draw_frequencies(void)
   char lm0 = lever_mode == LM_FREQ_0 ? S_SARROW[0] : ' ';
   char lm1 = lever_mode == LM_FREQ_1 ? S_SARROW[0] : ' ';
   // Draw frequency string
-  lcd_set_foreground(LCD_FG_COLOR);
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_fill(0, FREQUENCIES_YPOS, LCD_WIDTH, LCD_HEIGHT - FREQUENCIES_YPOS);
+  lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
+  lcd_fill(0, HEIGHT + OFFSETY + 1, LCD_WIDTH, LCD_HEIGHT - HEIGHT - OFFSETY - 1);
   lcd_set_font(FONT_SMALL);
   // Prepare text for frequency string
   if ((props_mode & DOMAIN_MODE) == DOMAIN_FREQ) {
@@ -1819,7 +1755,7 @@ draw_frequencies(void)
   }
   // Draw bandwidth and point count
   lcd_set_foreground(LCD_BW_TEXT_COLOR);
-  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"bw:%u" S_Hz " %up", get_bandwidth_frequency(config._bandwidth), sweep_points);
+  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"BW:%u" S_Hz " %up", get_bandwidth_frequency(config._bandwidth), sweep_points);
   lcd_set_font(FONT_NORMAL);
 }
 
@@ -1832,8 +1768,7 @@ draw_cal_status(void)
   uint32_t i;
   int x = CALIBRATION_INFO_POSX;
   int y = CALIBRATION_INFO_POSY;
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_set_foreground(LCD_DISABLE_CAL_COLOR);
+  lcd_set_colors(LCD_DISABLE_CAL_COLOR, LCD_BG_COLOR);
   lcd_fill(x, y, OFFSETX - x, 10*(sFONT_STR_HEIGHT));
   lcd_set_font(FONT_SMALL);
   if (cal_status & CALSTAT_APPLY) {
@@ -1889,8 +1824,7 @@ static void draw_battery_status(void)
     return;
   uint8_t string_buf[24];
   // Set battery color
-  lcd_set_foreground(vbat < BATTERY_WARNING_LEVEL ? LCD_LOW_BAT_COLOR : LCD_NORMAL_BAT_COLOR);
-  lcd_set_background(LCD_BG_COLOR);
+  lcd_set_colors(vbat < BATTERY_WARNING_LEVEL ? LCD_LOW_BAT_COLOR : LCD_NORMAL_BAT_COLOR, LCD_BG_COLOR);
 //  plot_printf(string_buf, sizeof string_buf, "V:%d", vbat);
 //  lcd_drawstringV(string_buf, 1, 60);
   // Prepare battery bitmap image
@@ -1922,7 +1856,7 @@ request_to_draw_cells_behind_menu(void)
 {
   // Values Hardcoded from ui.c
   invalidate_rect(LCD_WIDTH-MENU_BUTTON_WIDTH-OFFSETX, 0, LCD_WIDTH-OFFSETX, LCD_HEIGHT-1);
-  request_to_redraw(REDRAW_CELLS);
+  request_to_redraw(REDRAW_CELLS | REDRAW_FREQUENCY);
 }
 
 /*
@@ -1933,7 +1867,7 @@ request_to_draw_cells_behind_numeric_input(void)
 {
   // Values Hardcoded from ui.c
   invalidate_rect(0, LCD_HEIGHT-NUM_INPUT_HEIGHT, LCD_WIDTH-1, LCD_HEIGHT-1);
-  request_to_redraw(REDRAW_CELLS);
+  request_to_redraw(REDRAW_CELLS | REDRAW_FREQUENCY);
 }
 
 /*
@@ -1948,7 +1882,6 @@ request_to_redraw(uint16_t mask)
 void
 plot_init(void)
 {
-  plot_into_index();
-  request_to_redraw(REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
+  request_to_redraw(REDRAW_AREA | REDRAW_PLOT | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
   draw_all();
 }
