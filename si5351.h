@@ -83,6 +83,7 @@ void si5351_set_band_mode(uint16_t t);
 
 // Defug use functions
 void si5351_bulk_write(const uint8_t *buf, int len);
+bool si5351_bulk_read(uint8_t reg, uint8_t* buf, int len);
 void si5351_set_timing(int i, int v);
 void si5351_update_band_config(int idx, uint32_t pidx, uint32_t v);
 void si5351_set_tcxo(uint32_t xtal);

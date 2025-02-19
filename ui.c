@@ -19,11 +19,10 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include "ch.h"
+#include "nanovna.h"
 #include "hal.h"
 #include "chprintf.h"
 #include <string.h>
-#include "nanovna.h"
 #include "si5351.h"
 
 // Use size optimization (UI not need fast speed, better have smallest size)
@@ -90,6 +89,24 @@ typedef struct {
   char label[32];
 } button_t;
 
+
+#ifdef __USE_SD_CARD__
+// Save/Load format enum
+enum {
+  FMT_S1P_FILE=0, FMT_S2P_FILE, FMT_BMP_FILE,
+#ifdef __SD_CARD_DUMP_TIFF__
+  FMT_TIF_FILE,
+#endif
+  FMT_CAL_FILE,
+#ifdef __SD_CARD_DUMP_FIRMWARE__
+  FMT_BIN_FILE,
+#endif
+#ifdef __SD_CARD_LOAD__
+  FMT_CMD_FILE,
+#endif
+};
+#endif
+
 // Keypad structures
 // Enum for keypads_list
 enum {
@@ -108,15 +125,15 @@ enum {
 #endif
 #ifdef __VNA_Z_RENORMALIZATION__
   KM_Z_PORT,
+  KM_CAL_LOAD_R,
 #endif
 #ifdef __USE_RTC__
   KM_RTC_DATE,
   KM_RTC_TIME,
+  KM_RTC_CAL,
 #endif
 #ifdef __USE_SD_CARD__
-  KM_S1P_NAME,
-  KM_S2P_NAME,
-  KM_BMP_NAME,
+  KM_S1P_NAME, KM_S2P_NAME, KM_BMP_NAME, // Must be equal to Save/Load format enum (TODO fix this)
 #ifdef __SD_CARD_DUMP_TIFF__
   KM_TIF_NAME,
 #endif
@@ -136,21 +153,22 @@ typedef struct {
 } keypad_pos_t;
 
 typedef struct {
+  uint8_t size, type;
+  struct {
   uint8_t pos;
-  int8_t  c;
+   uint8_t   c;
+  } buttons[];
 } keypads_t;
 
 typedef void (*keyboard_cb_t)(uint16_t data, button_t *b);
 #define UI_KEYBOARD_CALLBACK(ui_kb_function_name) void ui_kb_function_name(uint16_t data, button_t *b)
 
-#pragma pack(push, 2)
 typedef struct {
   uint8_t keypad_type;
   uint8_t data;
   const char *name;
   const keyboard_cb_t cb;
-} keypads_list;
-#pragma pack(pop)
+} __attribute__((packed)) keypads_list;
 
 // Max keyboard input length
 #define NUMINPUT_LEN 12
@@ -168,7 +186,7 @@ static char    kp_buf[TXTINPUT_LEN+1];  // !!!!!! WARNING size must be + 2 from 
 static uint8_t ui_mode = UI_NORMAL;
 static const keypads_t *keypads;
 static uint8_t keypad_mode;
-//static uint8_t keyboard_temp;           // Use for custom keyboard processing
+static uint8_t keyboard_temp;           // Use for custom keyboard processing
 static uint8_t menu_current_level = 0;
 static int8_t  selection = -1;
 
@@ -211,28 +229,23 @@ typedef void (*menuaction_acb_t)(uint16_t data, button_t *b);
 #define UI_FUNCTION_ADV_CALLBACK(ui_function_name) void ui_function_name(uint16_t data, button_t *b)
 
 // Set structure align as WORD (save flash memory)
-#pragma pack(push, 2)
 typedef struct {
   uint8_t type;
   uint8_t data;
   char *label;
   const void *reference;
-} menuitem_t;
-#pragma pack(pop)
-
-#define KP_CONTINUE        0
-#define KP_DONE            1
-#define KP_CANCEL          2
+} __attribute__((packed)) menuitem_t;
 
 static void ui_mode_normal(void);
 static void ui_mode_menu(void);
-static void draw_menu(uint32_t mask);
-static void draw_button(uint16_t x, uint16_t y, uint16_t w, uint16_t h, button_t *b);
-static void ui_mode_keypad(int _keypad_mode);
-static void touch_position(int *x, int *y);
+static void menu_draw(uint32_t mask);
+static void ui_mode_keypad(int mode);
 static void menu_move_back(bool leave_ui);
 static void menu_push_submenu(const menuitem_t *submenu);
 static void menu_set_submenu(const menuitem_t *submenu);
+static void ui_keyboard_cb(uint16_t data, button_t *b);
+static void touch_position(int *x, int *y);
+
 // Icons for UI
 #include "icons_menu.c"
 
@@ -487,18 +500,59 @@ touch_check(void)
 //*******************************************************************************
 #endif // end SOFTWARE_TOUCH
 
-static inline void
-touch_wait_release(void)
-{
+//*******************************************************************************
+//                           UI functions
+//*******************************************************************************
+static inline void touch_wait_release(void) {
   while (touch_check() != EVT_TOUCH_RELEASED)
     ;
 }
 
-static inline void
-touch_wait_pressed(void)
-{
-  while (touch_check() != EVT_TOUCH_PRESSED)
-    ;
+// Draw button function
+static void ui_draw_button(uint16_t x, uint16_t y, uint16_t w, uint16_t h, button_t *b) {
+  uint16_t type = b->border;
+  uint16_t bw = type & BUTTON_BORDER_WIDTH_MASK;
+  // Draw border if width > 0
+  if (bw) {
+    uint16_t br = LCD_RISE_EDGE_COLOR;
+    uint16_t bd = LCD_FALLEN_EDGE_COLOR;
+    lcd_set_background(type&BUTTON_BORDER_TOP    ? br : bd);lcd_fill(x,          y,           w, bw); // top
+    lcd_set_background(type&BUTTON_BORDER_LEFT   ? br : bd);lcd_fill(x,          y,          bw,  h); // left
+    lcd_set_background(type&BUTTON_BORDER_RIGHT  ? br : bd);lcd_fill(x + w - bw, y,          bw,  h); // right
+    lcd_set_background(type&BUTTON_BORDER_BOTTOM ? br : bd);lcd_fill(x,          y + h - bw,  w, bw); // bottom
+}
+  // Set colors for button and text
+  lcd_set_colors(b->fg, b->bg);
+  if (type & BUTTON_BORDER_NO_FILL) return;
+  lcd_fill(x + bw, y + bw, w - (bw * 2), h - (bw * 2));
+}
+
+// Draw message box function
+void ui_message_box(const char *header, const char *text, uint32_t delay) {
+  button_t b;
+  int x , y;
+  b.bg = LCD_MENU_COLOR;
+  b.fg = LCD_MENU_TEXT_COLOR;
+  b.border = BUTTON_BORDER_FLAT|1;
+  if (header) {// Draw header
+    ui_draw_button((LCD_WIDTH-MESSAGE_BOX_WIDTH)/2, LCD_HEIGHT/2-40, MESSAGE_BOX_WIDTH, 60, &b);
+    x = (LCD_WIDTH-MESSAGE_BOX_WIDTH)/2 + 10;
+    y = LCD_HEIGHT/2-40 + 5;
+    lcd_drawstring(x, y, header);
+    request_to_redraw(REDRAW_AREA);
+  }
+  if (text) {  // Draw window
+    lcd_set_colors(LCD_MENU_TEXT_COLOR, LCD_FG_COLOR);
+    lcd_fill((LCD_WIDTH-MESSAGE_BOX_WIDTH)/2+3, LCD_HEIGHT/2-40+FONT_STR_HEIGHT+8, MESSAGE_BOX_WIDTH-6, 60-FONT_STR_HEIGHT-8-3);
+    x = (LCD_WIDTH-MESSAGE_BOX_WIDTH)/2 + 20;
+    y = LCD_HEIGHT/2-40 + FONT_STR_HEIGHT + 8 + 14;
+    lcd_drawstring(x, y, text);
+    request_to_redraw(REDRAW_AREA);
+  }
+
+  do {
+    chThdSleepMilliseconds(delay == 0 ? 50 : delay);
+  } while (delay == 0 && btn_check() != EVT_BUTTON_SINGLE_CLICK && touch_check() != EVT_TOUCH_PRESSED);
 }
 
 static void getTouchPoint(uint16_t x, uint16_t y, const char *name, int16_t *data) {
@@ -513,9 +567,7 @@ static void getTouchPoint(uint16_t x, uint16_t y, const char *name, int16_t *dat
   data[1] = last_touch_y;
 }
 
-void
-touch_cal_exec(void)
-{
+void ui_touch_cal_exec(void) {
   const uint16_t x1 = CALIBRATION_OFFSET - TOUCH_MARK_X;
   const uint16_t y1 = CALIBRATION_OFFSET - TOUCH_MARK_Y;
   const uint16_t x2 = LCD_WIDTH  - 1 - CALIBRATION_OFFSET - TOUCH_MARK_X;
@@ -528,9 +580,7 @@ touch_cal_exec(void)
   getTouchPoint(x2, y2, "LOWER RIGHT", &config._touch_cal[p2]);
 }
 
-void
-touch_draw_test(void)
-{
+void ui_touch_draw_test(void) {
   int x0, y0;
   int x1, y1;
   lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
@@ -553,9 +603,7 @@ touch_draw_test(void)
   }
 }
 
-static void
-touch_position(int *x, int *y)
-{
+static void touch_position(int *x, int *y) {
 #ifdef __REMOTE_DESKTOP__
   if (touch_remote != REMOTE_NONE) {
     *x = last_touch_x;
@@ -563,9 +611,10 @@ touch_position(int *x, int *y)
     return;
   }
 #endif
-  int tx = ((LCD_WIDTH-1-CALIBRATION_OFFSET)*(last_touch_x - config._touch_cal[0]) + CALIBRATION_OFFSET * (config._touch_cal[2] - last_touch_x)) / (config._touch_cal[2] - config._touch_cal[0]);
+  int tx, ty;
+  tx = (LCD_WIDTH - 1 - 2 * CALIBRATION_OFFSET)*(last_touch_x - config._touch_cal[0]) / (config._touch_cal[2] - config._touch_cal[0]) + CALIBRATION_OFFSET;
   if (tx<0) tx = 0; else if (tx>=LCD_WIDTH ) tx = LCD_WIDTH -1;
-  int ty = ((LCD_HEIGHT-1-CALIBRATION_OFFSET)*(last_touch_y - config._touch_cal[1]) + CALIBRATION_OFFSET * (config._touch_cal[3] - last_touch_y)) / (config._touch_cal[3] - config._touch_cal[1]);
+  ty = (LCD_HEIGHT- 1 - 2 * CALIBRATION_OFFSET)*(last_touch_y - config._touch_cal[1]) / (config._touch_cal[3] - config._touch_cal[1]) + CALIBRATION_OFFSET;
   if (ty<0) ty = 0; else if (ty>=LCD_HEIGHT) ty = LCD_HEIGHT-1;
 #ifdef __FLIP_DISPLAY__
   if (VNA_MODE(VNA_MODE_FLIP_DISPLAY)) {
@@ -577,9 +626,7 @@ touch_position(int *x, int *y)
   *y = ty;
 }
 
-static void
-show_version(void)
-{
+static void ui_show_version(void) {
   int x = 5, y = 5, i = 1;
   int str_height = FONT_STR_HEIGHT + 2;
   lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
@@ -627,8 +674,7 @@ show_version(void)
 }
 
 #ifdef __DFU_SOFTWARE_MODE__
-void
-enter_dfu(void)
+void ui_enter_dfu(void)
 {
   touch_stop_watchdog();
   int x = 5, y = 20;
@@ -641,22 +687,19 @@ enter_dfu(void)
 }
 #endif
 
-static bool
-select_lever_mode(int mode)
-{
+static bool select_lever_mode(int mode) {
   if (lever_mode == mode) return false;
   lever_mode = mode;
   request_to_redraw(REDRAW_BACKUP | REDRAW_FREQUENCY | REDRAW_MARKER);
   return true;
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_calop_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_calop_acb) {
   static const struct {uint8_t mask, next;} c_list[5]={
      [CAL_LOAD] = {CALSTAT_LOAD,  3},
      [CAL_OPEN] = {CALSTAT_OPEN,  1},
      [CAL_SHORT]= {CALSTAT_SHORT, 2},
-     [CAL_THRU] = {CALSTAT_THRU,  5}, // to cal done
+     [CAL_THRU] = {CALSTAT_THRU,  5},  //to cal done
      [CAL_ISOLN]= {CALSTAT_ISOLN, 4},
   };
   if (b){
@@ -669,22 +712,32 @@ static UI_FUNCTION_ADV_CALLBACK(menu_calop_acb)
   selection = c_list[data].next;
 }
 
+static UI_FUNCTION_ADV_CALLBACK(menu_cal_enh_acb) {
+  (void)data;
+  if (b) {
+    b->icon = (cal_status&CALSTAT_ENHANCED_RESPONSE) ? BUTTON_ICON_CHECK : BUTTON_ICON_NOCHECK;
+    return;
+  }
+  // toggle applying correction
+  cal_status ^= CALSTAT_ENHANCED_RESPONSE;
+  request_to_redraw(REDRAW_CAL_STATUS);
+}
+
 extern const menuitem_t menu_save[];
-static UI_FUNCTION_CALLBACK(menu_caldone_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_caldone_cb) {
   cal_done();
   menu_move_back(false);
   if (data == 0)
     menu_push_submenu(menu_save);
 }
 
-static UI_FUNCTION_CALLBACK(menu_cal_reset_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_cal_reset_cb) {
   (void)data;
   // RESET
-  cal_status = 0;
+  cal_status&= CALSTAT_ENHANCED_RESPONSE; // leave ER state
   lastsaveid = NO_SAVE_SLOT;
-  set_power(SI5351_CLK_DRIVE_STRENGTH_AUTO);
+  //set_power(SI5351_CLK_DRIVE_STRENGTH_AUTO);
+  request_to_redraw(REDRAW_CAL_STATUS);
 }
 
 static UI_FUNCTION_ADV_CALLBACK(menu_cal_range_acb) {
@@ -714,8 +767,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_cal_apply_acb) {
   request_to_redraw(REDRAW_CAL_STATUS);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_recall_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_recall_acb) {
   if (b){
     const properties_t *p = get_properties(data);
     if (p)
@@ -728,23 +780,30 @@ static UI_FUNCTION_ADV_CALLBACK(menu_recall_acb)
   load_properties(data);
 }
 
-#define MENU_CONFIG_TOUCH_CAL   0
-#define MENU_CONFIG_TOUCH_TEST  1
-#define MENU_CONFIG_VERSION     2
-#define MENU_CONFIG_RESET       3
-#define MENU_CONFIG_LOAD        4
-static UI_FUNCTION_CALLBACK(menu_config_cb)
-{
+enum {
+ MENU_CONFIG_TOUCH_CAL = 0,
+ MENU_CONFIG_TOUCH_TEST,
+ MENU_CONFIG_VERSION,
+ MENU_CONFIG_SAVE,
+ MENU_CONFIG_RESET,
+ MENU_CONFIG_LOAD,
+};
+
+static UI_FUNCTION_CALLBACK(menu_config_cb) {
   switch (data) {
   case MENU_CONFIG_TOUCH_CAL:
-      touch_cal_exec();
+      ui_touch_cal_exec();
       break;
   case MENU_CONFIG_TOUCH_TEST:
-      touch_draw_test();
+      ui_touch_draw_test();
       break;
   case MENU_CONFIG_VERSION:
-      show_version();
+      ui_show_version();
       break;
+  case MENU_CONFIG_SAVE:
+      config_save();
+      menu_move_back(true);
+      return;
   case MENU_CONFIG_RESET:
       clear_all_config_prop_data();
       NVIC_SystemReset();
@@ -752,7 +811,7 @@ static UI_FUNCTION_CALLBACK(menu_config_cb)
 #if defined(__SD_CARD_LOAD__) && !defined(__SD_FILE_BROWSER__)
   case MENU_CONFIG_LOAD:
       if (!sd_card_load_config())
-        drawMessageBox("Error", "No config.ini", 2000);
+        ui_message_box("Error", "No config.ini", 2000);
       break;
 #endif
   }
@@ -760,23 +819,14 @@ static UI_FUNCTION_CALLBACK(menu_config_cb)
   request_to_redraw(REDRAW_CLRSCR | REDRAW_AREA | REDRAW_BATTERY | REDRAW_CAL_STATUS | REDRAW_FREQUENCY);
 }
 
-static UI_FUNCTION_CALLBACK(menu_config_save_cb)
-{
-  (void)data;
-  config_save();
-  menu_move_back(true);
-}
-
 #ifdef __DFU_SOFTWARE_MODE__
-static UI_FUNCTION_CALLBACK(menu_dfu_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_dfu_cb) {
   (void)data;
-  enter_dfu();
+  ui_enter_dfu();
 }
 #endif
 
-static UI_FUNCTION_ADV_CALLBACK(menu_save_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_save_acb) {
   if (b){
     const properties_t *p = get_properties(data);
     if (p)
@@ -791,8 +841,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_save_acb)
   }
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_trace_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_trace_acb) {
   if (b){
     if (trace[data].enabled){
       b->bg = LCD_TRACE_1_COLOR + data;
@@ -814,8 +863,7 @@ extern const menuitem_t menu_marker_s11smith[];
 extern const menuitem_t menu_marker_s21smith[];
 static uint8_t get_smith_format(void) {return (current_trace != TRACE_INVALID) ? trace[current_trace].smith_format : 0;}
 
-static UI_FUNCTION_ADV_CALLBACK(menu_marker_smith_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_marker_smith_acb) {
   if (b) {
     b->icon = get_smith_format() == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     b->p1.text = get_smith_format_names(data);
@@ -828,8 +876,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_marker_smith_acb)
 
 #define F_S11     0x00
 #define F_S21     0x80
-static UI_FUNCTION_ADV_CALLBACK(menu_format_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_format_acb) {
   if (current_trace == TRACE_INVALID) return; // Not apply any for invalid traces
   uint16_t format = data & (~F_S21);
   uint16_t channel = data & F_S21 ? 1 : 0;
@@ -853,8 +900,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_format_acb)
     set_trace_type(current_trace, format, channel);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_channel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_channel_acb) {
   (void)data;
   if (current_trace == TRACE_INVALID) {if (b) b->p1.text = ""; return;}
   int ch = trace[current_trace].channel;
@@ -865,8 +911,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_channel_acb)
   set_trace_channel(current_trace, ch^1);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_transform_window_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_transform_window_acb) {
   char *text = "";
   switch(props_mode & TD_WINDOW){
     case TD_WINDOW_MINIMUM: text = "MINIMUM"; data = TD_WINDOW_NORMAL;  break;
@@ -880,8 +925,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_window_acb)
   props_mode = (props_mode & ~TD_WINDOW) | data;
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb) {
   (void)data;
   if(b){
     if (props_mode & DOMAIN_TIME) b->icon = BUTTON_ICON_CHECK;
@@ -893,8 +937,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb)
   request_to_redraw(REDRAW_FREQUENCY | REDRAW_AREA);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_transform_filter_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_transform_filter_acb) {
   if(b){
     b->icon = (props_mode & TD_FUNC) == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     return;
@@ -903,8 +946,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_filter_acb)
 }
 
 const menuitem_t menu_bandwidth[];
-static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_sel_acb) {
   (void)data;
   if (b){
     b->p1.u = get_bandwidth_frequency(config._bandwidth);
@@ -913,8 +955,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_sel_acb)
   menu_push_submenu(menu_bandwidth);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_acb) {
   if (b){
     b->icon = config._bandwidth == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     b->p1.u = get_bandwidth_frequency(data);
@@ -923,12 +964,10 @@ static UI_FUNCTION_ADV_CALLBACK(menu_bandwidth_acb)
   set_bandwidth(data);
 }
 
-#pragma pack(push, 2)
 typedef struct {
   const char* text;
   uint16_t update_flag;
-} vna_mode_data_t;
-#pragma pack(pop)
+} __attribute__((packed)) vna_mode_data_t;
 
 const vna_mode_data_t vna_mode_data[] = {
 //                        text (if 0 use checkbox) Redraw flags on change
@@ -954,13 +993,16 @@ const vna_mode_data_t vna_mode_data[] = {
 #ifdef __SD_CARD_DUMP_TIFF__
   [VNA_MODE_TIFF]        = {"BMP\0TIFF",           REDRAW_BACKUP},
 #endif
+#ifdef __USB_UID__
+  [VNA_MODE_USB_UID]      = {0,                    REDRAW_BACKUP},
+#endif
 };
 
-void apply_VNA_mode(uint16_t idx, uint16_t value) {
+void apply_VNA_mode(uint16_t idx, vna_mode_ops operation) {
   uint16_t m = 1<<idx;
   uint16_t old = config._vna_mode;
-       if (value == VNA_MODE_CLR) config._vna_mode&=~m; // clear
-  else if (value == VNA_MODE_SET) config._vna_mode|= m; // set
+       if (operation == VNA_MODE_CLR) config._vna_mode&=~m; // clear
+  else if (operation == VNA_MODE_SET) config._vna_mode|= m; // set
   else                            config._vna_mode^= m; // toggle
   if (old == config._vna_mode) return;
   request_to_redraw(vna_mode_data[idx].update_flag);
@@ -984,8 +1026,7 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
   }
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_vna_mode_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_vna_mode_acb) {
   if (b) {
     const char *t = vna_mode_data[data].text;
     if (t == 0)
@@ -998,8 +1039,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_vna_mode_acb)
 }
 
 #ifdef __USE_SMOOTH__
-static UI_FUNCTION_ADV_CALLBACK(menu_smooth_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_smooth_acb) {
   if (b){
     b->icon = get_smooth_factor() == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     b->p1.u = data;
@@ -1010,8 +1050,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_smooth_acb)
 #endif
 
 const menuitem_t menu_sweep_points[];
-static UI_FUNCTION_ADV_CALLBACK(menu_points_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_points_sel_acb) {
   (void)data;
   if (b){
     b->p1.u = sweep_points;
@@ -1021,8 +1060,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_points_sel_acb)
 }
 
 static const uint16_t point_counts_set[POINTS_SET_COUNT] = POINTS_SET;
-static UI_FUNCTION_ADV_CALLBACK(menu_points_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_points_acb) {
   uint16_t p_count = point_counts_set[data];
   if (b){
     b->icon = sweep_points == p_count ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
@@ -1033,8 +1071,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_points_acb)
 }
 
 const menuitem_t menu_power[];
-static UI_FUNCTION_ADV_CALLBACK(menu_power_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_power_sel_acb) {
   (void)data;
   if (b){
     if (current_props._power != SI5351_CLK_DRIVE_STRENGTH_AUTO)
@@ -1044,8 +1081,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_power_sel_acb)
   menu_push_submenu(menu_power);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_power_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_power_acb) {
   if (b){
     b->icon = current_props._power == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     b->p1.u = 2+data*2;
@@ -1056,32 +1092,29 @@ static UI_FUNCTION_ADV_CALLBACK(menu_power_acb)
 
 // Process keyboard button callback, and run keyboard function
 extern const keypads_list keypads_mode_tbl[];
-static UI_FUNCTION_ADV_CALLBACK(menu_keyboard_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_keyboard_acb) {
   if (data == KM_VAR && lever_mode == LM_EDELAY) // JOG STEP button auto set (e-delay or frequency step)
     data = KM_VAR_DELAY;
   if (b) {
-    const keyboard_cb_t cb = keypads_mode_tbl[data].cb;
-    if (cb) cb(keypads_mode_tbl[data].data, b);
+    ui_keyboard_cb(data, b);
     return;
   }
   ui_mode_keypad(data);
 }
 
 // Custom keyboard menu button callback (depend from current trace)
-static UI_FUNCTION_ADV_CALLBACK(menu_scale_keyboard_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_scale_keyboard_acb) {
   // Not apply amplitude / scale / ref for invalid or polar graph
   if (current_trace == TRACE_INVALID) return;
   uint32_t type_mask = 1<<trace[current_trace].type;
   if (type_mask & ROUND_GRID_MASK) return;
   // Nano scale values
-  if (type_mask & NANO_TYPE_MASK) data++;
+  uint32_t nano_keyb_type = (1<<KM_TOP) | (1<<KM_BOTTOM) | (1<<KM_SCALE);
+  if ((type_mask & NANO_TYPE_MASK) && ((1<<data) & nano_keyb_type)) data++;
   menu_keyboard_acb(data, b);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_pause_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_pause_acb) {
   (void)data;
   if (b){
     b->p1.text = (sweep_mode & SWEEP_ENABLE) ? "PAUSE" : "RESUME";
@@ -1092,8 +1125,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_pause_acb)
 }
 
 #define UI_MARKER_EDELAY 6
-static UI_FUNCTION_CALLBACK(menu_marker_op_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_marker_op_cb) {
   freq_t freq = get_marker_frequency(active_marker);
   if (freq == 0)
     return; // no active marker
@@ -1124,18 +1156,18 @@ static UI_FUNCTION_CALLBACK(menu_marker_op_cb)
     {
       if (current_trace == TRACE_INVALID)
         break;
-      float (*array)[2] = measured[trace[current_trace].channel];
+      int ch = trace[current_trace].channel;
+      float (*array)[2] = measured[ch];
       int index = markers[active_marker].index;
       float v = groupdelay_from_array(index, array[index]);
-      set_electrical_delay(electrical_delay + v);
+      set_electrical_delay(ch, current_props._electrical_delay[ch] + v);
     }
     break;
   }
   ui_mode_normal();
 }
 
-static UI_FUNCTION_CALLBACK(menu_marker_search_dir_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_marker_search_dir_cb) {
   marker_search_dir(markers[active_marker].index, data == MK_SEARCH_RIGHT ? MK_SEARCH_RIGHT : MK_SEARCH_LEFT);
   props_mode&=~TD_MARKER_TRACK;
 #ifdef UI_USE_LEVELER_SEARCH_MODE
@@ -1143,8 +1175,7 @@ static UI_FUNCTION_CALLBACK(menu_marker_search_dir_cb)
 #endif
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_marker_tracking_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_marker_tracking_acb) {
   (void)data;
   if (b){
     b->icon = (props_mode & TD_MARKER_TRACK) ? BUTTON_ICON_CHECK : BUTTON_ICON_NOCHECK;
@@ -1155,9 +1186,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_marker_tracking_acb)
 
 #ifdef __VNA_MEASURE_MODULE__
 extern const menuitem_t *menu_measure_list[];
-static UI_FUNCTION_ADV_CALLBACK(menu_measure_acb)
-{
-  (void)data;
+static UI_FUNCTION_ADV_CALLBACK(menu_measure_acb) {
   if (b){
     b->icon = current_props._measure == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     return;
@@ -1172,9 +1201,7 @@ static UI_FUNCTION_CALLBACK(menu_measure_cb) {
 }
 #endif
 
-static void
-active_marker_check(void)
-{
+static void active_marker_check(void) {
   int i;
   // Auto select active marker if disabled
   if (active_marker == MARKER_INVALID)
@@ -1188,8 +1215,7 @@ active_marker_check(void)
   }
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_marker_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_marker_sel_acb) {
   //if (data >= MARKERS_MAX) return;
   int mk = data;
   if (b){
@@ -1215,19 +1241,16 @@ static UI_FUNCTION_ADV_CALLBACK(menu_marker_sel_acb)
   request_to_redraw(REDRAW_MARKER);
 }
 
-static UI_FUNCTION_CALLBACK(menu_marker_disable_all_cb)
-{
+static UI_FUNCTION_CALLBACK(menu_marker_disable_all_cb) {
   (void)data;
-  int i;
-  for (i = 0; i < MARKERS_MAX; i++)
+  for (int i = 0; i < MARKERS_MAX; i++)
     markers[i].enabled = FALSE;     // all off
   previous_marker = MARKER_INVALID;
   active_marker = MARKER_INVALID;
   request_to_redraw(REDRAW_AREA);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_marker_delta_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_marker_delta_acb) {
   (void)data;
   if (b){
     b->icon = props_mode & TD_MARKER_DELTA ? BUTTON_ICON_CHECK : BUTTON_ICON_NOCHECK;
@@ -1238,8 +1261,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_marker_delta_acb)
 }
 
 #ifdef __USE_SERIAL_CONSOLE__
-static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_acb) {
   static const uint32_t usart_speed[] = {19200, 38400, 57600, 115200, 230400, 460800, 921600, 1843200, 2000000, 3000000};
   uint32_t speed = usart_speed[data];
   if (b){
@@ -1251,8 +1273,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_acb)
 }
 
 extern const menuitem_t menu_serial_speed[];
-static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_sel_acb) {
   (void)data;
   if (b){
     b->p1.u = config._serial_speed;
@@ -1263,8 +1284,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_serial_speed_sel_acb)
 #endif
 
 #ifdef USE_VARIABLE_OFFSET_MENU
-static UI_FUNCTION_ADV_CALLBACK(menu_offset_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_offset_acb) {
   int32_t offset = (data+1) * FREQUENCY_OFFSET_STEP;
   if (b){
     b->icon = IF_OFFSET == offset ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
@@ -1275,8 +1295,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_offset_acb)
 }
 
 const menuitem_t menu_offset[];
-static UI_FUNCTION_ADV_CALLBACK(menu_offset_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_offset_sel_acb) {
   (void)data;
   if (b){
     b->p1.i = IF_OFFSET;
@@ -1288,12 +1307,11 @@ static UI_FUNCTION_ADV_CALLBACK(menu_offset_sel_acb)
 
 #ifdef __LCD_BRIGHTNESS__
 // Brightness control range 0 - 100
-static void lcd_setBrightness(uint16_t b){
+void lcd_setBrightness(uint16_t b){
   dac_setvalue_ch2(700 + b*(4090-700)/100);
 }
 
-static UI_FUNCTION_ADV_CALLBACK(menu_brightness_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_brightness_acb) {
   (void)data;
   if (b){
     b->p1.u = config._brightness;
@@ -1326,42 +1344,22 @@ static UI_FUNCTION_ADV_CALLBACK(menu_brightness_acb)
 }
 #endif
 
+//=====================================================================================================
+//                                 SD card save / load functions
+//=====================================================================================================
 #ifdef __USE_SD_CARD__
-// Save/Load format enum
-enum {
-  FMT_S1P_FILE=0, FMT_S2P_FILE, FMT_BMP_FILE,
-#ifdef __SD_CARD_DUMP_TIFF__
-  FMT_TIF_FILE,
-#endif
-  FMT_CAL_FILE,
-#ifdef __SD_CARD_DUMP_FIRMWARE__
-  FMT_BIN_FILE,
-#endif
-#ifdef __SD_CARD_LOAD__
-  FMT_CMD_FILE,
-#endif
-};
+// Save file callback
+typedef FRESULT (*file_save_cb_t)(FIL *f, uint8_t format);
+#define FILE_SAVE_CALLBACK(save_function_name) FRESULT save_function_name(FIL *f, uint8_t format)
+// Load file callback
+typedef const char* (*file_load_cb_t)(FIL *f, FILINFO *fno, uint8_t format);
+#define FILE_LOAD_CALLBACK(load_function_name) const char* load_function_name(FIL *f, FILINFO *fno, uint8_t format)
 
-// Save/Load file extension
-static const char *file_ext[] = {
-  [FMT_S1P_FILE] = "s1p",
-  [FMT_S2P_FILE] = "s2p",
-  [FMT_BMP_FILE] = "bmp",
-#ifdef __SD_CARD_DUMP_TIFF__
-  [FMT_TIF_FILE] = "tif",
-#endif
-  [FMT_CAL_FILE] = "cal",
-#ifdef __SD_CARD_DUMP_FIRMWARE__
-  [FMT_BIN_FILE] = "bin",
-#endif
-#ifdef __SD_CARD_LOAD__
-  [FMT_CMD_FILE] = "cmd",
-#endif
-};
-
-//*******************************************************************************************
+//=====================================================================================================
 // S1P and S2P file headers, and data structures
-//*******************************************************************************************
+// Save touchstone file for VNA (use rev 1.1 format)
+// https://en.wikipedia.org/wiki/Touchstone_file
+//=====================================================================================================
 static const char s1_file_header[] =
   "!File created by NanoVNA\r\n"\
   "# Hz S RI R 50\r\n";
@@ -1375,6 +1373,78 @@ static const char s2_file_header[] =
 
 static const char s2_file_param[] =
   "%u % f % f % f % f 0 0 0 0\r\n";
+
+static FILE_SAVE_CALLBACK(save_snp) {
+  const char *s_file_format;
+  char *buf_8 = (char *)spi_buffer;
+  FRESULT res;
+  UINT size;
+  // Write SxP file
+  if (format == FMT_S1P_FILE){
+    s_file_format = s1_file_param;
+    // write sxp header (not write NULL terminate at end)
+    res = f_write(f, s1_file_header, sizeof(s1_file_header)-1, &size);
+  } else {
+    s_file_format = s2_file_param;
+    // Write s2p header (not write NULL terminate at end)
+    res = f_write(f, s2_file_header, sizeof(s2_file_header)-1, &size);
+  }
+  // Write all points data
+  for (int i = 0; i < sweep_points && res == FR_OK; i++) {
+    size = plot_printf(buf_8, 128, s_file_format, getFrequency(i), measured[0][i][0], measured[0][i][1], measured[1][i][0], measured[1][i][1]);
+    res = f_write(f, buf_8, size, &size);
+  }
+  return res;
+}
+
+// Support only NanoVNA format: Hz S RI R 50
+static FILE_LOAD_CALLBACK(load_snp) {
+  (void)fno;
+  UINT size;
+  const int buffer_size = 256;
+  const int line_size = 128;
+  char *buf_8 = (char *)spi_buffer; // must be greater then buffer_size + line_size
+  char *line  = buf_8 + buffer_size;
+  uint16_t j = 0, i, count = 0;
+  freq_t start = 0, stop = 0, freq;
+  while (f_read(f, buf_8, buffer_size, &size) == FR_OK && size > 0) {
+    for (i = 0; i < size; i++) {
+      uint8_t c = buf_8[i];
+      if (c == '\r') {                                                     // New line (Enter)
+        line[j] = 0; j = 0;
+        char *args[16];
+        int nargs = parse_line(line, args, 16);                            // Parse line to 16 args
+        if (nargs < 2 || args[0][0] == '#' || args[0][0] == '!') continue; // No data or comment or settings
+        freq = my_atoui(args[0]);                                          // Get frequency
+        if (count >= SWEEP_POINTS_MAX || freq > FREQUENCY_MAX) return "Format err";
+        if (count == 0) start = freq;                                      // For index 0 set as start
+        stop  = freq;                                                      // last set as stop
+        measured[0][count][0] = my_atof(args[1]);
+        measured[0][count][1] = my_atof(args[2]);                          // get S11 data
+        if (format == FMT_S2P_FILE && nargs >= 4) {
+          measured[1][count][0] = my_atof(args[3]);
+          measured[1][count][1] = my_atof(args[4]);                        // get S11 data
+        } else {
+          measured[1][count][0] = 0.0f;
+          measured[1][count][1] = 0.0f;                                    // get S11 data
+        }
+        count++;
+      }
+      else if (c < 0x20) continue;                 // Others (skip)
+      else if (j < line_size) line[j++] = (char)c; // Store
+    }
+  }
+  if (count != 0) { // Points count not zero, so apply data to traces
+    pause_sweep();
+    current_props._electrical_delay[0] = 0.0f; // Reset delays
+    current_props._electrical_delay[1] = 0.0f; // Reset delays
+    current_props._sweep_points = count;
+    set_sweep_frequency(ST_START, start);
+    set_sweep_frequency(ST_STOP, stop);
+    request_to_redraw(REDRAW_PLOT);
+  }
+  return NULL;
+}
 
 //*******************************************************************************************
 // Bitmap file header for LCD_WIDTH x LCD_HEIGHT image 16bpp (v4 format allow set RGB mask)
@@ -1424,6 +1494,37 @@ static const uint8_t bmp_header_v4[BMP_H1_SIZE + BMP_V4_SIZE] = {
   BMP_UINT32(0),             // GammaGreen
   BMP_UINT32(0),             // GammaBlue
 };
+
+// Save bitmap file (use v4 format allow set RGB mask)
+static FILE_SAVE_CALLBACK(save_bmp) {
+  (void)format;
+  UINT size;
+  uint16_t *buf_16 = (uint16_t *)spi_buffer;
+  FRESULT res = f_write(f, bmp_header_v4, sizeof(bmp_header_v4), &size); // Write header struct
+  lcd_set_background(LCD_SWEEP_LINE_COLOR);
+  for (int y = LCD_HEIGHT-1; y >= 0 && res == FR_OK; y--) {
+    lcd_read_memory(0, y, LCD_WIDTH, 1, buf_16);
+    swap_bytes(buf_16, LCD_WIDTH);
+    res = f_write(f, buf_16, LCD_WIDTH*sizeof(uint16_t), &size);
+    lcd_fill(LCD_WIDTH-1, y, 1, 1);
+  }
+  return res;
+}
+
+static FILE_LOAD_CALLBACK(load_bmp) {
+  (void)format;
+  UINT size;
+  uint16_t *buf_16 = (uint16_t *)spi_buffer; // prepare buffer
+  FRESULT res = f_read(f, (void *)buf_16, sizeof(bmp_header_v4), &size); // read header
+  if (res != FR_OK || buf_16[9] != LCD_WIDTH || buf_16[11] != LCD_HEIGHT || buf_16[14] != 16) return "Format err";
+  for (int y = LCD_HEIGHT-1; y >=0 && res == FR_OK; y--) {
+    res = f_read(f, (void *)buf_16, LCD_WIDTH * sizeof(uint16_t), &size);
+    swap_bytes(buf_16, LCD_WIDTH);
+    lcd_bulk(0, y, LCD_WIDTH, 1);
+  }
+  lcd_printf(0, LCD_HEIGHT - 3*FONT_STR_HEIGHT, fno->fname);
+  return NULL;
+}
 
 #ifdef __SD_CARD_DUMP_TIFF__
 //*******************************************************************************************
@@ -1504,33 +1605,172 @@ static const uint8_t tif_header[] = {
                                                           //   After Image data
 };
 
-// RLE packbits algorithm
-static int packbits(char *source, char *dest, int size) {
-  int i = 0, rle, l, pk = 0, sz = 0;
-  while ((l = size - i) > 0) {
-    if (l > 128) l = 128;                              // Limit search RLE block size to 128
-    char c = source[i++];                              // Get next byte and write to block
-    for (rle = 0; c == source[i + rle] && --l; rle++); // Calculate this byte RLE sequence size = rle + 1
-    if (sz && rle < 2) rle = 0;                        // Ignore (rle + 1) < 3 sequence on run non RLE input
-    else if (sz == 0 || rle > 0) sz = pk++;            // Reset state or RLE sequence found -> start new block
-    dest[pk++] = c;                                    // Write char to block
-    if (rle > 0) {i+= rle; dest[sz] = -rle;}           // Write RLE sequence size and go to new block
-    else if ((dest[sz] = pk - sz - 2) < 127)           // Continue write non RLE data while 1 + (non_rle + 1) < 127
-      continue;
-    sz = 0;                                            // Block complete
+static FILE_SAVE_CALLBACK(save_tiff) {
+  (void)format;
+  UINT size;
+  uint16_t *buf_16 = (uint16_t *)spi_buffer;
+  char *buf_8;
+  FRESULT res = f_write(f, tif_header, sizeof(tif_header), &size); // Write header struct
+  lcd_set_background(LCD_SWEEP_LINE_COLOR);
+  for (int y = 0; y < LCD_HEIGHT && res == FR_OK; y++) {
+    // Use 128 bytes offset for RGB888 data
+    // Use 0 offset for compressed RLE (maximum need WIDTH * 4 + 128 bytes in spi_buffer)
+    buf_8 = (char *)buf_16 + 128;
+    // Read LCD line in RGB565 format (swapped bytes)
+    lcd_read_memory(0, y, LCD_WIDTH, 1, buf_16);
+    // Convert to RGB888
+    for (int x = LCD_WIDTH - 1; x >= 0; x--) {
+      uint16_t color = (buf_16[x] << 8) | (buf_16[x] >> 8);
+      buf_8[3*x + 0] = (color>>8) & 0xF8;// if (buf_8[3*x + 0] < 0) buf_8[3*x + 0]+= 7;
+      buf_8[3*x + 1] = (color>>3) & 0xFC;// if (buf_8[3*x + 1] < 0) buf_8[3*x + 1]+= 3;
+      buf_8[3*x + 2] = (color<<3) & 0xF8;// if (buf_8[3*x + 2] < 0) buf_8[3*x + 2]+= 7;
   }
-  return pk;
+    size = packbits(buf_8, (char *)buf_16, LCD_WIDTH * 3);
+    res = f_write(f, buf_16, size, &size);
+    lcd_fill(LCD_WIDTH-1, y, 1, 1);
+}
+  return res;
+}
+
+static FILE_LOAD_CALLBACK(load_tiff) {
+  (void)format;
+  UINT size;
+  uint8_t *buf_8 = (uint8_t *)spi_buffer; // prepare buffer
+  uint16_t *buf_16 = (uint16_t *)spi_buffer;
+  FRESULT res = f_read(f, (void *)buf_16, sizeof(tif_header), &size); // read header
+  // Quick check for valid (not parse TIFF, use hardcoded values, for less code size)
+  // Check header id, width, height, compression (pass only self saved images)
+  if (res != FR_OK ||
+        buf_16[0] != 0x4949 ||       // Check header ID
+        buf_16[9] != LCD_WIDTH ||    // Check Width
+        buf_16[15] != LCD_HEIGHT ||  // Check Height
+        buf_16[27] != TIFF_PACKBITS) return "Format err";
+  for (int y = 0; y < LCD_HEIGHT && res == FR_OK; y++) {
+    // Unpack RLE compression sequence
+    for (int x = 0; x < LCD_WIDTH * 3;) {
+      int8_t data[2]; res = f_read(f, data, 2, &size);  // Read count and value
+      int count = data[0];                                    // count
+      buf_8[x++] = data[1];                                   // copy first value
+      if (count > 0) {                                        // if count > 0 need read additional values
+        res = f_read(f, &buf_8[x], count, &size);
+        x+= count;
+      } else while (count++ < 0) buf_8[x++] = data[1];        // if count < 0 need repeat value -count times
+    }
+    // Convert from RGB888 to RGB565 and copy to screen
+    for (int x = 0; x < LCD_WIDTH; x++)
+      buf_16[x] = RGB565(buf_8[3 * x + 0], buf_8[3 * x + 1], buf_8[3 * x + 2]);
+    lcd_bulk(0, y, LCD_WIDTH, 1);
+  }
+  lcd_printf(0, LCD_HEIGHT - 3 * FONT_STR_HEIGHT,  fno->fname);
+  return NULL;
 }
 #endif
 
-static void swap_bytes(uint16_t *buf, int size) {
-  for (int i = 0; i < size; i++)
-    buf[i] = __REVSH(buf[i]); // swap byte order (example 0x10FF to 0xFF10)
+//=====================================================================================================
+// Calibration save / load
+//=====================================================================================================
+static FILE_SAVE_CALLBACK(save_cal) {
+  (void)format;
+  UINT size;
+  const char *src = (char*)&current_props;
+  const uint32_t total = sizeof(current_props);
+  return f_write(f, src, total, &size);
 }
 
+static FILE_LOAD_CALLBACK(load_cal) {
+  (void)format;
+  UINT size;
+  uint32_t magic;
+  char *src = (char*)&current_props + sizeof(magic);
+  uint32_t total = sizeof(current_props) - sizeof(magic);
+  // Compare file size and try read magic header, if all OK load it
+  if (fno->fsize != sizeof(current_props) || f_read(f, &magic, sizeof(magic), &size) != FR_OK ||
+      magic != PROPERTIES_MAGIC || f_read(f, src, total, &size) != FR_OK)
+	  return "Format err";
+  load_properties(NO_SAVE_SLOT);
+  return NULL;
+}
+
+//=====================================================================================================
+// Dump firmware to SD card as bin file image
+//=====================================================================================================
+#ifdef __SD_CARD_DUMP_FIRMWARE__
+static FILE_SAVE_CALLBACK(save_bin) {
+  (void)format;
+  UINT size;
+//  START_PROFILE
+  const char *src = (const char*)FLASH_START_ADDRESS;
+  const uint32_t total = FLASH_TOTAL_SIZE;
+  return f_write(f, src, total, &size);
+//  STOP_PROFILE
+}
+#endif
+
+//=====================================================================================================
+// Load command scripts
+//=====================================================================================================
+#ifdef __SD_CARD_LOAD__
+static FILE_LOAD_CALLBACK(load_cmd) {
+  (void)fno;
+  (void)format;
+  UINT size;
+  const int buffer_size = 256;
+  const int line_size = 128;
+  char *buf_8 = (char *)spi_buffer; // must be greater then buffer_size + line_size
+  char *line  = buf_8 + buffer_size;
+  uint16_t j = 0, i;
+  while (f_read(f, buf_8, buffer_size, &size) == FR_OK && size > 0) {
+    for (i = 0; i < size; i++) {
+      uint8_t c = buf_8[i];
+      if (c == '\r') {                             // New line (Enter)
+        line[j] = 0; j = 0;
+        VNAShell_executeCMDLine(line);
+      }
+      else if (c < 0x20) continue;                 // Others (skip)
+      else if (j < line_size) line[j++] = (char)c; // Store
+    }
+  }return NULL;
+}
+#endif
+
+//=====================================================================================================
+//                                 SD card save / load file options
+//=====================================================================================================
+#ifdef __SD_FILE_BROWSER__
+ #define FILE_OPTIONS(e, s, l, o) {e, s, l, o}
+#else
+ #define FILE_OPTIONS(e, s, l, o) {e, s, o}
+#endif
+
+#define FILE_OPT_REDRAW   (1<<0)       // need full screen update before save
+#define FILE_OPT_CONTINUE (1<<1)       // in browser mode use leveler left/right for see next/prev file
+
+// Save / Load file options
+const struct {
+  const char *ext;            // file extension
+  file_save_cb_t save;        // file save function
+#ifdef __SD_FILE_BROWSER__
+  file_load_cb_t load;        // file load function (use in browser)
+#endif
+  uint32_t opt;
+} file_opt[] = {
+  [FMT_S1P_FILE] = FILE_OPTIONS("s1p",  save_snp,  load_snp,                                   0),
+  [FMT_S2P_FILE] = FILE_OPTIONS("s2p",  save_snp,  load_snp,                                   0),
+  [FMT_BMP_FILE] = FILE_OPTIONS("bmp",  save_bmp,  load_bmp, FILE_OPT_REDRAW | FILE_OPT_CONTINUE),
+#ifdef __SD_CARD_DUMP_TIFF__
+  [FMT_TIF_FILE] = FILE_OPTIONS("tif", save_tiff, load_tiff, FILE_OPT_REDRAW | FILE_OPT_CONTINUE),
+#endif
+  [FMT_CAL_FILE] = FILE_OPTIONS("cal",  save_cal,  load_cal,                                   0),
+#ifdef __SD_CARD_DUMP_FIRMWARE__
+  [FMT_BIN_FILE] = FILE_OPTIONS("bin",  save_bin,      NULL,                                   0),
+#endif
+#ifdef __SD_CARD_LOAD__
+  [FMT_CMD_FILE] = FILE_OPTIONS("cmd",      NULL,  load_cmd,                                   0),
+#endif
+};
+
 // Create file name from current time
-static FRESULT vna_create_file(char *fs_filename)
-{
+static FRESULT ui_create_file(char *fs_filename) {
 //  shell_printf("S file\r\n");
   FRESULT res = f_mount(fs_volume, "", 1);
 //  shell_printf("Mount = %d\r\n", res);
@@ -1541,20 +1781,13 @@ static FRESULT vna_create_file(char *fs_filename)
   return res;
 }
 
-static void vna_save_file(char *name, uint8_t format)
-{
-  char *buf_8;
-  uint16_t *buf_16;
-  int i, y;
-  UINT size;
+static void ui_save_file(char *name, uint8_t format) {
   char fs_filename[FF_LFN_BUF];
+  file_save_cb_t save = file_opt[format].save;
+  if (save == NULL) return;
   // For screenshot need back to normal mode and redraw screen before capture!!
   // Redraw use spi_buffer so need do it before any file ops
-  if (ui_mode != UI_NORMAL && (format == FMT_BMP_FILE
-#ifdef __SD_CARD_DUMP_TIFF__
-    || format == FMT_TIF_FILE
-#endif
-      )) {
+  if (ui_mode != UI_NORMAL && (file_opt[format].opt & FILE_OPT_REDRAW)) {
     ui_mode_normal();
     draw_all();
   }
@@ -1564,119 +1797,26 @@ static void vna_save_file(char *name, uint8_t format)
 #if FF_USE_LFN >= 1
     uint32_t tr = rtc_get_tr_bcd(); // TR read first
     uint32_t dr = rtc_get_dr_bcd(); // DR read second
-    plot_printf(fs_filename, FF_LFN_BUF, "VNA_%06x_%06x.%s", dr, tr, file_ext[format]);
+    plot_printf(fs_filename, FF_LFN_BUF, "VNA_%06x_%06x.%s", dr, tr, file_opt[format].ext);
 #else
-    plot_printf(fs_filename, FF_LFN_BUF, "%08x.%s", rtc_get_FAT(), file_ext[format]);
+    plot_printf(fs_filename, FF_LFN_BUF, "%08x.%s", rtc_get_FAT(), file_opt[format].ext);
 #endif
   }
   else
-    plot_printf(fs_filename, FF_LFN_BUF, "%s.%s", name, file_ext[format]);
+    plot_printf(fs_filename, FF_LFN_BUF, "%s.%s", name, file_opt[format].ext);
 
-//  UINT total_size = 0;
 //  systime_t time = chVTGetSystemTimeX();
-  // Prepare filename = .s1p / .s2p / .bmp .... and open for write
-  FRESULT res = vna_create_file(fs_filename);
+  FRESULT res = ui_create_file(fs_filename);
   if (res == FR_OK) {
-    const char *s_file_format;
-    switch(format) {
-      /*
-       *  Save touchstone file for VNA (use rev 1.1 format)
-       *  https://en.wikipedia.org/wiki/Touchstone_file
-       */
-      case FMT_S1P_FILE:
-      case FMT_S2P_FILE:
-      buf_8  = (char *)spi_buffer;
-      // Write SxP file
-      if (format == FMT_S1P_FILE){
-        s_file_format = s1_file_param;
-        // write sxp header (not write NULL terminate at end)
-        res = f_write(fs_file, s1_file_header, sizeof(s1_file_header)-1, &size);
-//        total_size+=size;
-      }
-      else {
-        s_file_format = s2_file_param;
-        // Write s2p header (not write NULL terminate at end)
-        res = f_write(fs_file, s2_file_header, sizeof(s2_file_header)-1, &size);
-//        total_size+=size;
-      }
-      // Write all points data
-      for (i = 0; i < sweep_points && res == FR_OK; i++) {
-        size = plot_printf(buf_8, 128, s_file_format, getFrequency(i), measured[0][i][0], measured[0][i][1], measured[1][i][0], measured[1][i][1]);
-//        total_size+=size;
-        res = f_write(fs_file, buf_8, size, &size);
-      }
-      break;
-      /*
-       *  Save bitmap file (use v4 format allow set RGB mask)
-       */
-      case FMT_BMP_FILE:
-      buf_16 = spi_buffer;
-      res = f_write(fs_file, bmp_header_v4, sizeof(bmp_header_v4), &size); // Write header struct
-//      total_size+=size;
-      lcd_set_background(LCD_SWEEP_LINE_COLOR);
-      for (y = LCD_HEIGHT-1; y >= 0 && res == FR_OK; y--) {
-        lcd_read_memory(0, y, LCD_WIDTH, 1, buf_16);
-        swap_bytes(buf_16, LCD_WIDTH);
-        res = f_write(fs_file, buf_16, LCD_WIDTH*sizeof(uint16_t), &size);
-//        total_size+=size;
-        lcd_fill(LCD_WIDTH-1, y, 1, 1);
-      }
-      break;
-#ifdef __SD_CARD_DUMP_TIFF__
-      case FMT_TIF_FILE:
-          buf_16 = spi_buffer;
-          lcd_set_background(LCD_SWEEP_LINE_COLOR);
-          res = f_write(fs_file, tif_header, sizeof(tif_header), &size); // Write header struct
-          for (y = 0; y < LCD_HEIGHT && res == FR_OK; y++) {
-            // Use LCD_WIDTH + 128 bytes offset for RGB888 data
-            // Use 0 offset for compressed RLE (maximum need WIDTH * 4 + 128 bytes in spi_buffer)
-            buf_8 = (char *)spi_buffer + 128;
-            // Read LCD line in RGB565 format (swapped bytes)
-            lcd_read_memory(0, y, LCD_WIDTH, 1, buf_16);
-            // Convert to RGB888
-            for (int x = LCD_WIDTH - 1; x >= 0; x--) {
-              uint16_t color = (buf_16[x] << 8) | (buf_16[x] >> 8);
-              buf_8[3*x + 0] = (color>>8) & 0xF8;// if (buf_8[3*x + 0] < 0) buf_8[3*x + 0]+= 7;
-              buf_8[3*x + 1] = (color>>3) & 0xFC;// if (buf_8[3*x + 1] < 0) buf_8[3*x + 1]+= 3;
-              buf_8[3*x + 2] = (color<<3) & 0xF8;// if (buf_8[3*x + 2] < 0) buf_8[3*x + 2]+= 7;
-            }
-            size = packbits(buf_8, (char *)spi_buffer, LCD_WIDTH * 3);
-            res = f_write(fs_file, spi_buffer, size, &size);
-            lcd_fill(LCD_WIDTH-1, y, 1, 1);
-          }
-      break;
-#endif
-      /*
-       *  Save calibration
-       */
-      case FMT_CAL_FILE:
-      {
-        const char *src = (char*)&current_props;
-        const uint32_t total = sizeof(current_props);
-        res = f_write(fs_file, src, total, &size);
-      }
-      break;
-#ifdef __SD_CARD_DUMP_FIRMWARE__
-      /*
-       * Dump firmware to SD card as bin file image
-       */
-      case FMT_BIN_FILE:
-      {
-        const char *src = (const char*)FLASH_START_ADDRESS;
-        const uint32_t total = FLASH_TOTAL_SIZE;
-        res = f_write(fs_file, src, total, &size);
-      }
-      break;
-#endif
-    }
+    //  uint32_t t = getSystemTime();
+    res = save(fs_file, format);
+    //  log_printf("dump = %d\n", getSystemTime() - t);
     f_close(fs_file);
-//    shell_printf("Close = %d\r\n", res);
-//    testLog();
 //    time = chVTGetSystemTimeX() - time;
 //    shell_printf("Total time: %dms (write %d byte/sec)\r\n", time/10, total_size*10000/time);
   }
-
-  drawMessageBox("SD CARD SAVE", res == FR_OK ? fs_filename : "  Fail write  ", 2000);
+  if (keyboard_temp == 1) toggle_sweep();
+  ui_message_box("SD CARD SAVE", res == FR_OK ? fs_filename : "  Fail write  ", 2000);
   request_to_redraw(REDRAW_AREA|REDRAW_FREQUENCY);
   ui_mode_normal();
 }
@@ -1688,34 +1828,43 @@ static uint16_t fixScreenshotFormat(uint16_t data) {
   return data;
 }
 
-static UI_FUNCTION_CALLBACK(menu_sdcard_cb)
-{
+#ifdef __SD_FILE_BROWSER__
+#include "vna_modules/vna_browser.c"
+
+static UI_FUNCTION_CALLBACK(menu_sdcard_browse_cb) {
+  data = fixScreenshotFormat(data);
+  ui_mode_browser(data);
+}
+#endif
+
+static UI_FUNCTION_CALLBACK(menu_sdcard_cb) {
+  keyboard_temp = (sweep_mode & SWEEP_ENABLE) ? 1 : 0;
+  if (keyboard_temp) toggle_sweep();
   data = fixScreenshotFormat(data);
   if (VNA_MODE(VNA_MODE_AUTO_NAME))
-    vna_save_file(NULL, data);
+    ui_save_file(NULL, data);
   else
     ui_mode_keypad(data + KM_S1P_NAME); // If no auto name, call text keyboard input
 }
-
-#ifdef __SD_FILE_BROWSER__
-#include "vna_modules/vna_browser.c"
-#endif
 #endif // __USE_SD_CARD__
 
-static UI_FUNCTION_ADV_CALLBACK(menu_band_sel_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_band_sel_acb) {
   (void)data;
+  static const char* gen_names[] = {
+    "Si5351",
+    "MS5351",
+    "ZEETK"
+  };
   if (b){
-    b->p1.text = config._band_mode == 0 ? "Si5351" : "MS5351";
+    b->p1.text = gen_names[config._band_mode];
     return;
   }
-  config._band_mode = config._band_mode == 0 ? 1 : 0;
+  if (++config._band_mode >= ARRAY_COUNT(gen_names)) config._band_mode = 0;
   si5351_set_band_mode(config._band_mode);
 }
 
 #if STORED_TRACES > 0
-static UI_FUNCTION_ADV_CALLBACK(menu_stored_trace_acb)
-{
+static UI_FUNCTION_ADV_CALLBACK(menu_stored_trace_acb) {
   if (b){
     b->p1.text = getStoredTraces() & (1<<data) ? "CLEAR" : "STORE";
     return;
@@ -1724,8 +1873,10 @@ static UI_FUNCTION_ADV_CALLBACK(menu_stored_trace_acb)
 }
 #endif
 
-static UI_FUNCTION_CALLBACK(menu_back_cb)
-{
+//=====================================================================================================
+//                                 UI menus
+//=====================================================================================================
+static UI_FUNCTION_CALLBACK(menu_back_cb) {
   (void)data;
   menu_move_back(false);
 }
@@ -1769,9 +1920,9 @@ static const menuitem_t menu_calop[] = {
   { MT_ADV_CALLBACK, CAL_LOAD,  "LOAD",  menu_calop_acb },
   { MT_ADV_CALLBACK, CAL_ISOLN, "ISOLN", menu_calop_acb },
   { MT_ADV_CALLBACK, CAL_THRU,  "THRU",  menu_calop_acb },
+//{ MT_ADV_CALLBACK, KM_EDELAY, "E-DELAY", menu_keyboard_acb },
   { MT_CALLBACK, 0,             "DONE",  menu_caldone_cb },
   { MT_CALLBACK, 1,             "DONE IN RAM",  menu_caldone_cb },
-  { MT_ADV_CALLBACK, KM_EDELAY, "E-DELAY\n " R_LINK_COLOR "%b.7F" S_SECOND, menu_keyboard_acb },
   { MT_NEXT,     0, NULL, menu_back } // next-> menu_back
 };
 
@@ -1835,6 +1986,10 @@ const menuitem_t menu_cal[] = {
   { MT_ADV_CALLBACK, 0, "RANGE",         menu_cal_range_acb },
   { MT_CALLBACK,     0, "RESET",         menu_cal_reset_cb },
   { MT_ADV_CALLBACK, 0, "APPLY",         menu_cal_apply_acb },
+  { MT_ADV_CALLBACK, 0, "ENHANCED\nRESPONSE", menu_cal_enh_acb},
+#ifdef __VNA_Z_RENORMALIZATION__
+  { MT_ADV_CALLBACK, KM_CAL_LOAD_R, "STANDARD\nLOAD R " R_LINK_COLOR "%bF" S_OHM, menu_keyboard_acb},
+#endif
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
 
@@ -1921,7 +2076,7 @@ const menuitem_t menu_scale[] = {
   { MT_ADV_CALLBACK, KM_BOTTOM,    "BOTTOM",              menu_scale_keyboard_acb },
   { MT_ADV_CALLBACK, KM_SCALE,     "SCALE/DIV",           menu_scale_keyboard_acb },
   { MT_ADV_CALLBACK, KM_REFPOS,    "REFERENCE\nPOSITION", menu_scale_keyboard_acb },
-  { MT_ADV_CALLBACK, KM_EDELAY, "E-DELAY\n " R_LINK_COLOR "%b.7F" S_SECOND, menu_keyboard_acb },
+  { MT_ADV_CALLBACK, KM_EDELAY,    "E-DELAY",             menu_keyboard_acb },
   { MT_ADV_CALLBACK, KM_S21OFFSET, "S21 OFFSET\n " R_LINK_COLOR "%b.3F" S_dB, menu_keyboard_acb },
 #ifdef __USE_GRID_VALUES__
   { MT_ADV_CALLBACK, VNA_MODE_SHOW_GRID, "SHOW GRID\nVALUES", menu_vna_mode_acb },
@@ -2126,6 +2281,12 @@ const menuitem_t menu_measure_s21[] = {
   { MT_ADV_CALLBACK, KM_MEASURE_R,        " Rl = " R_LINK_COLOR "%b.4F" S_OHM, menu_keyboard_acb},
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
+
+const menuitem_t menu_measure_filter[] = {
+  { MT_ADV_CALLBACK, MEASURE_NONE,         "OFF",               menu_measure_acb },
+  { MT_ADV_CALLBACK, MEASURE_FILTER,       "FILTER\n (S21)",    menu_measure_acb },
+  { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
+};
 #endif
 
 const menuitem_t menu_measure[] = {
@@ -2143,6 +2304,7 @@ const menuitem_t menu_measure[] = {
   { MT_ADV_CALLBACK, MEASURE_SHUNT_LC,    "SHUNT LC\n (S21)",   menu_measure_acb },
   { MT_ADV_CALLBACK, MEASURE_SERIES_LC,   "SERIES LC\n (S21)",  menu_measure_acb },
   { MT_ADV_CALLBACK, MEASURE_SERIES_XTAL, "SERIES\nXTAL (S21)", menu_measure_acb },
+  { MT_ADV_CALLBACK, MEASURE_FILTER,      "FILTER\n (S21)",     menu_measure_acb },
 #endif
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
@@ -2157,6 +2319,7 @@ const menuitem_t *menu_measure_list[] = {
   [MEASURE_SHUNT_LC] = menu_measure_s21,
   [MEASURE_SERIES_LC] = menu_measure_s21,
   [MEASURE_SERIES_XTAL] = menu_measure_s21,
+  [MEASURE_FILTER] = menu_measure_filter,
 #endif
 #ifdef __S11_CABLE_MEASURE__
   [MEASURE_S11_CABLE] = menu_measure_cable,
@@ -2230,6 +2393,9 @@ const menuitem_t menu_device1[] = {
 #ifdef __DIGIT_SEPARATOR__
   { MT_ADV_CALLBACK, VNA_MODE_SEPARATOR, "SEPARATOR\n " R_LINK_COLOR "%s", menu_vna_mode_acb },
 #endif
+#ifdef __USB_UID__
+  { MT_ADV_CALLBACK, VNA_MODE_USB_UID,   "USB DEVICE\nUID",                menu_vna_mode_acb},
+#endif
 #ifdef __SD_CARD_DUMP_FIRMWARE__
   { MT_CALLBACK, FMT_BIN_FILE,           "DUMP\nFIRMWARE",                 menu_sdcard_cb },
 #endif
@@ -2244,6 +2410,29 @@ const menuitem_t menu_device1[] = {
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
 
+#ifdef __USE_RTC__
+static UI_FUNCTION_ADV_CALLBACK(menu_rtc_out_acb) {
+  (void)data;
+  if(b) {
+    if (rtc_clock_output_enabled()) {
+      b->icon = BUTTON_ICON_CHECK;
+      b->p1.text = "ON";
+    } else
+      b->p1.text = "OFF";
+    return;
+  }
+  rtc_clock_output_toggle();
+}
+
+const menuitem_t menu_rtc[] = {
+  { MT_ADV_CALLBACK, KM_RTC_DATE,  "SET DATE",                               menu_keyboard_acb },
+  { MT_ADV_CALLBACK, KM_RTC_TIME,  "SET TIME",                               menu_keyboard_acb },
+  { MT_ADV_CALLBACK, KM_RTC_CAL,   "RTC CAL\n " R_LINK_COLOR "%+b.3f" S_PPM, menu_keyboard_acb },
+  { MT_ADV_CALLBACK, 0,            "RTC 512" S_Hz "\n Led2 %s",              menu_rtc_out_acb },
+  { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
+};
+#endif
+
 const menuitem_t menu_device[] = {
   { MT_ADV_CALLBACK, KM_THRESHOLD, "THRESHOLD\n " R_LINK_COLOR "%.6q",         menu_keyboard_acb },
   { MT_ADV_CALLBACK, KM_XTAL,      "TCXO\n " R_LINK_COLOR "%.6q",              menu_keyboard_acb },
@@ -2257,9 +2446,8 @@ const menuitem_t menu_device[] = {
 #ifdef __FLIP_DISPLAY__
   { MT_ADV_CALLBACK, VNA_MODE_FLIP_DISPLAY, "FLIP\nDISPLAY",                   menu_vna_mode_acb },
 #endif
-#ifdef __USE_RTC__
-  { MT_ADV_CALLBACK, KM_RTC_DATE,  "SET DATE",                                 menu_keyboard_acb },
-  { MT_ADV_CALLBACK, KM_RTC_TIME,  "SET TIME",                                 menu_keyboard_acb },
+#ifdef __DFU_SOFTWARE_MODE__
+  { MT_SUBMENU, 0,                 S_RARROW "DFU",                             menu_dfu },
 #endif
   { MT_SUBMENU, 0, S_RARROW" MORE", menu_device1 },
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
@@ -2269,7 +2457,7 @@ const menuitem_t menu_config[] = {
   { MT_CALLBACK,  MENU_CONFIG_TOUCH_CAL, "TOUCH CAL",     menu_config_cb },
   { MT_CALLBACK, MENU_CONFIG_TOUCH_TEST, "TOUCH TEST",    menu_config_cb },
   { MT_SUBMENU,                       0, "EXPERT\nSETTINGS", menu_device },
-  { MT_CALLBACK,                      0, "SAVE CONFIG",   menu_config_save_cb },
+  { MT_CALLBACK, MENU_CONFIG_SAVE      , "SAVE CONFIG",   menu_config_cb },
 #ifdef __USE_SERIAL_CONSOLE__
   { MT_SUBMENU,                       0, "CONNECTION",    menu_connection },
 #endif
@@ -2277,8 +2465,8 @@ const menuitem_t menu_config[] = {
 #ifdef __LCD_BRIGHTNESS__
   { MT_ADV_CALLBACK,                  0, "BRIGHTNESS\n " R_LINK_COLOR "%d%%%%", menu_brightness_acb },
 #endif
-#ifdef __DFU_SOFTWARE_MODE__
-  { MT_SUBMENU,                       0, S_RARROW "DFU",   menu_dfu },
+#ifdef __USE_RTC__
+  { MT_SUBMENU,                       0, "DATE/TIME",     menu_rtc },
 #endif
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
@@ -2332,9 +2520,7 @@ static int get_lines_count(const char *label) {
   return n;
 }
 
-static void
-ensure_selection(void)
-{
+static void ensure_selection(void) {
   int i = current_menu_get_count();
   if (selection < 0)
     selection = -1;
@@ -2345,9 +2531,7 @@ ensure_selection(void)
   menu_button_height = MENU_BUTTON_HEIGHT(i);
 }
 
-static void
-menu_move_back(bool leave_ui)
-{
+static void menu_move_back(bool leave_ui) {
   if (menu_current_level == 0)
     return;
   menu_current_level--;
@@ -2356,14 +2540,12 @@ menu_move_back(bool leave_ui)
     ui_mode_normal();
 }
 
-static void
-menu_set_submenu(const menuitem_t *submenu) {
+static void menu_set_submenu(const menuitem_t *submenu) {
   menu_stack[menu_current_level] = submenu;
   ensure_selection();
 }
 
-static void
-menu_push_submenu(const menuitem_t *submenu) {
+static void menu_push_submenu(const menuitem_t *submenu) {
   if (menu_current_level < MENU_STACK_DEPTH_MAX-1)
     menu_current_level++;
   menu_set_submenu(submenu);
@@ -2380,9 +2562,7 @@ menu_move_top(void)
 }
 */
 
-static void
-menu_invoke(int item)
-{
+static void menu_invoke(int item) {
   const menuitem_t *menu = current_menu_item(item);
   if (menu == NULL) return;
   switch (menu->type) {
@@ -2400,60 +2580,146 @@ menu_invoke(int item)
   }
   // Redraw menu after if UI in menu mode
   if (ui_mode == UI_MENU)
-    draw_menu(-1);
+    menu_draw(-1);
 }
 
-// Draw button function
-static void
-draw_button(uint16_t x, uint16_t y, uint16_t w, uint16_t h, button_t *b) {
-  uint16_t type = b->border;
-  uint16_t bw = type & BUTTON_BORDER_WIDTH_MASK;
-  // Draw border if width > 0
-  if (bw) {
-    uint16_t br = LCD_RISE_EDGE_COLOR;
-    uint16_t bd = LCD_FALLEN_EDGE_COLOR;
-    lcd_set_background(type&BUTTON_BORDER_TOP    ? br : bd);lcd_fill(x,          y,           w, bw); // top
-    lcd_set_background(type&BUTTON_BORDER_LEFT   ? br : bd);lcd_fill(x,          y,          bw,  h); // left
-    lcd_set_background(type&BUTTON_BORDER_RIGHT  ? br : bd);lcd_fill(x + w - bw, y,          bw,  h); // right
-    lcd_set_background(type&BUTTON_BORDER_BOTTOM ? br : bd);lcd_fill(x,          y + h - bw,  w, bw); // bottom
+//
+// UI Menu functions
+//
+static void menu_draw_buttons(const menuitem_t *m, uint32_t mask) {
+  int i;
+  int y = MENU_BUTTON_Y_OFFSET;
+  for (i = 0; i < MENU_BUTTON_MAX && m; i++, m = menu_next_item(m), y+=menu_button_height) {
+    if ((mask&(1<<i)) == 0) continue;
+    button_t button;
+    button.fg = LCD_MENU_TEXT_COLOR;
+    button.icon = BUTTON_ICON_NONE;
+    // focus only in MENU mode but not in KEYPAD mode
+    if (ui_mode == UI_MENU && i == selection){
+      button.bg = LCD_MENU_ACTIVE_COLOR;
+      button.border = MENU_BUTTON_BORDER|BUTTON_BORDER_FALLING;
+    } else{
+      button.bg = LCD_MENU_COLOR;
+      button.border = MENU_BUTTON_BORDER|BUTTON_BORDER_RISE;
   }
-  // Set colors for button and text
-  lcd_set_colors(b->fg, b->bg);
-  if (type & BUTTON_BORDER_NO_FILL) return;
-  lcd_fill(x + bw, y + bw, w - (bw * 2), h - (bw * 2));
+    // Custom button, apply custom settings/label from callback
+    char *text;
+    uint16_t text_offs;
+    if (m->type == MT_ADV_CALLBACK) {
+      button.label[0] = 0;
+      if (m->reference) ((menuaction_acb_t)m->reference)(m->data, &button);
+      // Apply custom text, from button label and
+      if (button.label[0] == 0)
+        plot_printf(button.label, sizeof(button.label), m->label, button.p1.u);
+      text = button.label;
+}
+    else
+      text = m->label;
+    // Draw button
+    ui_draw_button(LCD_WIDTH-MENU_BUTTON_WIDTH, y, MENU_BUTTON_WIDTH, menu_button_height, &button);
+    // Draw icon if need (and add extra shift for text)
+    if (button.icon >= 0) {
+      lcd_blitBitmap(LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_ICON_OFFSET, y+(menu_button_height-ICON_HEIGHT)/2, ICON_WIDTH, ICON_HEIGHT, ICON_GET_DATA(button.icon));
+      text_offs = LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_ICON_OFFSET + ICON_SIZE;
+    } else
+      text_offs = LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_TEXT_OFFSET;
+    // Draw button text
+    int lines = get_lines_count(text);
+#if _USE_FONT_ != _USE_SMALL_FONT_
+    if (menu_button_height < lines * FONT_GET_HEIGHT + 2) {
+      lcd_set_font(FONT_SMALL);
+      lcd_drawstring(text_offs, y+(menu_button_height - lines * sFONT_GET_HEIGHT - 1)/2, text);
+  }
+    else {
+      lcd_set_font(FONT_NORMAL);
+      lcd_drawstring(text_offs, y+(menu_button_height - lines * FONT_GET_HEIGHT)/2, text);
+  }
+#else
+    lcd_drawstring(text_offs, y+(menu_button_height - lines * FONT_GET_HEIGHT)/2, text);
+#endif
+  }
+  // Erase empty buttons
+  if (AREA_HEIGHT_NORMAL + OFFSETY > y) {
+    lcd_set_background(LCD_BG_COLOR);
+    lcd_fill(LCD_WIDTH-MENU_BUTTON_WIDTH, y, MENU_BUTTON_WIDTH, AREA_HEIGHT_NORMAL + OFFSETY - y);
+  }
+  lcd_set_font(FONT_NORMAL);
 }
 
-// Draw message box function
-void drawMessageBox(const char *header, const char *text, uint32_t delay) {
-  button_t b;
-  int x , y;
-  b.bg = LCD_MENU_COLOR;
-  b.fg = LCD_MENU_TEXT_COLOR;
-  b.border = BUTTON_BORDER_FLAT|1;
-  if (header) {// Draw header
-    draw_button((LCD_WIDTH-MESSAGE_BOX_WIDTH)/2, LCD_HEIGHT/2-40, MESSAGE_BOX_WIDTH, 60, &b);
-    x = (LCD_WIDTH-MESSAGE_BOX_WIDTH)/2 + 10;
-    y = LCD_HEIGHT/2-40 + 5;
-    lcd_drawstring(x, y, header);
-    request_to_redraw(REDRAW_AREA);
-  }
-  if (text) {  // Draw window
-    lcd_set_colors(LCD_MENU_TEXT_COLOR, LCD_FG_COLOR);
-    lcd_fill((LCD_WIDTH-MESSAGE_BOX_WIDTH)/2+3, LCD_HEIGHT/2-40+FONT_STR_HEIGHT+8, MESSAGE_BOX_WIDTH-6, 60-FONT_STR_HEIGHT-8-3);
-    x = (LCD_WIDTH-MESSAGE_BOX_WIDTH)/2 + 20;
-    y = LCD_HEIGHT/2-40 + FONT_STR_HEIGHT + 8 + 14;
-    lcd_drawstring(x, y, text);
-    request_to_redraw(REDRAW_AREA);
+static void menu_draw(uint32_t mask) {
+  menu_draw_buttons(menu_stack[menu_current_level], mask);
+}
+
+#if 0
+static void erase_menu_buttons(void) {
+  lcd_set_background(LCD_BG_COLOR);
+  lcd_fill(LCD_WIDTH-MENU_BUTTON_WIDTH, 0, MENU_BUTTON_WIDTH, MENU_BUTTON_HEIGHT*MENU_BUTTON_MAX);
+}
+#endif
+
+//  Menu mode processing
+static void ui_mode_menu(void) {
+  if (ui_mode == UI_MENU)
+    return;
+
+  ui_mode = UI_MENU;
+  // narrowen plotting area
+  set_area_size(AREA_WIDTH_NORMAL - MENU_BUTTON_WIDTH, AREA_HEIGHT_NORMAL);
+  ensure_selection();
+  menu_draw(-1);
+}
+
+static void ui_menu_lever(uint16_t status) {
+  uint16_t count = current_menu_get_count();
+  if (status & EVT_BUTTON_SINGLE_CLICK) {
+    if ((uint16_t)selection >= count)
+      ui_mode_normal();
+    else
+      menu_invoke(selection);
+    return;
   }
 
   do {
-    chThdSleepMilliseconds(delay == 0 ? 50 : delay);
-  } while (delay == 0 && btn_check() != EVT_BUTTON_SINGLE_CLICK && touch_check() != EVT_TOUCH_PRESSED);
+    uint32_t mask = 1<<selection;
+    if (status & EVT_UP  ) selection++;
+    if (status & EVT_DOWN) selection--;
+    // close menu if no menu item
+    if ((uint16_t)selection >= count){
+      ui_mode_normal();
+      return;
+}
+    menu_draw(mask|(1<<selection));
+    chThdSleepMilliseconds(100);
+  } while ((status = btn_wait_release()) != 0);
 }
 
-//
+static void ui_menu_touch(int touch_x, int touch_y) {
+  if (LCD_WIDTH-MENU_BUTTON_WIDTH < touch_x) {
+    int16_t i = (touch_y - MENU_BUTTON_Y_OFFSET) / menu_button_height;
+    if ((uint16_t)i < (uint16_t)current_menu_get_count()) {
+      uint32_t mask = (1<<i)|(1<<selection);
+      selection = i;
+      menu_draw(mask);
+      touch_wait_release();
+      selection = -1;
+      menu_invoke(i);
+      return;
+    }
+  }
+
+  touch_wait_release();
+  ui_mode_normal();
+}
+//====================================== end menu processing ==========================================
+
+
+//=====================================================================================================
+//                                  KEYBOARD macros, variables
+//=====================================================================================================
+
+//=====================================================================================================
 // KEYBOARD functions
-//
+//=====================================================================================================
 enum {NUM_KEYBOARD, TXT_KEYBOARD};
 
 // Keyboard size and position data
@@ -2483,7 +2749,7 @@ static const keypads_t keypads_freq[] = {
 };
 
 static const keypads_t keypads_ufloat[] = { //
-  { 13, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 13 + 3 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6
@@ -2496,11 +2762,14 @@ static const keypads_t keypads_ufloat[] = { //
   { 0x10, KP_8 },
   { 0x20, KP_9 },
   { 0x33, KP_ENTER },
-  { 0x23, KP_BS }
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
+  { 0x31, KP_EMPTY },
+  { 0x32, KP_EMPTY },
 };
 
 static const keypads_t keypads_percent[] = { //
-  { 13, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 13 + 3 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6
@@ -2513,11 +2782,14 @@ static const keypads_t keypads_percent[] = { //
   { 0x10, KP_8 },
   { 0x20, KP_9 },
   { 0x33, KP_PERCENT },
-  { 0x23, KP_BS }
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
+  { 0x31, KP_EMPTY },
+  { 0x32, KP_EMPTY },
 };
 
 static const keypads_t keypads_float[] = {
-  { 14, NUM_KEYBOARD },     // 14 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 14 + 2 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6
@@ -2531,7 +2803,9 @@ static const keypads_t keypads_float[] = {
   { 0x20, KP_9 },
   { 0x32, KP_MINUS },
   { 0x33, KP_ENTER },
-  { 0x23, KP_BS }
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
+  { 0x31, KP_EMPTY },
 };
 
 static const keypads_t keypads_mfloat[] = {
@@ -2555,7 +2829,7 @@ static const keypads_t keypads_mfloat[] = {
 };
 
 static const keypads_t keypads_mkufloat[] = {
-  { 15, NUM_KEYBOARD },     // 15 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 15 + 1 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6 m
@@ -2569,8 +2843,9 @@ static const keypads_t keypads_mkufloat[] = {
   { 0x20, KP_9 },
   { 0x31, KP_m },
   { 0x32, KP_k },
-  { 0x33, KP_ENTER },
-  { 0x23, KP_BS }
+  { 0x33, KP_X1 },
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
 };
 
 static const keypads_t keypads_nfloat[] = {
@@ -2629,6 +2904,7 @@ static const keypads_t *keypad_type_list[] = {
 float keyboard_get_float(void)   {return my_atof(kp_buf);}
 freq_t keyboard_get_freq(void)   {return my_atoui(kp_buf);}
 uint32_t keyboard_get_uint(void) {return my_atoui(kp_buf);}
+int32_t keyboard_get_int(void)   {return my_atoi(kp_buf);}
 
 // Keyboard call back functions, allow get value for Keyboard menu button (see menu_keyboard_acb) and apply on finish input
 UI_KEYBOARD_CALLBACK(input_freq) {
@@ -2683,20 +2959,25 @@ UI_KEYBOARD_CALLBACK(input_amplitude) {
 
 UI_KEYBOARD_CALLBACK(input_scale) {
   (void)data;
-  if (b) {b->p1.f = get_trace_scale(current_trace); return;}
+  if (b) return;
   set_trace_scale(current_trace, keyboard_get_float());
 }
 
 UI_KEYBOARD_CALLBACK(input_ref) {
   (void)data;
-  if (b) {b->p1.f = get_trace_refpos(current_trace); return;}
+  if (b) return;
   set_trace_refpos(current_trace, keyboard_get_float());
 }
 
 UI_KEYBOARD_CALLBACK(input_edelay) {
   (void)data;
-  if (b) {b->p1.f = electrical_delay; return;}
-  set_electrical_delay(keyboard_get_float());
+  if (current_trace == TRACE_INVALID) return;
+  int ch = trace[current_trace].channel;
+  if (b) {
+    plot_printf(b->label, sizeof(b->label), "E-DELAY S%d1\n " R_LINK_COLOR "%.7F" S_SECOND, ch + 1, current_props._electrical_delay[ch]);
+    return;
+}
+  set_electrical_delay(ch, keyboard_get_float());
 }
 
 UI_KEYBOARD_CALLBACK(input_s21_offset) {
@@ -2752,9 +3033,9 @@ UI_KEYBOARD_CALLBACK(input_measure_r) {
 
 #ifdef __VNA_Z_RENORMALIZATION__
 UI_KEYBOARD_CALLBACK(input_portz) {
-  (void)data;
-  if (b) {b->p1.f = current_props._portz; return;}
-  current_props._portz = keyboard_get_float();
+  if (b) {b->p1.f = data ? current_props._cal_load_r : current_props._portz; return;}
+  if (data) current_props._cal_load_r = keyboard_get_float();
+  else      current_props._portz = keyboard_get_float();
 }
 #endif
 
@@ -2795,12 +3076,21 @@ UI_KEYBOARD_CALLBACK(input_date_time) {
   }
   rtc_set_time(dt_buf[1], dt_buf[0]);
 }
+
+UI_KEYBOARD_CALLBACK(input_rtc_cal) {
+  (void)data;
+  if (b) {
+    b->p1.f = rtc_get_cal();
+    return;
+  }
+  rtc_set_cal(keyboard_get_float());
+}
 #endif
 
 #ifdef __USE_SD_CARD__
 UI_KEYBOARD_CALLBACK(input_filename) {
   if (b) return;
-  vna_save_file(kp_buf, data);
+  ui_save_file(kp_buf, data);
 }
 #endif
 
@@ -2836,10 +3126,12 @@ const keypads_list keypads_mode_tbl[KM_NONE] = {
 #endif
 #ifdef __VNA_Z_RENORMALIZATION__
 [KM_Z_PORT]          = {KEYPAD_UFLOAT, 0,             "PORT Z 50" S_RARROW, input_portz    }, // Port Z renormalization impedance
+[KM_CAL_LOAD_R]      = {KEYPAD_UFLOAT, 1,             "STANDARD\n LOAD R",  input_portz    }, // Calibration standard load R
 #endif
 #ifdef __USE_RTC__
 [KM_RTC_DATE]        = {KEYPAD_UFLOAT, KM_RTC_DATE,   "SET DATE\nYY MM DD", input_date_time}, // Date
 [KM_RTC_TIME]        = {KEYPAD_UFLOAT, KM_RTC_TIME,   "SET TIME\nHH MM SS", input_date_time}, // Time
+[KM_RTC_CAL]         = {KEYPAD_FLOAT,  0,             "RTC CAL",            input_rtc_cal  }, // RTC calibration in ppm
 #endif
 #ifdef __USE_SD_CARD__
 [KM_S1P_NAME]        = {KEYPAD_TEXT,   FMT_S1P_FILE,  "S1P",                input_filename }, // s1p filename
@@ -2855,14 +3147,13 @@ const keypads_list keypads_mode_tbl[KM_NONE] = {
 #endif
 };
 
-static void
-keypad_set_value(void) {
-  const keyboard_cb_t cb = keypads_mode_tbl[keypad_mode].cb;
-  if (cb) cb(keypads_mode_tbl[keypad_mode].data, NULL);
+// Keyboard callback function for UI button
+void ui_keyboard_cb(uint16_t data, button_t *b) {
+  const keyboard_cb_t cb = keypads_mode_tbl[data].cb;
+  if (cb) cb(keypads_mode_tbl[data].data, b);
 }
 
-static void
-draw_keypad_button(int id) {
+static void keypad_draw_button(int id) {
   if (id < 0) return;
   button_t button;
   button.fg = LCD_MENU_TEXT_COLOR;
@@ -2875,33 +3166,32 @@ draw_keypad_button(int id) {
     button.border = KEYBOARD_BUTTON_BORDER|BUTTON_BORDER_RISE;
   }
 
-  const keypad_pos_t *p = &key_pos[keypads[0].c];
-  int x = p->x_offs + (keypads[id+1].pos>> 4) * p->width;
-  int y = p->y_offs + (keypads[id+1].pos&0xF) * p->height;
-  draw_button(x, y, p->width, p->height, &button);
-  if (keypads[0].c == NUM_KEYBOARD) {
-    lcd_drawfont(keypads[id+1].c,
+  const keypad_pos_t *p = &key_pos[keypads->type];
+  int x = p->x_offs + (keypads->buttons[id].pos>> 4) * p->width;
+  int y = p->y_offs + (keypads->buttons[id].pos&0xF) * p->height;
+  ui_draw_button(x, y, p->width, p->height, &button);
+  uint8_t ch = keypads->buttons[id].c;
+  if (ch == KP_EMPTY) return; // Empty button
+  if (keypads->type == NUM_KEYBOARD) {
+    lcd_drawfont(ch,
                      x + (KP_WIDTH - NUM_FONT_GET_WIDTH) / 2,
                      y + (KP_HEIGHT - NUM_FONT_GET_HEIGHT) / 2);
   } else {
 #if 0
-    lcd_drawchar(keypads[id+1].c,
+    lcd_drawchar(ch,
                      x + (KPF_WIDTH - FONT_WIDTH) / 2,
                      y + (KPF_HEIGHT - FONT_GET_HEIGHT) / 2);
 #else
-    lcd_drawchar_size(keypads[id+1].c,
+    lcd_drawchar_size(ch,
                      x + KPF_WIDTH/2 - FONT_WIDTH + 1,
                      y + KPF_HEIGHT/2 - FONT_GET_HEIGHT, 2);
 #endif
   }
 }
 
-static void
-draw_keypad(void)
-{
-  int i;
-  for(i = 0; i < keypads[0].pos; i++)
-    draw_keypad_button(i);
+static void keypad_draw(void) {
+  for(int i = 0; i < keypads->size; i++)
+    keypad_draw_button(i);
 }
 
 static int period_pos(void) {int j; for (j = 0; kp_buf[j] && kp_buf[j] != '.'; j++); return j;}
@@ -2914,9 +3204,7 @@ static void draw_numeric_area_frame(void) {
   lcd_drawstring(10, LCD_HEIGHT-(FONT_STR_HEIGHT * lines + NUM_INPUT_HEIGHT)/2, label);
 }
 
-static void
-draw_numeric_input(const char *buf)
-{
+static void draw_numeric_input(const char *buf) {
   uint16_t x = 14 + 10 * FONT_WIDTH;
   uint16_t y = LCD_HEIGHT-(NUM_FONT_GET_HEIGHT+NUM_INPUT_HEIGHT)/2;
   uint16_t xsim;
@@ -2944,9 +3232,7 @@ draw_numeric_input(const char *buf)
   lcd_fill(x, y, NUM_FONT_GET_WIDTH+2+10, NUM_FONT_GET_HEIGHT);
 }
 
-static void
-draw_text_input(const char *buf)
-{
+static void draw_text_input(const char *buf) {
   lcd_set_colors(LCD_INPUT_TEXT_COLOR, LCD_INPUT_BG_COLOR);
 #if 0
   uint16_t x = 14 + 5 * FONT_WIDTH;
@@ -2962,14 +3248,14 @@ draw_text_input(const char *buf)
 #endif
 }
 
-/*
- * Keyboard UI processing
- */
-static int
-num_keypad_click(int c, int kp_index) {
+//=====================================================================================================
+//                                     Keyboard UI processing
+//=====================================================================================================
+enum {K_CONTINUE = 0, K_DONE, K_CANCEL};
+static int num_keypad_click(int c, int kp_index) {
   if (c >= KP_k && c <= KP_PERCENT) {
     if (kp_index == 0)
-      return KP_CANCEL;
+      return K_CANCEL;
     if (c >= KP_k && c <= KP_G) {        // Apply k, M, G input (add zeroes and shift . right)
       uint16_t scale = c - KP_k + 1;
       scale+= (scale<<1);
@@ -2984,7 +3270,7 @@ num_keypad_click(int c, int kp_index) {
       kp_buf[kp_index  ] = prefix[c - KP_m];
       kp_buf[kp_index+1] = 0;
     }
-    return KP_DONE;
+    return K_DONE;
   }
 #ifdef __USE_RTC__
   int maxlength = (1<<keypad_mode)&((1<<KM_RTC_DATE)|(1<<KM_RTC_TIME)) ? 6 : NUMINPUT_LEN;
@@ -2992,14 +3278,12 @@ num_keypad_click(int c, int kp_index) {
   int maxlength = NUMINPUT_LEN;
 #endif
   if (c == KP_BS) {
-    if (kp_index == 0) return KP_CANCEL;
+    if (kp_index == 0) return K_CANCEL;
       --kp_index;
   } else if (c == KP_MINUS) {
     int i;
     if (kp_buf[0] == '-') {for (i = 0; i < NUMINPUT_LEN; i++) kp_buf[i] = kp_buf[i+1]; --kp_index;}
     else                  {for (i = NUMINPUT_LEN; i > 0; i--) kp_buf[i] = kp_buf[i-1]; kp_buf[0] = '-'; if (kp_index < maxlength) ++kp_index;}
-//    if (kp_index == 0)
-//      kp_buf[kp_index++] = '-';
   } else if (kp_index < maxlength) {
     if (c <= KP_9)
       kp_buf[kp_index++] = '0' + c;
@@ -3008,245 +3292,97 @@ num_keypad_click(int c, int kp_index) {
   }
   kp_buf[kp_index] = '\0';
   draw_numeric_input(kp_buf);
-  return KP_CONTINUE;
+  return K_CONTINUE;
 }
 
-static int
-txt_keypad_click(int c, int kp_index)
-{
+static int txt_keypad_click(int c, int kp_index) {
   if (c == S_ENTER[0]) {  // Enter
-    return kp_index == 0 ? KP_CANCEL : KP_DONE;
+    return kp_index == 0 ? K_CANCEL : K_DONE;
   }
   if (c == S_LARROW[0]) { // Backspace
     if (kp_index == 0)
-      return KP_CANCEL;
+      return K_CANCEL;
     --kp_index;
   } else if (kp_index < TXTINPUT_LEN) { // any other text input
     kp_buf[kp_index++] = c;
   }
   kp_buf[kp_index] = '\0';
   draw_text_input(kp_buf);
-  return KP_CONTINUE;
+  return K_CONTINUE;
 }
 
-static void
-ui_mode_keypad(int _keypad_mode)
-{
+static void ui_mode_keypad(int mode) {
   if (ui_mode == UI_KEYPAD)
     return;
+  ui_mode = UI_KEYPAD;
   set_area_size(0, 0);
   // keypads array
-  keypad_mode = _keypad_mode;
-  keypads = keypad_type_list[keypads_mode_tbl[keypad_mode].keypad_type];
+  keypad_mode = mode;
+  keypads = keypad_type_list[keypads_mode_tbl[mode].keypad_type];
   selection = -1;
   kp_buf[0] = 0;
-  ui_mode = UI_KEYPAD;
-  draw_menu(-1);
-  draw_keypad();
+//menu_draw(-1);
+  keypad_draw();
   draw_numeric_area_frame();
 }
 
-static void
-keypad_click(int key) {
-  int c = keypads[key+1].c;  // !!! Use key + 1 (zero key index used or size define)
+static void keypad_click(int key) {
+  int c = keypads->buttons[key].c;  // !!! Use key + 1 (zero key index used or size define)
   int index = strlen(kp_buf);
-  int result = keypads[0].c == NUM_KEYBOARD ? num_keypad_click(c, index) : txt_keypad_click(c, index);
-  if (result == KP_DONE) keypad_set_value(); // apply input done
+  int result = keypads->type == NUM_KEYBOARD ? num_keypad_click(c, index) : txt_keypad_click(c, index);
+  if (result == K_DONE) ui_keyboard_cb(keypad_mode, NULL); // apply input done
   // Exit loop on done or cancel
-  if (result != KP_CONTINUE)
+  if (result != K_CONTINUE)
     ui_mode_normal();
 }
 
-static void
-ui_keypad_touch(int touch_x, int touch_y)
-{
-  const keypad_pos_t *p = &key_pos[keypads[0].c];
+static void ui_keypad_touch(int touch_x, int touch_y) {
+  const keypad_pos_t *p = &key_pos[keypads->type];
   if (touch_x < p->x_offs || touch_y < p->y_offs) return;
   // Calculate key position from touch x and y
   touch_x-= p->x_offs; touch_x/= p->width;
   touch_y-= p->y_offs; touch_y/= p->height;
   uint8_t pos = (touch_y & 0x0F) | (touch_x<<4);
-  for (int i = 0; i < keypads[0].pos; i++) {
-    if (keypads[i+1].pos != pos) continue;
+  for (int i = 0; i < keypads->size; i++) {
+    if (keypads->buttons[i].pos != pos) continue;
+    if (keypads->buttons[i].c == KP_EMPTY) break; // Empty
     int old = selection;
-    draw_keypad_button(selection = i);  // draw new focus
-    draw_keypad_button(old);            // Erase old focus
+    keypad_draw_button(selection = i);  // draw new focus
+    keypad_draw_button(old);            // Erase old focus
     touch_wait_release();
     selection = -1;
-    draw_keypad_button(i);              // erase new focus
+    keypad_draw_button(i);              // erase new focus
     keypad_click(i);                    // Process input
     return;
   }
   return;
 }
 
-static void
-ui_keypad_lever(uint16_t status)
-{
+static void ui_keypad_lever(uint16_t status) {
   if (status == EVT_BUTTON_SINGLE_CLICK) {
     if (selection >= 0) // Process input
       keypad_click(selection);
     return;
   }
-  int keypads_last_index = keypads[0].pos - 1;
+  int keypads_last_index = keypads->size - 1;
   do {
     int old = selection;
+    do {
     if ((status & EVT_DOWN) && --selection < 0) selection = keypads_last_index;
     if ((status & EVT_UP)   && ++selection > keypads_last_index) selection = 0;
-    draw_keypad_button(old);
-    draw_keypad_button(selection);
+    } while (keypads->buttons[selection].c == KP_EMPTY); // Skip empty
+    keypad_draw_button(old);
+    keypad_draw_button(selection);
     chThdSleepMilliseconds(100);
   } while ((status = btn_wait_release()) != 0);
 }
-//========================== end keyboard input =======================
+//==================================== end keyboard input =============================================
 
-//
-// UI Menu functions
-//
-static void
-draw_menu_buttons(const menuitem_t *m, uint32_t mask)
-{
-  int i;
-  int y = MENU_BUTTON_Y_OFFSET;
-  for (i = 0; i < MENU_BUTTON_MAX && m; i++, m = menu_next_item(m), y+=menu_button_height) {
-    if ((mask&(1<<i)) == 0) continue;
-    button_t button;
-    button.fg = LCD_MENU_TEXT_COLOR;
-    button.icon = BUTTON_ICON_NONE;
-    // focus only in MENU mode but not in KEYPAD mode
-    if (ui_mode == UI_MENU && i == selection){
-      button.bg = LCD_MENU_ACTIVE_COLOR;
-      button.border = MENU_BUTTON_BORDER|BUTTON_BORDER_FALLING;
-    } else{
-      button.bg = LCD_MENU_COLOR;
-      button.border = MENU_BUTTON_BORDER|BUTTON_BORDER_RISE;
-    }
-    // Custom button, apply custom settings/label from callback
-    char *text;
-    uint16_t text_offs;
-    if (m->type == MT_ADV_CALLBACK) {
-      button.label[0] = 0;
-      if (m->reference) ((menuaction_acb_t)m->reference)(m->data, &button);
-      // Apply custom text, from button label and
-      if (button.label[0] == 0)
-        plot_printf(button.label, sizeof(button.label), m->label, button.p1.u);
-      text = button.label;
-    }
-    else
-      text = m->label;
-    // Draw button
-    draw_button(LCD_WIDTH-MENU_BUTTON_WIDTH, y, MENU_BUTTON_WIDTH, menu_button_height, &button);
-    // Draw icon if need (and add extra shift for text)
-    if (button.icon >= 0) {
-      lcd_blitBitmap(LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_ICON_OFFSET, y+(menu_button_height-ICON_HEIGHT)/2, ICON_WIDTH, ICON_HEIGHT, ICON_GET_DATA(button.icon));
-      text_offs = LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_ICON_OFFSET + ICON_SIZE;
-    } else
-      text_offs = LCD_WIDTH-MENU_BUTTON_WIDTH+MENU_BUTTON_BORDER + MENU_TEXT_OFFSET;
-    // Draw button text
-    int lines = get_lines_count(text);
-#if _USE_FONT_ != _USE_SMALL_FONT_
-    if (menu_button_height < lines * FONT_GET_HEIGHT + 2) {
-      lcd_set_font(FONT_SMALL);
-      lcd_drawstring(text_offs, y+(menu_button_height - lines * sFONT_GET_HEIGHT - 1)/2, text);
-    }
-    else {
-      lcd_set_font(FONT_NORMAL);
-      lcd_drawstring(text_offs, y+(menu_button_height - lines * FONT_GET_HEIGHT)/2, text);
-    }
-#else
-    lcd_drawstring(text_offs, y+(menu_button_height - lines * FONT_GET_HEIGHT)/2, text);
-#endif
-  }
-  // Erase empty buttons
-  if (AREA_HEIGHT_NORMAL + OFFSETY > y) {
-    lcd_set_background(LCD_BG_COLOR);
-    lcd_fill(LCD_WIDTH-MENU_BUTTON_WIDTH, y, MENU_BUTTON_WIDTH, AREA_HEIGHT_NORMAL + OFFSETY - y);
-  }
-  lcd_set_font(FONT_NORMAL);
-}
 
-static void
-draw_menu(uint32_t mask)
-{
-  draw_menu_buttons(menu_stack[menu_current_level], mask);
-}
-
-#if 0
-static void
-erase_menu_buttons(void)
-{
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_fill(LCD_WIDTH-MENU_BUTTON_WIDTH, 0, MENU_BUTTON_WIDTH, MENU_BUTTON_HEIGHT*MENU_BUTTON_MAX);
-}
-#endif
-
-//  Menu mode processing
-static void
-ui_mode_menu(void)
-{
-  if (ui_mode == UI_MENU)
-    return;
-
-  ui_mode = UI_MENU;
-  // narrowen plotting area
-  set_area_size(AREA_WIDTH_NORMAL - MENU_BUTTON_WIDTH, AREA_HEIGHT_NORMAL);
-  ensure_selection();
-  draw_menu(-1);
-}
-
-static void
-ui_menu_lever(uint16_t status)
-{
-  uint16_t count = current_menu_get_count();
-  if (status & EVT_BUTTON_SINGLE_CLICK) {
-    if ((uint16_t)selection >= count)
-      ui_mode_normal();
-    else
-      menu_invoke(selection);
-    return;
-  }
-
-  do {
-    uint32_t mask = 1<<selection;
-    if (status & EVT_UP  ) selection++;
-    if (status & EVT_DOWN) selection--;
-    // close menu if no menu item
-    if ((uint16_t)selection >= count){
-      ui_mode_normal();
-      return;
-    }
-    draw_menu(mask|(1<<selection));
-    chThdSleepMilliseconds(100);
-  } while ((status = btn_wait_release()) != 0);
-}
-
-static void
-ui_menu_touch(int touch_x, int touch_y)
-{
-  if (LCD_WIDTH-MENU_BUTTON_WIDTH < touch_x) {
-    int16_t i = (touch_y - MENU_BUTTON_Y_OFFSET) / menu_button_height;
-    if ((uint16_t)i < (uint16_t)current_menu_get_count()) {
-      uint32_t mask = (1<<i)|(1<<selection);
-      selection = i;
-      draw_menu(mask);
-      touch_wait_release();
-      selection = -1;
-      menu_invoke(i);
-      return;
-    }
-  }
-
-  touch_wait_release();
-  ui_mode_normal();
-}
-//================== end menu processing =================================
-
-/*
- * Normal plot processing
- */
-static void
-ui_mode_normal(void)
-{
+//=====================================================================================================
+//                                 Normal plot functions
+//=====================================================================================================
+static void ui_mode_normal(void) {
   if (ui_mode == UI_NORMAL)
     return;
   set_area_size(AREA_WIDTH_NORMAL, AREA_HEIGHT_NORMAL);
@@ -3263,9 +3399,7 @@ ui_mode_normal(void)
 }
 
 #define MARKER_SPEEDUP  3
-static void
-lever_move_marker(uint16_t status)
-{
+static void lever_move_marker(uint16_t status) {
   if (active_marker == MARKER_INVALID || !markers[active_marker].enabled) return;
   uint16_t step = 1<<MARKER_SPEEDUP;
   do {
@@ -3279,9 +3413,7 @@ lever_move_marker(uint16_t status)
 }
 
 #ifdef UI_USE_LEVELER_SEARCH_MODE
-static void
-lever_search_marker(int status)
-{
+static void lever_search_marker(int status) {
   if (active_marker == active_marker) return;
   if (status & EVT_DOWN)
     marker_search_dir(markers[active_marker].index, MK_SEARCH_LEFT);
@@ -3293,8 +3425,7 @@ lever_search_marker(int status)
 // ex. 10942 -> 10000
 //      6791 ->  5000
 //       341 ->   200
-static freq_t
-step_round(freq_t v) {
+static freq_t step_round(freq_t v) {
   // decade step
   freq_t nx, x = 1;
   while((nx = x*10) < v) x = nx;
@@ -3304,8 +3435,7 @@ step_round(freq_t v) {
   return x * 5;
 }
 
-static void
-lever_frequency(uint16_t status) {
+static void lever_frequency(uint16_t status) {
   uint16_t mode;
   freq_t freq;
   if (lever_mode == LM_FREQ_0) {
@@ -3329,10 +3459,9 @@ lever_frequency(uint16_t status) {
 }
 
 #define STEPRATIO 0.2f
-static void
-lever_edelay(uint16_t status)
-{
-  float value = electrical_delay;
+static void lever_edelay(uint16_t status) {
+  int ch = current_trace != TRACE_INVALID ? trace[current_trace].channel : 0;
+  float value = current_props._electrical_delay[ch];
   if (current_props._var_delay == 0.0f) {
     float ratio = value > 0 ?  STEPRATIO : -STEPRATIO;
     if (status & EVT_UP  ) value*= (1.0f + ratio);
@@ -3341,13 +3470,11 @@ lever_edelay(uint16_t status)
     if (status & EVT_UP  ) value+= current_props._var_delay;
     if (status & EVT_DOWN) value-= current_props._var_delay;
   }
-  set_electrical_delay(value);
+  set_electrical_delay(ch, value);
   while (btn_wait_release() != 0);
 }
 
-static bool
-touch_pickup_marker(int touch_x, int touch_y)
-{
+static bool touch_pickup_marker(int touch_x, int touch_y) {
   touch_x -= OFFSETX;
   touch_y -= OFFSETY;
   int i = MARKER_INVALID, mt, m, t;
@@ -3395,14 +3522,12 @@ touch_pickup_marker(int touch_x, int touch_y)
   return TRUE;
 }
 
-static bool
-touch_lever_mode_select(int touch_x, int touch_y)
-{
+static bool touch_lever_mode_select(int touch_x, int touch_y) {
   int mode = -1;
   if (touch_y > HEIGHT && (props_mode & DOMAIN_MODE) == DOMAIN_FREQ) // Only for frequency domain
     mode = touch_x < FREQUENCIES_XPOS2 ? LM_FREQ_0 : LM_FREQ_1;
   if (touch_y < UI_MARKER_Y0)
-    mode = (touch_x < (LCD_WIDTH / 2) && electrical_delay != 0.0) ? LM_EDELAY : LM_MARKER;
+    mode = (touch_x < (LCD_WIDTH / 2) && get_electrical_delay() != 0.0f) ? LM_EDELAY : LM_MARKER;
   if (mode == -1) return FALSE;
 
   touch_wait_release();
@@ -3417,9 +3542,7 @@ touch_lever_mode_select(int touch_x, int touch_y)
   return TRUE;
 }
 
-static void
-ui_normal_lever(uint16_t status)
-{
+static void ui_normal_lever(uint16_t status) {
   if (status & EVT_BUTTON_SINGLE_CLICK) {
     ui_mode_menu();
     return;
@@ -3435,8 +3558,7 @@ ui_normal_lever(uint16_t status)
   }
 }
 
-static bool
-touch_apply_ref_scale(int touch_x, int touch_y) {
+static bool touch_apply_ref_scale(int touch_x, int touch_y) {
   int t = current_trace;
   // do not scale invalid or smith chart
   if (t == TRACE_INVALID || trace[t].type == TRC_SMITH) return FALSE;
@@ -3457,8 +3579,7 @@ touch_apply_ref_scale(int touch_x, int touch_y) {
 }
 
 #ifdef __USE_SD_CARD__
-static bool
-touch_made_screenshot(int touch_x, int touch_y) {
+static bool touch_made_screenshot(int touch_x, int touch_y) {
   if (touch_y < HEIGHT || touch_x < FREQUENCIES_XPOS3 || touch_x > FREQUENCIES_XPOS2)
     return FALSE;
   touch_wait_release();
@@ -3467,26 +3588,19 @@ touch_made_screenshot(int touch_x, int touch_y) {
 }
 #endif
 
-static void
-ui_normal_touch(int touch_x, int touch_y) {
-  // Try drag marker
-  if (touch_pickup_marker(touch_x, touch_y))
-    return;
+static void ui_normal_touch(int touch_x, int touch_y) {
+  if (touch_pickup_marker(touch_x, touch_y)) return;     // Try drag marker
 #ifdef __USE_SD_CARD__
-  // Try made screenshot
-  if (touch_made_screenshot(touch_x, touch_y))
-    return;
+  if (touch_made_screenshot(touch_x, touch_y)) return;   // Try made screenshot
 #endif
-  if (touch_apply_ref_scale(touch_x, touch_y))
-    return;
-  // Try select lever mode (top and bottom screen)
-  if (touch_lever_mode_select(touch_x, touch_y))
-    return;
+  if (touch_lever_mode_select(touch_x, touch_y)) return; // Try select lever mode (top and bottom screen)
+  if (touch_apply_ref_scale(touch_x, touch_y)) return;   // Try apply ref / scale
   // default: switch menu mode after release
   touch_wait_release();
   ui_mode_menu();
 }
-//========================== end normal plot input =======================
+//================================== end normal plot input ============================================
+
 static const struct {
   void (*button)(uint16_t status);
   void (*touch)(int touch_x, int touch_y);
@@ -3499,16 +3613,13 @@ static const struct {
 #endif
 };
 
-static void
-ui_process_lever(void) {
+static void ui_process_lever(void) {
   uint16_t status = btn_check();
   if (status)
     ui_handler[ui_mode].button(status);
 }
 
-static
-void ui_process_touch(void)
-{
+static void ui_process_touch(void) {
   int touch_x, touch_y;
   int status = touch_check();
   if (status == EVT_TOUCH_PRESSED || status == EVT_TOUCH_DOWN) {
@@ -3517,9 +3628,7 @@ void ui_process_touch(void)
   }
 }
 
-void
-ui_process(void)
-{
+void ui_process(void) {
 //if (ui_mode >= UI_END) return; // for safe
   if (operation_requested&OP_LEVER)
     ui_process_lever();
@@ -3538,8 +3647,7 @@ void handle_button_interrupt(uint16_t channel) {
 
 //static systime_t t_time = 0;
 // Triggered touch interrupt call
-void handle_touch_interrupt(void)
-{
+void handle_touch_interrupt(void) {
   operation_requested|= OP_TOUCH;
 //  systime_t n_time = chVTGetSystemTimeX();
 //  shell_printf("%d\r\n", n_time - t_time);
@@ -3547,8 +3655,7 @@ void handle_touch_interrupt(void)
 }
 
 #if HAL_USE_EXT == TRUE // Use ChibiOS EXT code (need lot of flash ~1.5k)
-static void handle_button_ext(EXTDriver *extp, expchannel_t channel)
-{
+static void handle_button_ext(EXTDriver *extp, expchannel_t channel) {
   (void)extp;
   handle_button_interrupt((uint16_t)channel);
 }
@@ -3594,9 +3701,7 @@ static void init_EXT(void) {
 }
 #endif
 
-void
-ui_init()
-{
+void ui_init() {
   adc_init();
   // Activates the EXT driver 1.
   init_EXT();

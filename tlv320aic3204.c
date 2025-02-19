@@ -319,6 +319,7 @@ static const uint8_t conf_data_ch3_select[] = {
   0x37,   REG_37_IN3R_TO_RIGHT_P_10k, // Route IN3R to RIGHT_P with input impedance of 10K
 /*0x38,*/ 0x00,                       // Reserved
 /*0x39,*/ REG_39_IN3L_TO_RIGHT_N_10k, // Route IN3L to RIGHT_N with input impedance of 10K
+/*0x3A,*/ 0b11000000,                 // IN1 is weakly driven to common mode
 };
 
 static const uint8_t conf_data_ch1_select[] = {
@@ -327,6 +328,7 @@ static const uint8_t conf_data_ch1_select[] = {
   0x37,   REG_37_IN1R_TO_RIGHT_P_10k, // Route IN1R to RIGHT_P with input impedance of 10K
 /*0x38,*/ 0x00,                       // Reserved
 /*0x39,*/ REG_39_IN1L_TO_RIGHT_N_10k, // Route IN1L to RIGHT_N with input impedance of 10K
+/*0x3A,*/ 0b00001100,                 // IN3 is weakly driven to common mode
 };
 
 static void

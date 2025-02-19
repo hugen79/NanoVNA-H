@@ -19,6 +19,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#pragma once
 #include "halconf.h"
 /*
  * adc.c
@@ -114,6 +115,14 @@ uint32_t rtc_get_dr_bin(void);
 uint32_t rtc_get_FAT(void);
 // Write date and time (need in bcd format!!!)
 void rtc_set_time(uint32_t dr, uint32_t tr);
+// Toggle RTC clock output
+#define rtc_clock_output_toggle()  RTC->CR^= RTC_CR_COE
+// Check RTC clock output
+#define rtc_clock_output_enabled() (RTC->CR & RTC_CR_COE)
+// Set RTC calibration value in ppm (value rounded by 1e6/(1<<20)
+void  rtc_set_cal(float ppm);
+// Get RTC calibration value in ppm
+float rtc_get_cal(void);
 #endif
 
 /*
@@ -190,10 +199,10 @@ void initI2S(void *buffer, uint16_t count);
 // Save config_t and properties_t flash area (see flash7 from *.ld settings)
 #define SAVE_FULL_AREA_SIZE     (SAVE_CONFIG_SIZE + SAVEAREA_MAX * SAVE_PROP_CONFIG_SIZE)
 // Save setting at end of CPU flash area
-// Config at end minus full size
-#define SAVE_CONFIG_ADDR        (FLASH_START_ADDRESS + FLASH_TOTAL_SIZE - SAVE_FULL_AREA_SIZE)
-// Properties save area follow after config
-#define SAVE_PROP_CONFIG_ADDR   (SAVE_CONFIG_ADDR + SAVE_CONFIG_SIZE)
+// Config at end minus config size
+#define SAVE_CONFIG_ADDR        (FLASH_START_ADDRESS + FLASH_TOTAL_SIZE - SAVE_CONFIG_SIZE)
+// Properties save area before config
+#define SAVE_PROP_CONFIG_ADDR   (FLASH_START_ADDRESS + FLASH_TOTAL_SIZE - SAVE_FULL_AREA_SIZE)
 
 // Erase settings on page
 void flash_erase_pages(uint32_t page_address, uint32_t size);

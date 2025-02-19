@@ -97,11 +97,11 @@ OSAL_IRQ_HANDLER(Vector68) {  // EXTI[4] interrupt handler.
 }
 #endif
 
-
 #if defined(EXT_CH5_HANDLER_FUNC) || defined(EXT_CH6_HANDLER_FUNC) || defined(EXT_CH7_HANDLER_FUNC) || \
     defined(EXT_CH8_HANDLER_FUNC) || defined(EXT_CH9_HANDLER_FUNC)
 OSAL_IRQ_HANDLER(Vector9C) {  // EXTI[5]...EXTI[9] interrupt handler
   uint32_t pr = EXTI->PR & ((1U << 5) | (1U << 6) | (1U << 7) | (1U << 8) | (1U << 9));
+  EXTI->PR = pr;
 #ifdef EXT_CH5_HANDLER_FUNC
   if (pr & (1U << 5)) EXT_CH5_HANDLER_FUNC(5);
 #endif
@@ -125,6 +125,7 @@ OSAL_IRQ_HANDLER(Vector9C) {  // EXTI[5]...EXTI[9] interrupt handler
 OSAL_IRQ_HANDLER(VectorE0) {  // EXTI[4]...EXTI[15] interrupt handler
   uint32_t pr = EXTI->PR & ((1U << 10) | (1U << 11) | (1U << 12) |
                             (1U << 13) | (1U << 14) | (1U << 15));
+  EXTI->PR = pr;
 #ifdef EXT_CH10_HANDLER_FUNC
   if (pr & (1U << 10)) EXT_CH10_HANDLER_FUNC(10);
 #endif

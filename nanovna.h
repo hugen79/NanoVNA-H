@@ -18,17 +18,20 @@
  * the Free Software Foundation, Inc., 51 Franklin Street,
  * Boston, MA 02110-1301, USA.
  */
+#pragma once
 #include "ch.h"
 
-#define __MS5351__
+//#define __MS5351__
+#define __ZEETK__
 
 // Define LCD display driver and size
 #if defined(NANOVNA_F303)
 #define LCD_DRIVER_ST7796S
 #define LCD_480x320
 #else
+// Used auto detect from ILI9341 or ST7789
 #define LCD_DRIVER_ILI9341
-//#define DISPLAY_ST7789
+#define LCD_DRIVER_ST7789
 #define LCD_320x240
 #endif
 
@@ -50,12 +53,16 @@
 #define __USE_BACKUP__
 // Add SD card support, req enable RTC (additional settings for file system see FatFS lib ffconf.h)
 #define __USE_SD_CARD__
+// Use unique serial string for USB
+#define __USB_UID__
 // If enabled serial in halconf.h, possible enable serial console control
 #define __USE_SERIAL_CONSOLE__
 // Add show y grid line values option
 #define __USE_GRID_VALUES__
 // Add remote desktop option
 #define __REMOTE_DESKTOP__
+// Add RLE8 compression capture image format
+#define __CAPTURE_RLE8__
 // Allow flip display
 #define __FLIP_DISPLAY__
 // Add shadow on text in plot area (improve readable, but little slowdown render)
@@ -150,7 +157,7 @@
 // Frequency offset, depend from AUDIO_ADC_FREQ settings (need aligned table)
 // Use real time build table (undef for use constant, see comments)
 // Constant tables build only for AUDIO_SAMPLES_COUNT = 48
-//#define USE_VARIABLE_OFFSET
+#define USE_VARIABLE_OFFSET
 
 // Maximum sweep point count (limit by flash and RAM size)
 #define SWEEP_POINTS_MAX         101
@@ -167,11 +174,22 @@
  * main.c
  */
 // Minimum frequency set
+#ifdef __ZEETK__
+#define FREQUENCY_MIN            600
+#else
 #define FREQUENCY_MIN            1600
+#endif
+
 // Maximum frequency set
 #define FREQUENCY_MAX            2000000000U
+
 // Frequency threshold (max frequency for si5351, harmonic mode after)
-#define FREQUENCY_THRESHOLD      290000100U
+#ifdef __ZEETK__
+#define FREQUENCY_THRESHOLD      300000110U
+#else
+#define FREQUENCY_THRESHOLD      290000110U
+#endif
+
 // XTAL frequency on si5351
 #define XTALFREQ                 26000000U
 // Define i2c bus speed, add predefined for 400k, 600k, 900k
@@ -293,6 +311,7 @@ extern float measured[2][SWEEP_POINTS_MAX][2];
 #define CALSTAT_EX CALSTAT_ISOLN
 #define CALSTAT_APPLY (1<<8)
 #define CALSTAT_INTERPOLATED (1<<9)
+#define CALSTAT_ENHANCED_RESPONSE (1<<10)
 
 #define ETERM_ED 0 /* error term directivity */
 #define ETERM_ES 1 /* error term source match */
@@ -334,7 +353,14 @@ uint8_t get_smooth_factor(void);
 int32_t  my_atoi(const char *p);
 uint32_t my_atoui(const char *p);
 float    my_atof(const char *p);
+bool strcmpi(const char *t1, const char *t2);
+int get_str_index(const char *v, const char *list);
 int parse_line(char *line, char* args[], int max_cnt);
+void swap_bytes(uint16_t *buf, int size);
+int packbits(char *source, char *dest, int size);
+void _delay_8t(uint32_t cycles);
+inline void delayMicroseconds(uint32_t us) {_delay_8t(us*STM32_CORE_CLOCK/8);}
+inline void delayMilliseconds(uint32_t ms) {_delay_8t(ms*125*STM32_CORE_CLOCK);}
 
 void pause_sweep(void);
 void toggle_sweep(void);
@@ -382,9 +408,9 @@ extern const char *info_about[];
 #if defined(NANOVNA_F303)
 // Generator ready delays, values in us
 #define DELAY_BAND_1_2           US2ST( 100)   // Delay for bands 1-2
-#define DELAY_BAND_3_4           US2ST( 120)   // Delay for bands 3-4
-#define DELAY_BANDCHANGE         US2ST(2000)   // Band changes need set additional delay after reset PLL
-#define DELAY_CHANNEL_CHANGE     US2ST( 100)   // Switch channel delay
+#define DELAY_BAND_3_4           US2ST( 200)   // Delay for bands 3-4
+#define DELAY_BANDCHANGE         US2ST(5000)   // Band changes need set additional delay after reset PLL
+#define DELAY_CHANNEL_CHANGE     US2ST( 400)   // Switch channel delay
 #define DELAY_SWEEP_START        US2ST(2000)   // Delay at sweep start
 // Delay after set new PLL values in ms, and send reset
 #define DELAY_RESET_PLL_BEFORE            0    //    0 (0 for disabled)
@@ -392,12 +418,12 @@ extern const char *info_about[];
 #else
 // Generator ready delays, values in us
 #define DELAY_BAND_1_2           US2ST( 100)   // 0 Delay for bands 1-2
-#define DELAY_BAND_3_4           US2ST( 140)   // 1 Delay for bands 3-4
-#define DELAY_BANDCHANGE         US2ST( 800)   // 2 Band changes need set additional delay after reset PLL
-#define DELAY_CHANNEL_CHANGE     US2ST( 100)   // 3 Switch channel delay
-#define DELAY_SWEEP_START        US2ST( 100)   // 4 Delay at sweep start
+#define DELAY_BAND_3_4           US2ST( 200)   // 1 Delay for bands 3-4
+#define DELAY_BANDCHANGE         US2ST( 5000)   // 2 Band changes need set additional delay after reset PLL
+#define DELAY_CHANNEL_CHANGE     US2ST( 400)   // 3 Switch channel delay
+#define DELAY_SWEEP_START        US2ST( 2000)   // 4 Delay at sweep start
 // Delay after before/after set new PLL values in ms
-#define DELAY_RESET_PLL_BEFORE            0    // 5    0 (0 for disabled)
+#define DELAY_RESET_PLL_BEFORE           0    // 5    0 (0 for disabled)
 #define DELAY_RESET_PLL_AFTER          4000    // 6 4000 (0 for disabled)
 #endif
 
@@ -750,8 +776,10 @@ enum {
   KP_PLUSMINUS,
   KP_KEYPAD,
   KP_SPACE,
-  KP_PLUS
+  KP_PLUS,
 #endif
+  // Special uint8_t buttons
+  KP_EMPTY = 255  // Empty button
 };
 
 /*
@@ -799,6 +827,7 @@ enum {
 #define S_METRE    "m"     //
 #define S_VOLT     "V"     //
 #define S_AMPER    "A"     //
+#define S_PPM      "ppm"   //
 
 // Max palette indexes in config
 #define MAX_PALETTE     32
@@ -919,12 +948,14 @@ enum {
 #ifdef __SD_CARD_DUMP_TIFF__
   VNA_MODE_TIFF,         // Save screenshot format (0: bmp, 1: tiff)
 #endif
+#ifdef __USB_UID__
+  VNA_MODE_USB_UID       // Use unique serial string for USB
+#endif
 };
+
 // Update config._vna_mode flags function
-#define VNA_MODE_CLR     0
-#define VNA_MODE_SET     1
-#define VNA_MODE_TOGGLE  2
-void apply_VNA_mode(uint16_t idx, uint16_t value);
+typedef enum {VNA_MODE_CLR = 0, VNA_MODE_SET, VNA_MODE_TOGGLE} vna_mode_ops;
+void apply_VNA_mode(uint16_t idx, vna_mode_ops operation);
 
 #ifdef __VNA_MEASURE_MODULE__
 // Measure option mode
@@ -937,6 +968,7 @@ enum {
   MEASURE_SHUNT_LC,
   MEASURE_SERIES_LC,
   MEASURE_SERIES_XTAL,
+  MEASURE_FILTER,
 #endif
 #ifdef __S11_CABLE_MEASURE__
   MEASURE_S11_CABLE,
@@ -992,29 +1024,31 @@ typedef struct config {
 
 typedef struct properties {
   uint32_t magic;
-  freq_t   _frequency0;
-  freq_t   _frequency1;
-  freq_t   _cal_frequency0;
-  freq_t   _cal_frequency1;
-  freq_t   _var_freq;
+  freq_t   _frequency0;          // sweep start frequency
+  freq_t   _frequency1;          // sweep stop frequency
+  freq_t   _cal_frequency0;      // calibration start frequency
+  freq_t   _cal_frequency1;      // calibration stop frequency
+  freq_t   _var_freq;            // frequency step by leveler (0 for auto)
   uint16_t _mode;                // timed domain option flag and some others flags
-  uint16_t _sweep_points;
+  uint16_t _sweep_points;        // points used in measure sweep
   int8_t   _current_trace;       // 0..(TRACES_MAX -1) (TRACE_INVALID  for disabled)
   int8_t   _active_marker;       // 0..(MARKERS_MAX-1) (MARKER_INVALID for disabled)
   int8_t   _previous_marker;     // 0..(MARKERS_MAX-1) (MARKER_INVALID for disabled)
-  uint8_t  _power;
-  uint8_t  _cal_power;
-  uint8_t  _measure;
-  uint16_t _cal_sweep_points;
-  uint16_t _cal_status;
+  uint8_t  _power;               // 0 ... 3 current output power settings
+  uint8_t  _cal_power;           // 0 ... 3 Power used in calibration
+  uint8_t  _measure;             // additional trace data calculations
+  uint16_t _cal_sweep_points;    // points used in calibration
+  uint16_t _cal_status;          // calibration data collected flags
   trace_t  _trace[TRACES_MAX];
   marker_t _markers[MARKERS_MAX];
   uint8_t  _reserved;
   uint8_t  _velocity_factor;     // 0 .. 100 %
-  float    _electrical_delay;    // picoseconds
-  float    _var_delay;
-  float    _s21_offset;
-  float    _portz;
+  float    _electrical_delay[2]; // delays for S11 and S21 traces in seconds
+  float    _var_delay;           // electrical delay step by leveler
+  float    _s21_offset;          // additional external attenuator for S21 measures
+  float    _portz;               // Used for port-z renormalization
+  float    _cal_load_r;          // Used as calibration standard LOAD R value (calculated in renormalization procedure)
+  uint32_t _reserved1[7];
   float    _cal_data[CAL_TYPE_COUNT][SWEEP_POINTS_MAX][2]; // Put at the end for faster access to others data from struct
   uint32_t checksum;
 } properties_t;
@@ -1034,8 +1068,8 @@ const char *get_trace_chname(int t);
 // Shell config functions and macros for Serial connect, not used if Serial mode disabled
 void shell_update_speed(uint32_t speed);
 void shell_reset_console(void);
-
-void set_electrical_delay(float seconds);
+void  set_electrical_delay(int ch, float seconds);
+float get_electrical_delay(void);
 void set_s21_offset(float offset);
 float groupdelay_from_array(int i, const float *v);
 
@@ -1094,7 +1128,7 @@ void marker_search_dir(int16_t from, int16_t dir);
 #endif
 
 // Custom display driver panel definitions for ILI9341
-#ifdef LCD_DRIVER_ILI9341
+#if defined(LCD_DRIVER_ILI9341) || defined(LCD_DRIVER_ST7789)
 // LCD touch settings
 #define DEFAULT_TOUCH_CONFIG {530, 795, 3460, 3350}    // 2.8 inch LCD panel
 // Define LCD pixel format (8 or 16 bit)
@@ -1269,7 +1303,7 @@ void lcd_read_memory(int x, int y, int w, int h, uint16_t* out);
 void lcd_line(int x0, int y0, int x1, int y1);
 void lcd_vector_draw(int x, int y, const vector_data *v);
 
-uint32_t lcd_send_command(uint8_t cmd, uint8_t len, const uint8_t *data);
+uint32_t lcd_send_register(uint8_t cmd, uint8_t len, const uint8_t *data);
 void     lcd_set_flip(bool flip);
 
 // SD Card support, discio functions for FatFS lib implemented in ili9341.c
@@ -1294,7 +1328,7 @@ void testLog(void);        // debug log
  * flash.c
  */
 #define CONFIG_MAGIC      0x434f4e56 // Config magic value (allow reset on new config version)
-#define PROPERTIES_MAGIC  0x434f4e52 // Properties magic value (allow reset on new properties version)
+#define PROPERTIES_MAGIC  0x434f4e54 // Properties magic value (allow reset on new properties version)
 
 #define NO_SAVE_SLOT      ((uint16_t)(-1))
 extern uint16_t lastsaveid;
@@ -1309,7 +1343,8 @@ extern uint16_t lastsaveid;
 #define cal_power           current_props._cal_power
 #define cal_status          current_props._cal_status
 #define cal_data            current_props._cal_data
-#define electrical_delay    current_props._electrical_delay
+#define electrical_delayS11 current_props._electrical_delay[0]
+#define electrical_delayS21 current_props._electrical_delay[1]
 #define s21_offset          current_props._s21_offset
 #define velocity_factor     current_props._velocity_factor
 #define trace               current_props._trace
@@ -1317,6 +1352,11 @@ extern uint16_t lastsaveid;
 #define markers             current_props._markers
 #define active_marker       current_props._active_marker
 #define previous_marker     current_props._previous_marker
+#ifdef __VNA_Z_RENORMALIZATION__
+ #define cal_load_r         current_props._cal_load_r
+#else
+ #define cal_load_r         50.0f
+#endif
 
 #define props_mode          current_props._mode
 #define domain_window      (props_mode&TD_WINDOW)
@@ -1373,11 +1413,11 @@ void ui_process(void);
 
 void handle_touch_interrupt(void);
 
-void touch_cal_exec(void);
-void touch_draw_test(void);
-void enter_dfu(void);
+void ui_touch_cal_exec(void);
+void ui_touch_draw_test(void);
+void ui_enter_dfu(void);
 
-void drawMessageBox(const char *header, const char *text, uint32_t delay);
+void ui_message_box(const char *header, const char *text, uint32_t delay);
 
 // Irq operation process set
 #define OP_NONE       0x00

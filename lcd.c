@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2019-2023, Dmitry (DiSlord) dislordlive@gmail.com
- * Based on TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
+ * Copyright (c) 2019-2024, Dmitry (DiSlord) dislordlive@gmail.com
  * All rights reserved.
  *
  * This is free software; you can redistribute it and/or modify
@@ -41,31 +40,27 @@
 #endif
 
 // Custom display definition
-#ifdef LCD_DRIVER_ILI9341
-// Set SPI bus speed for LCD
-#define LCD_SPI_SPEED    SPI_BR_DIV2
-#ifdef DISPLAY_ST7789
-#define LCD_SPI_RX_SPEED SPI_BR_DIV16
-#endif
-
-// Read speed, need more slow, not define if need use some as Tx speed
-//#define LCD_SPI_RX_SPEED SPI_BR_DIV4
-// Allow enable DMA for read display data (can not stable on full speed, on less speed slower)
-#define __USE_DISPLAY_DMA_RX__
-#endif
-
-#ifdef LCD_DRIVER_ST7796S
-// Set SPI bus speed for LCD
-#define LCD_SPI_SPEED    SPI_BR_DIV2
-// Read speed, need more slow, not define if need use some as Tx speed
-#define LCD_SPI_RX_SPEED SPI_BR_DIV4
-// Allow enable DMA for read display data
-#define __USE_DISPLAY_DMA_RX__
+#if defined(LCD_DRIVER_ILI9341) || defined(LCD_DRIVER_ST7789)
+ // Set SPI bus speed for LCD
+ #define LCD_SPI_SPEED            SPI_BR_DIV2
+ // Read speed, need more slow, not define if need use some as Tx speed
+ #define ILI9341_SPI_RX_SPEED     SPI_BR_DIV2
+ // Read speed, need more slow, not define if need use some as Tx speed
+ #define ST7789V_SPI_RX_SPEED     SPI_BR_DIV8
+ // Allow enable DMA for read display data (can not stable on full speed, on less speed slower)
+ #define __USE_DISPLAY_DMA_RX__
+#elif defined(LCD_DRIVER_ST7796S)
+ // Set SPI bus speed for LCD
+ #define LCD_SPI_SPEED    SPI_BR_DIV2
+ // Read speed, need more slow, not define if need use some as Tx speed
+ #define LCD_SPI_RX_SPEED SPI_BR_DIV4
+ // Allow enable DMA for read display data
+ #define __USE_DISPLAY_DMA_RX__
 #endif
 
 // Disable DMA rx on disabled DMA tx
 #ifndef __USE_DISPLAY_DMA__
-#undef __USE_DISPLAY_DMA_RX__
+ #undef __USE_DISPLAY_DMA_RX__
 #endif
 
 // LCD display buffer
@@ -164,8 +159,8 @@ static inline void spi_DMARxBuffer(uint8_t *buffer, uint16_t len, bool wait) {
 #else
 // Replace DMA function vs no DMA
 #define dmaChannelWaitCompletionRxTx() {}
-#define spi_DMATxBuffer(buffer, len) spi_TxBuffer(buffer, len)
-#define spi_DMARxBuffer(buffer, len) spi_RxBuffer(buffer, len)
+#define spi_DMATxBuffer(buffer, len, flag) spi_TxBuffer(buffer, len)
+#define spi_DMARxBuffer(buffer, len, flag) spi_RxBuffer(buffer, len)
 #endif // __USE_DISPLAY_DMA__
 
 static void spi_init(void) {
@@ -199,107 +194,202 @@ static void spi_init(void) {
   LCD_SPI->CR1|= SPI_CR1_SPE;       //SPI enable
 }
 
-//*****************************************************
-// Display driver functions
-//*****************************************************
-// Display commands list
-#define ILI9341_NOP                        0x00
-#define ILI9341_SOFTWARE_RESET             0x01
-#define ILI9341_READ_IDENTIFICATION        0x04
-#define ILI9341_READ_STATUS                0x09
-#define ILI9341_READ_POWER_MODE            0x0A
-#define ILI9341_READ_MADCTL                0x0B
-#define ILI9341_READ_PIXEL_FORMAT          0x0C
-#define ILI9341_READ_IMAGE_FORMAT          0x0D
-#define ILI9341_READ_SIGNAL_MODE           0x0E
-#define ILI9341_READ_SELF_DIAGNOSTIC       0x0F
-#define ILI9341_SLEEP_IN                   0x10
-#define ILI9341_SLEEP_OUT                  0x11
-#define ILI9341_PARTIAL_MODE_ON            0x12
-#define ILI9341_NORMAL_DISPLAY_MODE_ON     0x13
-#define ILI9341_INVERSION_OFF              0x20
-#define ILI9341_INVERSION_ON               0x21
-#define ILI9341_GAMMA_SET                  0x26
-#define ILI9341_DISPLAY_OFF                0x28
-#define ILI9341_DISPLAY_ON                 0x29
-#define ILI9341_COLUMN_ADDRESS_SET         0x2A
-#define ILI9341_PAGE_ADDRESS_SET           0x2B
-#define ILI9341_MEMORY_WRITE               0x2C
-#define ILI9341_COLOR_SET                  0x2D
-#define ILI9341_MEMORY_READ                0x2E
-#define ILI9341_PARTIAL_AREA               0x30
-#define ILI9341_VERTICAL_SCROLLING_DEF     0x33
-#define ILI9341_TEARING_LINE_OFF           0x34
-#define ILI9341_TEARING_LINE_ON            0x35
-#define ILI9341_MEMORY_ACCESS_CONTROL      0x36
-#define ILI9341_VERTICAL_SCROLLING         0x37
-#define ILI9341_IDLE_MODE_OFF              0x38
-#define ILI9341_IDLE_MODE_ON               0x39
-#define ILI9341_PIXEL_FORMAT_SET           0x3A
-#define ILI9341_WRITE_MEMORY_CONTINUE      0x3C
-#define ILI9341_READ_MEMORY_CONTINUE       0x3E
-#define ILI9341_SET_TEAR_SCANLINE          0x44
-#define ILI9341_GET_SCANLINE               0x45
-#define ILI9341_WRITE_BRIGHTNESS           0x51
-#define ILI9341_READ_BRIGHTNESS            0x52
-#define ILI9341_WRITE_CTRL_DISPLAY         0x53
-#define ILI9341_READ_CTRL_DISPLAY          0x54
-#define ILI9341_WRITE_CA_BRIGHTNESS        0x55
-#define ILI9341_READ_CA_BRIGHTNESS         0x56
-#define ILI9341_WRITE_CA_MIN_BRIGHTNESS    0x5E
-#define ILI9341_READ_CA_MIN_BRIGHTNESS     0x5F
-#define ILI9341_READ_ID1                   0xDA
-#define ILI9341_READ_ID2                   0xDB
-#define ILI9341_READ_ID3                   0xDC
-#define ILI9341_RGB_INTERFACE_CONTROL      0xB0
-#define ILI9341_FRAME_RATE_CONTROL_1       0xB1
-#define ILI9341_FRAME_RATE_CONTROL_2       0xB2
-#define ILI9341_FRAME_RATE_CONTROL_3       0xB3
-#define ILI9341_DISPLAY_INVERSION_CONTROL  0xB4
-#define ILI9341_BLANKING_PORCH_CONTROL     0xB5
-#define ILI9341_DISPLAY_FUNCTION_CONTROL   0xB6
-#define ILI9341_ENTRY_MODE_SET             0xB7
-#define ILI9341_BACKLIGHT_CONTROL_1        0xB8
-#define ILI9341_BACKLIGHT_CONTROL_2        0xB9
-#define ILI9341_BACKLIGHT_CONTROL_3        0xBA
-#define ILI9341_BACKLIGHT_CONTROL_4        0xBB
-#define ILI9341_BACKLIGHT_CONTROL_5        0xBC
-#define ILI9341_BACKLIGHT_CONTROL_7        0xBE
-#define ILI9341_BACKLIGHT_CONTROL_8        0xBF
-#define ILI9341_POWER_CONTROL_1            0xC0
-#define ILI9341_POWER_CONTROL_2            0xC1
-#define ILI9341_VCOM_CONTROL_1             0xC5
-#define ILI9341_VCOM_CONTROL_2             0xC7
-#define ILI9341_POWERA                     0xCB
-#define ILI9341_POWERB                     0xCF
-#define ILI9341_NV_MEMORY_WRITE            0xD0
-#define ILI9341_NV_PROTECTION_KEY          0xD1
-#define ILI9341_NV_STATUS_READ             0xD2
-#define ILI9341_READ_ID4                   0xD3
-#define ILI9341_POSITIVE_GAMMA_CORRECTION  0xE0
-#define ILI9341_NEGATIVE_GAMMA_CORRECTION  0xE1
-#define ILI9341_DIGITAL_GAMMA_CONTROL_1    0xE2
-#define ILI9341_DIGITAL_GAMMA_CONTROL_2    0xE3
-#define ILI9341_DTCA                       0xE8
-#define ILI9341_DTCB                       0xEA
-#define ILI9341_POWER_SEQ                  0xED
-#define ILI9341_3GAMMA_EN                  0xF2
-#define ILI9341_INTERFACE_CONTROL          0xF6
-#define ILI9341_PUMP_RATIO_CONTROL         0xF7
+//******************************************************************************
+//           All LCD (ILI9341, ST7789V, ST9996s) level 1 commands
+//******************************************************************************
+#define LCD_NOP             0x00  // No operation
+#define LCD_SWRESET         0x01  // Software reset
+#define LCD_RDDID           0x04  // Read display ID
+#define LCD_RDNUMED         0x05  // Read Number of the Errors on DSI (only ST7796s)
+#define LCD_RDDST           0x09  // Read display status
+#define LCD_RDDPM           0x0A  // Read Display Power Mode
+#define LCD_RDD_MADCTL      0x0B  // Read Display MADCTL
+#define LCD_RDDCOLMOD       0x0C  // Read Display Pixel Format
+#define LCD_RDDIM           0x0D  // Read Display Image Mode
+#define LCD_RDDSM           0x0E  // Read Display Signal Mode
+#define LCD_RDDSDR          0x0F  // Read Display Self-Diagnostic Result
+#define LCD_SLPIN           0x10  // Sleep in
+#define LCD_SLPOUT          0x11  // Sleep Out
+#define LCD_PTLON           0x12  // Partial Display Mode On
+#define LCD_NORON           0x13  // Normal Display Mode On
+#define LCD_INVOFF          0x20  // Display Inversion Off
+#define LCD_INVON           0x21  // Display Inversion On
+#define LCD_GAMSET          0x26  // Gamma Set (only ILI9341 and ST7789V)
+#define LCD_DISPOFF         0x28  // Display Off
+#define LCD_DISPON          0x29  // Display On
+#define LCD_CASET           0x2A  // Column Address Set
+#define LCD_RASET           0x2B  // Row Address Set
+#define LCD_RAMWR           0x2C  // Memory Write
+#define LCD_RGBSET          0x2D  // Color Set  (only ILI9341)
+#define LCD_RAMRD           0x2E  // Memory Read
+#define LCD_PTLAR           0x30  // Partial Area
+#define LCD_VSCRDEF         0x33  // Vertical Scrolling Definition
+#define LCD_TEOFF           0x34  // Tearing Effect Line OFF
+#define LCD_TEON            0x35  // Tearing Effect Line On
+#define LCD_MADCTL          0x36  // Memory Data Access Control
+#define LCD_VSCSAD          0x37  // Vertical Scroll Start Address of RAM
+#define LCD_IDMOFF          0x38  // Idle Mode Off
+#define LCD_IDMON           0x39  // Idle mode on
+#define LCD_COLMOD          0x3A  // Interface Pixel Format
+#define LCD_WRMEMC          0x3C  // Write_Memory_Continue (only ILI9341)
+#define LCD_RDMEMC          0x3E  // Read Memory Continue
+#define LCD_STE             0x44  // Set Tear Scanline
+#define LCD_GSCAN           0x45  // Get Scanline
+#define LCD_WRDISBV         0x51  // Write Display Brightness
+#define LCD_RDDISBV         0x52  // Read Display Brightness Value
+#define LCD_WRCTRLD         0x53  // Write CTRL Display
+#define LCD_RDCTRLD         0x54  // Read CTRL Value Display
+#define LCD_WRCACE          0x55  // Write Content Adaptive Brightness Control and Color Enhancement
+#define LCD_RDCABC          0x56  // Read Content Adaptive Brightness Control
+#define LCD_WRCABCMB        0x5E  // Write CABC Minimum Brightness
+#define LCD_RDCABCMB        0x5F  // Read CABC Minimum Brightness
+#define LCD_RDID1           0xDA  // Read ID1
+#define LCD_RDID2           0xDB  // Read ID2
+#define LCD_RDID3           0xDC  // Read ID3
 
-//
-// ILI9341_MEMORY_ACCESS_CONTROL registers
-//
-#define ILI9341_MADCTL_MY  0x80
-#define ILI9341_MADCTL_MX  0x40
-#define ILI9341_MADCTL_MV  0x20
-#define ILI9341_MADCTL_ML  0x10
-#define ILI9341_MADCTL_BGR 0x08
-#define ILI9341_MADCTL_MH  0x04
-#define ILI9341_MADCTL_RGB 0x00
+// MEMORY_ACCESS_CONTROL register
+#define LCD_MADCTL_MH       0x04
+#define LCD_MADCTL_BGR      0x08
+#define LCD_MADCTL_RGB      0x00
+#define LCD_MADCTL_ML       0x10
+#define LCD_MADCTL_MV       0x20
+#define LCD_MADCTL_MX       0x40
+#define LCD_MADCTL_MY       0x80
+// Display rotation enum
+enum {
+ DISPLAY_ROTATION_0 = 0,
+ DISPLAY_ROTATION_90,
+ DISPLAY_ROTATION_180,
+ DISPLAY_ROTATION_270,
+};
+
+//******************************************************************************
+// Custom ILI9391 level 2 commands
+//******************************************************************************
+#define ILI9341_IFMODE      0xB0  // RGB Interface Signal Control
+#define ILI9341_FRMCTR1     0xB1  // Frame Rate Control (In Normal Mode/Full Colors)
+#define ILI9341_FRMCTR2     0xB2  // Frame Rate Control (In Idle Mode/8 colors)
+#define ILI9341_FRMCTR3     0xB3  // Frame Rate control (In Partial Mode/Full Colors)
+#define ILI9341_INVTR       0xB4  // Display Inversion Control
+#define ILI9341_PRCTR       0xB5  // Blanking Porch Control
+#define ILI9341_DISCTRL     0xB6  // Display Function Control
+#define ILI9341_ETMOD       0xB7  // Entry Mode Set
+#define ILI9341_BKLTCTRL1   0xB8  // Backlight Control 1
+#define ILI9341_BKLTCTRL2   0xB9  // Backlight Control 2
+#define ILI9341_BKLTCTRL3   0xBA  // Backlight Control 3
+#define ILI9341_BKLTCTRL4   0xBB  // Backlight Control 4
+#define ILI9341_BKLTCTRL5   0xBC  // Backlight Control 5
+#define ILI9341_BKLTCTRL7   0xBE  // Backlight Control 7
+#define ILI9341_BKLTCTRL8   0xBF  // Backlight Control 8
+#define ILI9341_PWCTRL1     0xC0  // Power Control 1
+#define ILI9341_PWCTRL2     0xC1  // Power Control 2
+#define ILI9341_VMCTRL1     0xC5  // VCOM Control 1
+#define ILI9341_VMCTRL2     0xC7  // VCOM Control 2
+#define ILI9341_NVMWR       0xD0  // NV Memory Write
+#define ILI9341_NVMPKEY     0xD1  // NV Memory Protection Key
+#define ILI9341_RDNVM       0xD2  // NV Memory Status Read
+#define ILI9341_RDID4       0xD3  // Read ID4
+#define ILI9341_PGAMCTRL    0xE0  // Positive Gamma Correction
+#define ILI9341_NGAMCTRL    0xE1  // Negative Gamma Correction
+#define ILI9341_DGAMCTRL1   0xE2  // Digital Gamma Control 1
+#define ILI9341_DGAMCTRL2   0xE3  // Digital Gamma Control 2
+#define ILI9341_IFCTL       0xF6  // Interface Control
+// Extend register commands
+#define ILI9341_POWERA      0xCB  // Power control A
+#define ILI9341_POWERB      0xCF  // Power control B
+#define ILI9341_DTCA        0xE8  // Driver timing control A
+#define ILI9341_DTCB        0xEA  // Driver timing control B
+#define ILI9341_POWER_SEQ   0xED  // Power on sequence control
+#define ILI9341_3GAMMA_EN   0xF2  // Enable 3G
+#define ILI9341_PUMPCTRL    0xF7  // Pump ratio control
+
+//******************************************************************************
+// Custom ST7789V level 2 commands
+//******************************************************************************
+#define ST7789V_RAMCTRL     0xB0  // RAM Control
+#define ST7789V_RGBCTRL     0xB1  // RGB Interface Control
+#define ST7789V_PORCTRL     0xB2  // Porch Setting
+#define ST7789V_FRCTRL1     0xB3  // Frame Rate Control 1 (In partial mode/ idle colors)
+#define ST7789V_INVTR       0xB4  // Display Inversion Control (only ILI9341)
+#define ST7789V_PARCTRL     0xB5  // Partial Control
+#define ST7789V_GCTRL       0xB7  // Gate Control
+#define ST7789V_GTADJ       0xB8  // Gate On Timing Adjustment
+#define ST7789V_DGMEN       0xBA  // Digital Gamma Enable
+#define ST7789V_VCOMS       0xBB  // VCOM Setting
+#define ST7789V_POWSAVE     0xBC  // Power Saving Mode
+#define ST7789V_DLPOFFSAVE  0xBD  // Display off power save
+#define ST7789V_LCMCTRL     0xC0  // LCM Control
+#define ST7789V_IDSET       0xC1  // ID Code Setting
+#define ST7789V_VDVVRHEN    0xC2  // VDV and VRH Command Enable
+#define ST7789V_VRHS        0xC3  // VRH Set
+#define ST7789V_VDVS        0xC4  // VDV Set
+#define ST7789V_VCMOFSET    0xC5  // VCOM Offset Set
+#define ST7789V_FRCTRL2     0xC6  // Frame Rate Control in Normal Mode
+#define ST7789V_CABCCTRL    0xC7  // CABC Control
+#define ST7789V_REGSEL1     0xC8  // Register Value Selection 1
+#define ST7789V_REGSEL2     0xCA  // Register Value Selection 2
+#define ST7789V_PWMFRSEL    0xCC  // PWM Frequency Selection
+#define ST7789V_PWCTRL1     0xD0  // Power Control 1
+#define ST7789V_VAPVANEN    0xD2  // Enable VAP/VAN signal output
+#define ST7789V_CMD2EN      0xDF  // Command 2 Enable
+#define ST7789V_PVGAMCTRL   0xE0  // Positive Voltage Gamma Control
+#define ST7789V_NVGAMCTRL   0xE1  // Negative Voltage Gamma Control
+#define ST7789V_DGMLUTR     0xE2  // Digital Gamma Look-up Table for Red
+#define ST7789V_DGMLUTB     0xE3  // Digital Gamma Look-up Table for Blue
+#define ST7789V_GATECTRL    0xE4  // Gate Control
+#define ST7789V_SPI2EN      0xE7  // SPI2 Enable
+#define ST7789V_PWCTRL2     0xE8  // Power Control 2
+#define ST7789V_EQCTRL      0xE9  // Equalize time control
+#define ST7789V_PROMCTRL    0xEC  // Program Mode Control
+#define ST7789V_PROMEN      0xFA  // Program Mode Enable
+#define ST7789V_NVMSET      0xFC  // NVM Setting
+#define ST7789V_PROMACT     0xFE  // Program action
+
+//******************************************************************************
+// Custom ST7796s level 2 commands
+//******************************************************************************
+#define ST7796S_IFMODE      0xB0  // Interface Mode Control
+#define ST7796S_FRMCTR1     0xB1  // Frame Rate Control (In Normal Mode/Full Colors)
+#define ST7796S_FRMCTR2     0xB2  // Frame Rate Control 2 (In Idle Mode/8 colors)
+#define ST7796S_FRMCTR3     0xB3  // Frame Rate Control3 (In Partial Mode/Full Colors)
+#define ST7796S_DIC         0xB4  // Display Inversion Control
+#define ST7796S_BPC         0xB5  // Blanking Porch Control
+#define ST7796S_DFC         0xB6  // Display Function Control
+#define ST7796S_EM          0xB7  // Entry Mode Set
+#define ST7796S_PWR1        0xC0  // Power Control 1
+#define ST7796S_PWR2        0xC1  // Power Control 2
+#define ST7796S_PWR3        0xC2  // Power Control 3
+#define ST7796S_VCMPCTL     0xC5  // VCOM Control
+#define ST7796S_VCMOFFSET   0xC6  // Vcom Offset Registe
+#define ST7796S_NVMADW      0xD0  // NVM Address/Data Write
+#define ST7796S_NVMBPROG    0xD1  // NVM Byte Program
+#define ST7796S_NVMSR       0xD2  // Status Read
+#define ST7796S_RDID4       0xD3  // Read ID4
+#define ST7796S_PGC         0xE0  // Positive Gamma Control
+#define ST7796S_NGC         0xE1  // Negative Gamma Control
+#define ST7796S_DGC1        0xE2  // Digital Gamma Control 1
+#define ST7796S_DGC2        0xE2  // Digital Gamma Control 2
+#define ST7796S_DOCA        0xE8  // Display Output Ctrl Adjust
+#define ST7796S_CSCON       0xF0  // Command Set Control
+#define ST7796S_SPI         0xFB  // Read Control
+
+//******************************************************************************
+// Low level Display driver functions
+//******************************************************************************
+// Used only in double buffer mode
+#ifndef lcd_get_cell_buffer
+#define LCD_BUFFER_1    0x01
+#define LCD_DMA_RUN     0x02
+static uint8_t LCD_dma_status = 0;
+
+// Return free buffer for render
+pixel_t *lcd_get_cell_buffer(void) {
+  return &spi_buffer[(LCD_dma_status&LCD_BUFFER_1) ? SPI_BUFFER_SIZE/2 : 0];
+}
+#endif
 
 // Disable inline for this function
-static void ili9341_send_command(uint8_t cmd, uint16_t len, const uint8_t *data) {
+static void lcd_send_command(uint8_t cmd, uint16_t len, const uint8_t *data) {
 // Uncomment on low speed SPI (possible get here before previous tx complete)
   while (SPI_IS_BUSY(LCD_SPI));
   LCD_CS_LOW;
@@ -313,16 +403,16 @@ static void ili9341_send_command(uint8_t cmd, uint16_t len, const uint8_t *data)
   //LCD_CS_HIGH;
 }
 
-// Disable inline for this function
-uint32_t lcd_send_command(uint8_t cmd, uint8_t len, const uint8_t *data) {
+// Send command to LCD and read 32bit answer
+// LCD_RDDID command, need shift result right by 7 bit
+// 0x00858552 for ST7789V (9.1.3 RDDID (04h): Read Display ID)
+// 0x006BFFFF for ST7796S ?? no id description in datasheet
+// 0x00000000 for ili9341 ?? no id description in datasheet
+uint32_t lcd_send_register(uint8_t cmd, uint8_t len, const uint8_t *data) {
   lcd_bulk_finish();
-  // Set read speed (if need different)
-  SPI_BR_SET(LCD_SPI, SPI_BR_DIV256);
-  // Send
-  ili9341_send_command(cmd, len, data);
-
-  // Skip data from rx buffer
-  spi_DropRx();
+  SPI_BR_SET(LCD_SPI, SPI_BR_DIV16);   // Set most safe read speed
+  lcd_send_command(cmd, len, data);    // Send command
+  spi_DropRx();                        // Skip data from rx buffer
   uint32_t ret;
   ret = spi_RxByte();ret<<=8;
   ret|= spi_RxByte();ret<<=8;
@@ -333,354 +423,223 @@ uint32_t lcd_send_command(uint8_t cmd, uint8_t len, const uint8_t *data) {
   return ret;
 }
 
-#define ST7789V_NOP               0x00 // No Operation
-#define ST7789V_SWRESET           0x01 // Software reset
-#define ST7789V_RDDID             0x04 // Read Display ID
-#define ST7789V_RDDST             0x09 // Read Display Status
-#define ST7789V_RDDPM             0x0A // Read Display Power Mode
-#define ST7789V_RDDMADCTL         0x0B // Read Display MADCTL
-#define ST7789V_RDDCOLMOD         0x0C // Read Display Pixel Format
-#define ST7789V_RDDIM             0x0D // Read Display Image Mode
-#define ST7789V_RDDSM             0x0E // Read Display Signal Mode
-#define ST7789V_RDDSDR            0x0F // Read Display Self-Diagnostic Result
-#define ST7789V_SLPIN             0x10 // Sleep In
-#define ST7789V_SLPOUT            0x11 // Sleep Out
-#define ST7789V_PTLON             0x12 // Partial Display Mode On
-#define ST7789V_NORON             0x13 // Normal Display Mode On
-#define ST7789V_INVOFF            0x20 // Display Inversion Off
-#define ST7789V_INVON             0x21 // Display Inversion On
-#define ST7789V_GAMSET            0x26 // Gamma Set
-#define ST7789V_DISPOFF           0x28 // Display Off
-#define ST7789V_DISPON            0x29 // Display On
-#define ST7789V_CASET             0x2A // Column Address Set
-#define ST7789V_RASET             0x2B // Row Address Set
-#define ST7789V_RAMWR             0x2C // Memory Write
-#define ST7789V_RAMRD             0x2E // Memory Read
-#define ST7789V_PTLAR             0x30 // Partial Area
-#define ST7789V_VSCRDEF           0x33 // Vertical Scrolling Definition
-#define ST7789V_TEOFF             0x34 // Tearing Effect Line OFF
-#define ST7789V_TEON              0x35 // Tearing Effect Line ON
-#define ST7789V_MADCTL            0x36 // Memory Data Access Control
-#define ST7789V_VSCSAD            0x37 // Vertical Scroll Start Address of RAM
-#define ST7789V_IDMOFF            0x38 // Idle Mode Off
-#define ST7789V_IDMON             0x39 // Idle Mode On
-#define ST7789V_COLMOD            0x3A // Interface Pixel Format
-#define ST7789V_WRMEMC            0x3C // Write Memory Continue
-#define ST7789V_RDMEMC            0x3E // Read Memory Continue
-#define ST7789V_STE               0x44 // Set Tear Scanline
-#define ST7789V_GSCAN             0x45 // Get Scanline
-#define ST7789V_WRDISBV           0x51 // Write Display Brightness
-#define ST7789V_RDDISBV           0x52 // Read Display Brightness
-#define ST7789V_WRCTRLD           0x53 // Write CTRL Display
-#define ST7789V_RDCTRLD           0x54 // Read CTRL Value Display
-#define ST7789V_WRCACE            0x55 // Write Content Adaptive Brightness Control and Color Enhancement
-#define ST7789V_RDCABC            0x56 // Read Content Adaptive Brightness Control
-#define ST7789V_WRCABCMB          0x5E // Write CABC Minimum Brightness
-#define ST7789V_RDCABCMB          0x5F // Read CABC Minimum Brightness
-#define ST7789V_RDABCSDR          0x68 // Read Automatic Brightness Control Self-Diagnostic Result
-#define ST7789V_RDID1             0xDA // Read ID1 Value
-#define ST7789V_RDID2             0xDB // Read ID2 Value
-#define ST7789V_RDID3             0xDC // Read ID3 Value
-
-#define ST7789V_RAMCTRL           0xB0 // RAM Control
-#define ST7789V_RGBCTRL           0xB1 // RGB Interface Control
-#define ST7789V_PORCTRL           0xB2 // Porch Setting
-#define ST7789V_FRCTRL1           0xB3 // Frame Rate Control 1 (In partial mode/ idle colors)
-#define ST7789V_GCTRL             0xB7 // Gate Control
-#define ST7789V_DGMEN             0xBA // Digital Gamma Enable
-#define ST7789V_VCOMS             0xBB // VCOM Setting
-#define ST7789V_LCMCTRL           0xC0 // LCM Control
-#define ST7789V_IDSET             0xC1 // ID Code Setting
-#define ST7789V_VDVVRHEN          0xC2 // VDV and VRH Command Enable
-#define ST7789V_VRHS              0xC3 // VRH Set
-#define ST7789V_VDVS              0xC4 // VDV Set
-#define ST7789V_VCMOFSET          0xC5 // VCOM Offset Set
-#define ST7789V_FRCTRL2           0xC6 // Frame Rate Control in Normal Mode
-#define ST7789V_CABCCTRL          0xC7 // CABC Control
-#define ST7789V_REGSEL1           0xC8 // Register Value Selection 1
-#define ST7789V_REGSEL2           0xCA // Register Value Selection 2
-#define ST7789V_PWMFRSEL          0xCC // PWM Frequency Selection
-#define ST7789V_PWCTRL1           0xD0 // Power Control 1
-#define ST7789V_VAPVANEN          0xD2 // Enable VAP/VAN signal output
-#define ST7789V_CMD2EN            0xDF // Command 2 Enable
-#define ST7789V_PVGAMCTRL         0xE0 // Positive Voltage Gamma Control
-#define ST7789V_NVGAMCTRL         0xE1 // Negative Voltage Gamma Control
-#define ST7789V_DGMLUTR           0xE2 // Digital Gamma Look-up Table for Red
-#define ST7789V_DGMLUTB           0xE3 // Digital Gamma Look-up Table for Blue
-#define ST7789V_GATECTRL          0xE4 // Gate Control
-#define ST7789V_SPI2EN            0xE7 // SPI2 Enable
-#define ST7789V_PWCTRL2           0xE8 // Power Control 2
-#define ST7789V_EQCTRL            0xE9 // Equalize time control
-#define ST7789V_PROMCTRL          0xEC // Program Mode Control
-#define ST7789V_PROMEN            0xFA // Program Mode Enable
-#define ST7789V_NVMSET            0xFC // NVM Setting
-#define ST7789V_PROMACT           0xFE // Program action
-
-
-#define LCD_MADCTL_MY  0x80
-#define LCD_MADCTL_MX  0x40
-#define LCD_MADCTL_MV  0x20
-#define LCD_MADCTL_ML  0x10
-#define LCD_MADCTL_BGR 0x08
-#define LCD_MADCTL_MH  0x04
-#define LCD_MADCTL_RGB 0x00
-
-#ifdef DISPLAY_ST7789
-/*
- * ST7789 init
- */
-#define DISPLAY_ROTATION_0   (LCD_MADCTL_MX | LCD_MADCTL_MV | LCD_MADCTL_RGB)
-#define DISPLAY_ROTATION_90  (                                LCD_MADCTL_RGB)
-#define DISPLAY_ROTATION_180 (LCD_MADCTL_MY | LCD_MADCTL_MV | LCD_MADCTL_RGB)
-#define DISPLAY_ROTATION_270 (LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_RGB)
-static const uint8_t ST7796S_init_seq[] = {
-  // cmd, len, data...,
-  // SW reset
-  ST7789V_SWRESET,  0,
-  // display off
-  ST7789V_DISPOFF,  0,
-  ST7789V_MADCTL,   1, DISPLAY_ROTATION_0,
-  ST7789V_COLMOD,   1, 0x55,
-//ST7789V_PORCTRL,  5, 0x0C, 0x0C, 0x00, 0x33, 0x33,
-//ST7789V_GCTRL,    1, 0x35,
-  ST7789V_VCOMS,    1, 0x1F,                         // default 0x20
-//ST7789V_LCMCTRL,  1, 0x2C,
-  ST7789V_VDVVRHEN, 2, 0x01, 0xC3,                   // default 0x01, 0xFF !!! why need C3? datasheet say 0xFF
-//ST7789V_VDVS,     1, 0x20,
-//ST7789V_FRCTRL2,  1, 0x0F,
-//ST7789V_PWCTRL1,  2, 0xA4, 0xA1,
-  ST7789V_SLPOUT,   0,
-  // display on
-  ST7789V_DISPON,   0,
-  0 // sentinel
+//******************************************************************************
+// Display driver init sequence and hardware depend functions
+//******************************************************************************
+// ILI9341 and ST7789V Lcd init sequence + lcd depend image rotate function
+#if defined(LCD_DRIVER_ILI9341) || defined(LCD_DRIVER_ST7789)
+typedef enum {ili9341_type = 0, st7789v} lcd_type_t;
+static lcd_type_t lcd_type = ili9341_type;
+static const uint8_t ili9341_init_seq[] = {               // ILI9341 init sequence
+  // cmd,           len, data...,
+  LCD_SWRESET,        0,                                  // SW reset
+  LCD_DISPOFF,        0,                                  // display off
+//ILI9341_POWERB,     3, 0x00, 0xC1, 0x30,                // Power control B
+//ILI9341_POWER_SEQ,  4, 0x64, 0x03, 0x12, 0x81,          // Power on sequence control
+//ILI9341_DTCA,       3, 0x85, 0x00, 0x78,                // Driver timing control A
+//ILI9341_POWERA,     5, 0x39, 0x2C, 0x00, 0x34, 0x02,    // Power control A
+//ILI9341_PUMPCTRL,   1, 0x20,                            // Pump ratio control
+//ILI9341_DTCB,       2, 0x00, 0x00,                      // Driver timing control B
+  ILI9341_PWCTRL1,    1, 0x23,                            // POWER_CONTROL_1
+  ILI9341_PWCTRL2,    1, 0x10,                            // POWER_CONTROL_2
+  ILI9341_VMCTRL1,    2, 0x3e, 0x28,                      // VCOM_CONTROL_1
+  ILI9341_VMCTRL2,    1, 0xBE,                            // VCOM_CONTROL_2
+  LCD_MADCTL,         1, LCD_MADCTL_MV | LCD_MADCTL_BGR,  // landscape
+  LCD_COLMOD,         1, 0x55,                            // COLMOD_PIXEL_FORMAT_SET : 16 bit pixel
+  ILI9341_FRMCTR1,    2, 0x00, 0x18,                      // Frame Rate
+//ILI9341_3GAMMA_EN,  1, 0x00,                            // Gamma Function Disable
+  LCD_GAMSET,         1, 0x01,                            // gamma set for curve 01/2/04/08
+  ILI9341_PGAMCTRL,  15, 0x0F,  0x31,  0x2B,  0x0C,  0x0E,  0x08,  0x4E,  0xF1,  0x37,  0x07,  0x10,  0x03,  0x0E, 0x09,  0x00, // positive gamma correction
+  ILI9341_NGAMCTRL,  15, 0x00,  0x0E,  0x14,  0x03,  0x11,  0x07,  0x31,  0xC1,  0x48,  0x08,  0x0F,  0x0C,  0x31, 0x36,  0x0F, // negative gamma correction
+//LCD_CASET,          4, 0x00, 0x00, 0x01, 0x3f,          // Column Address Set: x = 0, width 320
+//LCD_RASET,          4, 0x00, 0x00, 0x00, 0xef,          // Page Address Set: y = 0, height 240
+  ILI9341_ETMOD,      1, 0x06,                            // entry mode
+  ILI9341_DISCTRL,    3, 0x08, 0x82, 0x27,                // display function control
+  ILI9341_IFCTL,      3, 0x00, 0x00, 0x00,                // Interface Control (set WEMODE=0)
+  LCD_SLPOUT,         0,                                  // sleep out
+  LCD_DISPON,         0,                                  // display on
+  0                                                       // sentinel
 };
-#define LCD_INIT ST7796S_init_seq
-#else
 
-#define DISPLAY_ROTATION_270   (ILI9341_MADCTL_MX | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_90    (ILI9341_MADCTL_MY | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_0     (ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
-#define DISPLAY_ROTATION_180   (ILI9341_MADCTL_MX | ILI9341_MADCTL_MY  \
-                              | ILI9341_MADCTL_MV | ILI9341_MADCTL_BGR)
-static const uint8_t ili9341_init_seq[] = {
-  // cmd, len, data...,
-  // SW reset
-  ILI9341_SOFTWARE_RESET, 0,
-  // display off
-  ILI9341_DISPLAY_OFF, 0,
-  // Power control B
-  ILI9341_POWERB, 3, 0x00, 0xC1, 0x30,
-  // Power on sequence control
-  ILI9341_POWER_SEQ, 4, 0x64, 0x03, 0x12, 0x81,
-  // Driver timing control A
-  ILI9341_DTCA, 3, 0x85, 0x00, 0x78,
-  // Power control A
-  ILI9341_POWERA, 5, 0x39, 0x2C, 0x00, 0x34, 0x02,
-  // Pump ratio control
-  ILI9341_PUMP_RATIO_CONTROL, 1, 0x20,
-  // Driver timing control B
-  ILI9341_DTCB, 2, 0x00, 0x00,
-  // POWER_CONTROL_1
-  ILI9341_POWER_CONTROL_1, 1, 0x23,
-  // POWER_CONTROL_2
-  ILI9341_POWER_CONTROL_2, 1, 0x10,
-  // VCOM_CONTROL_1
-  ILI9341_VCOM_CONTROL_1, 2, 0x3e, 0x28,
-  // VCOM_CONTROL_2
-  ILI9341_VCOM_CONTROL_2, 1, 0xBE,
-  // MEMORY_ACCESS_CONTROL
-  //ILI9341_MEMORY_ACCESS_CONTROL, 1, 0x48, // portlait
-  ILI9341_MEMORY_ACCESS_CONTROL, 1, DISPLAY_ROTATION_0, // landscape
-  // COLMOD_PIXEL_FORMAT_SET : 16 bit pixel
-  ILI9341_PIXEL_FORMAT_SET, 1, 0x55,
-  // Frame Rate
-  ILI9341_FRAME_RATE_CONTROL_1, 2, 0x00, 0x18,
-  // Gamma Function Disable
-  ILI9341_3GAMMA_EN, 1, 0x00,
-  // gamma set for curve 01/2/04/08
-  ILI9341_GAMMA_SET, 1, 0x01,
-  // positive gamma correction
-  ILI9341_POSITIVE_GAMMA_CORRECTION, 15, 0x0F,  0x31,  0x2B,  0x0C,  0x0E,  0x08,  0x4E,  0xF1,  0x37,  0x07,  0x10,  0x03,  0x0E, 0x09,  0x00,
-  // negativ gamma correction
-  ILI9341_NEGATIVE_GAMMA_CORRECTION, 15, 0x00,  0x0E,  0x14,  0x03,  0x11,  0x07,  0x31,  0xC1,  0x48,  0x08,  0x0F,  0x0C,  0x31, 0x36,  0x0F,
-  // Column Address Set
-//  ILI9341_COLUMN_ADDRESS_SET, 4, 0x00, 0x00, 0x01, 0x3f, // width 320
-  // Page Address Set
-//  ILI9341_PAGE_ADDRESS_SET, 4, 0x00, 0x00, 0x00, 0xef,   // height 240
-  // entry mode
-  ILI9341_ENTRY_MODE_SET, 1, 0x06,
-  // display function control
-  ILI9341_DISPLAY_FUNCTION_CONTROL, 3, 0x08, 0x82, 0x27,
-  // Interface Control (set WEMODE=0)
-  ILI9341_INTERFACE_CONTROL, 3, 0x00, 0x00, 0x00,
-  // sleep out
-  ILI9341_SLEEP_OUT, 0,
-  // display on
-  ILI9341_DISPLAY_ON, 0,
-  0 // sentinel
+// ST7789 LCD_RDDID read return 0x42C2A97F (need shift right by 7 bit, so ID1 = 0x85, ID2 = 0x85, ID3 = 0x52)
+#define ST7789V_ID        0x858552
+static const uint8_t ST7789V_init_seq[] = {               // ST7789V init sequence
+  // cmd,           len, data...,
+  LCD_SWRESET,        0,                                  // SW reset
+  LCD_DISPOFF,        0,                                  // display off
+  LCD_MADCTL,         1, LCD_MADCTL_MX | LCD_MADCTL_MV | LCD_MADCTL_RGB,
+  LCD_COLMOD,         1, 0x55,                            // COLMOD_PIXEL_FORMAT_SET : 16 bit pixel
+//ST7789V_PORCTRL,    5, 0x0C, 0x0C, 0x00, 0x33, 0x33,
+//ST7789V_GCTRL,      1, 0x35,
+  ST7789V_VCOMS,      1, 0x1F,                            // default 0x20
+//ST7789V_LCMCTRL,    1, 0x2C,
+  ST7789V_VDVVRHEN,   2, 0x01, 0xC3,                      // default 0x01, 0xFF !!! why need C3? datasheet say 0xFF
+//ST7789V_VDVS,       1, 0x20,
+//ST7789V_FRCTRL2,    1, 0x0F,
+//ST7789V_PWCTRL1,    2, 0xA4, 0xA1,
+  LCD_SLPOUT,         0,                                  // sleep out
+  LCD_DISPON,         0,                                  // display on
+  0                                                       // sentinel
 };
-#define LCD_INIT ili9341_init_seq
+
+// Read display ID and detect type
+static const uint8_t *get_lcd_init(void) {
+  uint32_t id = lcd_send_register(LCD_RDDID, 0, 0) >> 7;
+  if (id == ST7789V_ID) lcd_type = st7789v;
+  return lcd_type == ili9341_type ? ili9341_init_seq : ST7789V_init_seq;
+}
+
+void lcd_set_rotation(uint8_t r) {
+  static const uint8_t lcd_rotation_const[]={
+    // ILI9341 LCD_MADCTL rotation settings
+    (LCD_MADCTL_MV | LCD_MADCTL_BGR),
+    (LCD_MADCTL_MY | LCD_MADCTL_BGR),
+    (LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_MV | LCD_MADCTL_BGR),
+    (LCD_MADCTL_MX | LCD_MADCTL_BGR),
+    // ST7789 LCD_MADCTL rotation settings
+    (LCD_MADCTL_MX | LCD_MADCTL_MV | LCD_MADCTL_RGB),
+    (                                LCD_MADCTL_RGB),
+    (LCD_MADCTL_MY | LCD_MADCTL_MV | LCD_MADCTL_RGB),
+    (LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_RGB)
+  };
+  lcd_send_command(LCD_MADCTL, 1, &lcd_rotation_const[lcd_type * 4 + r]);
+}
+
 #endif
 
 #ifdef LCD_DRIVER_ST7796S
-static const uint8_t ST7796S_init_seq[] = {
-  // SW reset
-  ILI9341_SOFTWARE_RESET, 0,
-  // display off
-  ILI9341_DISPLAY_OFF, 0,
-  // Interface Mode Control
-  ILI9341_RGB_INTERFACE_CONTROL, 1, 0x00,
-  // Frame Rate
-  ILI9341_FRAME_RATE_CONTROL_1, 1, 0xA,
-  // Display Inversion Control , 2 Dot
-  ILI9341_DISPLAY_INVERSION_CONTROL, 1, 0x02,
-  // RGB/MCU Interface Control
-  ILI9341_DISPLAY_FUNCTION_CONTROL, 3, 0x02, 0x02, 0x3B,
-  // EntryMode
-  ILI9341_ENTRY_MODE_SET, 1, 0xC6,
-  // Power Control 1
-  ILI9341_POWER_CONTROL_1, 2, 0x17, 0x15,
-  // Power Control 2
-  ILI9341_POWER_CONTROL_2, 1, 0x41,
-  // VCOM Control
-//ILI9341_VCOM_CONTROL_1, 3, 0x00, 0x4D, 0x90,
-  ILI9341_VCOM_CONTROL_1, 3, 0x00, 0x12, 0x80,
-  // Memory Access
-  ILI9341_MEMORY_ACCESS_CONTROL, 1, 0x28,  // landscape, BGR
-//  ILI9341_MEMORY_ACCESS_CONTROL, 1, 0x20,  // landscape, RGB
-  // Interface Pixel Format,	16bpp DPI and DBI and
-  ILI9341_PIXEL_FORMAT_SET, 1, 0x55,
-  // P-Gamma
-//  ILI9341_POSITIVE_GAMMA_CORRECTION, 15, 0x00, 0x03, 0x09, 0x08, 0x16, 0x0A, 0x3F, 0x78, 0x4C, 0x09, 0x0A, 0x08, 0x16, 0x1A, 0x0F,
-  // N-Gamma
-//  ILI9341_NEGATIVE_GAMMA_CORRECTION, 15, 0x00, 0X16, 0X19, 0x03, 0x0F, 0x05, 0x32, 0x45, 0x46, 0x04, 0x0E, 0x0D, 0x35, 0x37, 0x0F,
-  //Set Image Func
-//  0xE9, 1, 0x00,
-  // Set Brightness to Max
-  ILI9341_WRITE_BRIGHTNESS, 1, 0xFF,
-  // Adjust Control
-  ILI9341_PUMP_RATIO_CONTROL, 4, 0xA9, 0x51, 0x2C, 0x82,
-  //Exit Sleep
-  ILI9341_SLEEP_OUT, 0x00,
-  // display on
-  ILI9341_DISPLAY_ON, 0,
-  0 // sentinel
+static const uint8_t ST7796S_init_seq[] = {               // ST7996s init sequence
+  // cmd,           len, data...,
+  LCD_SWRESET,        0,                                  // SW reset
+  LCD_DISPOFF,        0,                                  // display off
+  ST7796S_IFMODE,     1, 0x00,                            // Interface Mode Control
+  ST7796S_FRMCTR1,    1, 0x0A,                            // Frame Rate
+  ST7796S_DIC,        1, 0x02,                            // Display Inversion Control , 2 Dot
+  ST7796S_DFC,        3, 0x02, 0x02, 0x3B,                // RGB/MCU Interface Control
+  ST7796S_EM,         1, 0xC6,                            // EntryMode
+  ST7796S_PWR1,       2, 0x17, 0x15,                      // Power Control 1
+  ST7796S_PWR2,       1, 0x41,                            // Power Control 2
+//ST7796S_VCMPCTL,    3, 0x00, 0x4D, 0x90,
+  ST7796S_VCMPCTL,    3, 0x00, 0x12, 0x80,                // VCOM Control
+  LCD_MADCTL,         1, LCD_MADCTL_MV | LCD_MADCTL_BGR,  // landscape, BGR
+  LCD_COLMOD,         1, 0x55,                            // Interface Pixel Format, 16bpp
+//ST7796S_PGC,       15, 0x00, 0x03, 0x09, 0x08, 0x16, 0x0A, 0x3F, 0x78, 0x4C, 0x09, 0x0A, 0x08, 0x16, 0x1A, 0x0F,  // P-Gamma
+//ST7796S_NGC,       15, 0x00, 0X16, 0X19, 0x03, 0x0F, 0x05, 0x32, 0x45, 0x46, 0x04, 0x0E, 0x0D, 0x35, 0x37, 0x0F,  // N-Gamma
+//0xE9,               1, 0x00,                            // Set Image Func
+  LCD_WRDISBV,        1, 0xFF,                            // Set Brightness to Max
+//0xF7,               4, 0xA9, 0x51, 0x2C, 0x82,          // Adjust Control ??
+  LCD_SLPOUT,         0,                                  // sleep out
+  LCD_DISPON,         0,                                  // display on
+  0                                                       // sentinel
 };
-#define LCD_INIT ST7796S_init_seq
+
+static const uint8_t *get_lcd_init(void) {
+  return ST7796S_init_seq;
+}
+
+void lcd_set_rotation(uint8_t r) {
+  static const uint8_t ST7796S_rotation_const[]={
+          (LCD_MADCTL_MV | LCD_MADCTL_BGR),
+          (LCD_MADCTL_MY | LCD_MADCTL_BGR),
+          (LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_MV | LCD_MADCTL_BGR),
+          (LCD_MADCTL_MX | LCD_MADCTL_BGR)
+  };
+  lcd_send_command(LCD_MADCTL, 1, &ST7796S_rotation_const[r]);
+}
 #endif
 
 void lcd_init(void) {
   spi_init();
   LCD_RESET_ASSERT;
-  chThdSleepMilliseconds(10);
+  chThdSleepMilliseconds(5);
   LCD_RESET_NEGATE;
-  const uint8_t *p;
-  for (p = LCD_INIT; *p; ) {
-    ili9341_send_command(p[0], p[1], &p[2]);
+  chThdSleepMilliseconds(5); // need time before LCD ready after reset
+  const uint8_t *p = get_lcd_init();
+  while (*p) {
+    lcd_send_command(p[0], p[1], &p[2]);
     p += 2 + p[1];
     chThdSleepMilliseconds(2);
   }
   lcd_clear_screen();
 }
 
-static void ili9341_setWindow(int x, int y, int w, int h, uint16_t cmd) {
+void lcd_setWindow(int x, int y, int w, int h, uint16_t cmd) {
 // Any LCD exchange start from this
   dmaChannelWaitCompletionRxTx();
 //uint8_t xx[4] = { x >> 8, x, (x+w-1) >> 8, (x+w-1) };
 //uint8_t yy[4] = { y >> 8, y, (y+h-1) >> 8, (y+h-1) };
   uint32_t xx = __REV16(x | ((x + w - 1) << 16));
   uint32_t yy = __REV16(y | ((y + h - 1) << 16));
-  ili9341_send_command(ILI9341_COLUMN_ADDRESS_SET, 4, (uint8_t *)&xx);
-  ili9341_send_command(ILI9341_PAGE_ADDRESS_SET, 4, (uint8_t *)&yy);
-  ili9341_send_command(cmd, 0, NULL);
+  lcd_send_command(LCD_CASET, 4, (uint8_t *)&xx);
+  lcd_send_command(LCD_RASET, 4, (uint8_t *)&yy);
+  lcd_send_command(cmd, 0, NULL);
 }
 
-#ifndef __USE_DISPLAY_DMA__
-void lcd_fill(int x, int y, int w, int h) {
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_WRITE);
-  uint32_t len = w * h;
-  do {
-    while (SPI_TX_IS_NOT_EMPTY(LCD_SPI))
-      ;
-#if LCD_PIXEL_SIZE == 2
-    SPI_WRITE_16BIT(LCD_SPI, background_color);
-#else
-    SPI_WRITE_8BIT(LCD_SPI, background_color);
-#endif
-  }while(--len);
-#ifdef __REMOTE_DESKTOP__
-  if (sweep_mode & SWEEP_REMOTE) {
-    remote_region_t rd = {"fill\r\n", x, y, w, h};
-    send_region(&rd, (uint8_t *)&background_color, sizeof(pixel_t));
-  }
-#endif
-}
-
-void lcd_bulk(int x, int y, int w, int h) {
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_WRITE);
-  spi_TxBuffer((uint8_t *)spi_buffer, w * h * sizeof(pixel_t));
-#ifdef __REMOTE_DESKTOP__
-  if (sweep_mode & SWEEP_REMOTE) {
-    remote_region_t rd = {"bulk\r\n", x, y, w, h};
-    send_region(&rd, (uint8_t *)spi_buffer, w * h * sizeof(pixel_t));
-  }
-#endif
-}
-
-#else
-//
-// Use DMA for send data
-//
+// Set DMA data size, depend from pixel size
 #define LCD_DMA_MODE (LCD_PIXEL_SIZE == 2 ? STM32_DMA_CR_HWORD : STM32_DMA_CR_BYTE)
-// Fill region by some color
-void lcd_fill(int x, int y, int w, int h) {
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_WRITE);
-  dmaChannelSetMemory(LCD_DMA_TX, &background_color);
-  uint32_t len = w * h, delta;
-  while(len) {
-    delta = len > 0xFFFF ? 0xFFFF : len; // DMA can send only 65535 data in one run
-    dmaChannelSetTransactionSize(LCD_DMA_TX, delta);
-    dmaChannelSetMode(LCD_DMA_TX, txdmamode | LCD_DMA_MODE | STM32_DMA_CR_EN);
-    dmaChannelWaitCompletion(LCD_DMA_TX);
-    len-=delta;
-  }
-#ifdef __REMOTE_DESKTOP__
-  if (sweep_mode & SWEEP_REMOTE) {
-    remote_region_t rd = {"fill\r\n", x, y, w, h};
-    send_region(&rd, (uint8_t *)&background_color, sizeof(pixel_t));
-  }
-#endif
-}
 
-static void ili9341_DMA_bulk(int x, int y, int w, int h, pixel_t *buffer) {
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_WRITE);
-  dmaChannelSetMemory(LCD_DMA_TX, buffer);
-  dmaChannelSetTransactionSize(LCD_DMA_TX, w * h);
-  dmaChannelSetMode(LCD_DMA_TX, txdmamode | LCD_DMA_MODE | STM32_DMA_CR_MINC | STM32_DMA_CR_EN);
-#ifdef __REMOTE_DESKTOP__
-  if (sweep_mode & SWEEP_REMOTE) {
-    remote_region_t rd = {"bulk\r\n", x, y, w, h};
-    send_region(&rd, (uint8_t *)buffer, w * h * sizeof(pixel_t));
-  }
+//
+// LCD read data functions (Copy screen data to buffer)
+//
+#if defined(LCD_DRIVER_ILI9341) || defined(LCD_DRIVER_ST7789)
+// ILI9341 or ST7789 send data in RGB888 format, need parse it
+void lcd_read_memory(int x, int y, int w, int h, uint16_t *out) {
+  uint16_t len = w * h;
+  lcd_setWindow(x, y, w, h, LCD_RAMRD);
+  // Set read speed (if different from write speed)
+  if (lcd_type == st7789v && ST7789V_SPI_RX_SPEED != LCD_SPI_SPEED) SPI_BR_SET(LCD_SPI, ST7789V_SPI_RX_SPEED);
+  else if (                  ILI9341_SPI_RX_SPEED != LCD_SPI_SPEED) SPI_BR_SET(LCD_SPI, ILI9341_SPI_RX_SPEED);
+  spi_DropRx();                                       // Skip data from SPI rx buffer
+  spi_RxByte();                                       // require 8bit dummy clock
+  uint8_t *rgbbuf = (uint8_t *)out;                   // receive pixel data to buffer
+#ifndef __USE_DISPLAY_DMA_RX__
+  spi_RxBuffer(rgbbuf, len * LCD_RX_PIXEL_SIZE);
+  do {                                                // Parse received data to RGB565 format
+    *out++ = RGB565(rgbbuf[0], rgbbuf[1], rgbbuf[2]); // read data is always 18bit
+    rgbbuf+= LCD_RX_PIXEL_SIZE;
+  } while(--len);
+#else
+  len*= LCD_RX_PIXEL_SIZE;                     // Set data size for DMA read
+  spi_DMARxBuffer(rgbbuf, len, false);         // Start DMA read, and not wait completion
+  do {                                         // Parse received data to RGB565 format while data receive by DMA
+    uint16_t left = dmaChannelGetTransactionSize(LCD_DMA_RX)+LCD_RX_PIXEL_SIZE; // Get DMA data left
+    if (left > len) continue;                  // Next pixel RGB data not ready
+    do {                                       // Process completed by DMA data
+      *out++ = RGB565(rgbbuf[0], rgbbuf[1], rgbbuf[2]);
+      rgbbuf+= LCD_RX_PIXEL_SIZE;
+      len   -= LCD_RX_PIXEL_SIZE;
+    } while (left < len);
+  } while(len);
+  dmaChannelWaitCompletionRxTx();              // Stop DMA transfer
 #endif
+  SPI_BR_SET(LCD_SPI, LCD_SPI_SPEED);          // restore SPI speed
+  LCD_CS_HIGH;                                 // stop read
 }
-
-// Copy spi_buffer to region, wait completion after
-void lcd_bulk(int x, int y, int w, int h) {
-  ili9341_DMA_bulk(x, y, w, h, spi_buffer);  // Send data
-  dmaChannelWaitCompletion(LCD_DMA_TX);      // Wait
-}
-
-// Used only in double buffer mode
-#ifndef lcd_get_cell_buffer
-#define LCD_BUFFER_1    0x01
-#define LCD_DMA_RUN     0x02
-static uint8_t LCD_dma_status = 0;
-// Return free buffer for render
-pixel_t *lcd_get_cell_buffer(void) {
-  return &spi_buffer[(LCD_dma_status&LCD_BUFFER_1) ? SPI_BUFFER_SIZE/2 : 0];
+#elif defined(LCD_DRIVER_ST7796S)
+// ST7796S send data in RGB565 format, not need parse
+void lcd_read_memory(int x, int y, int w, int h, uint16_t *out) {
+  uint16_t len = w * h;
+  lcd_setWindow(x, y, w, h, LCD_RAMRD);
+  // Set read speed (if need different)
+  if (LCD_SPI_RX_SPEED != LCD_SPI_SPEED) SPI_BR_SET(LCD_SPI, LCD_SPI_RX_SPEED);
+  spi_DropRx();         // Skip data from rx buffer
+  spi_RxByte();         // require 8bit dummy clock
+  // receive pixel data to buffer
+#ifndef __USE_DISPLAY_DMA_RX__
+  spi_RxBuffer((uint8_t *)out, len * 2);
+#else
+  spi_DMARxBuffer((uint8_t *)out, len * 2, true);
+#endif
+  // restore speed if need
+  if (LCD_SPI_RX_SPEED != LCD_SPI_SPEED) SPI_BR_SET(LCD_SPI, LCD_SPI_SPEED);
+  LCD_CS_HIGH;
 }
 #endif
+
+void lcd_set_flip(bool flip) {
+  dmaChannelWaitCompletionRxTx();
+  lcd_set_rotation(flip ? DISPLAY_ROTATION_180 : DISPLAY_ROTATION_0);
+}
 
 // Wait completion before next data send
 #ifndef lcd_bulk_finish
@@ -690,104 +649,74 @@ void lcd_bulk_finish(void) {
 }
 #endif
 
+static void lcd_bulk_buffer(int x, int y, int w, int h, pixel_t *buffer) {
+  lcd_setWindow(x, y, w, h, LCD_RAMWR);
+#ifdef __USE_DISPLAY_DMA__
+  dmaChannelSetMemory(LCD_DMA_TX, buffer);
+  dmaChannelSetTransactionSize(LCD_DMA_TX, w * h);
+  dmaChannelSetMode(LCD_DMA_TX, txdmamode | LCD_DMA_MODE | STM32_DMA_CR_MINC | STM32_DMA_CR_EN);
+#else
+  spi_TxBuffer((uint8_t *)buffer, w * h * sizeof(pixel_t));
+#endif
+
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+    remote_region_t rd = {"bulk\r\n", x, y, w, h};
+    send_region(&rd, (uint8_t *)buffer, w * h * sizeof(pixel_t));
+  }
+#endif
+}
+
 // Copy part of spi_buffer to region, no wait completion after if buffer count !=1
 #ifndef lcd_bulk_continue
 void lcd_bulk_continue(int x, int y, int w, int h) {
-  lcd_bulk_finish();                                   // Wait DMA
-  ili9341_DMA_bulk(x, y, w, h, lcd_get_cell_buffer()); // Send new cell data
+  lcd_bulk_buffer(x, y, w, h, lcd_get_cell_buffer());  // Send new cell data
   LCD_dma_status^=LCD_BUFFER_1;                        // Switch buffer
 }
 #endif
+
+// Copy spi_buffer to region, wait completion after
+void lcd_bulk(int x, int y, int w, int h) {
+  lcd_bulk_buffer(x, y, w, h, spi_buffer);  // Send data
+  lcd_bulk_finish();                        // Wait
+}
+
+//******************************************************************************
+//   Display draw functions
+//******************************************************************************
+// Fill region by some color
+void lcd_fill(int x, int y, int w, int h) {
+  lcd_setWindow(x, y, w, h, LCD_RAMWR);
+  uint32_t len = w * h;
+#ifdef __USE_DISPLAY_DMA__
+  dmaChannelSetMemory(LCD_DMA_TX, &background_color);
+  while(len) {
+    uint32_t delta = len > 0xFFFF ? 0xFFFF : len; // DMA can send only 65535 data in one run
+    dmaChannelSetTransactionSize(LCD_DMA_TX, delta);
+    dmaChannelSetMode(LCD_DMA_TX, txdmamode | LCD_DMA_MODE | STM32_DMA_CR_EN);
+    dmaChannelWaitCompletion(LCD_DMA_TX);
+    len-=delta;
+  }
+#else
+  do {
+    while (SPI_TX_IS_NOT_EMPTY(LCD_SPI))
+      ;
+    if (LCD_PIXEL_SIZE == 2) SPI_WRITE_16BIT(LCD_SPI, background_color);
+    else                     SPI_WRITE_8BIT(LCD_SPI,  background_color);
+  } while(--len);
 #endif
 
-#ifdef LCD_DRIVER_ILI9341
-// ILI9341 send data in RGB888 format, need parse it
-// Copy ILI9341 screen data to buffer
-void lcd_read_memory(int x, int y, int w, int h, uint16_t *out) {
-  uint16_t len = w * h;
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_READ);
-  // Skip data from rx buffer
-  spi_DropRx();
-  // Set read speed (if need different)
-#ifdef LCD_SPI_RX_SPEED
-  SPI_BR_SET(LCD_SPI, LCD_SPI_RX_SPEED);
+#ifdef __REMOTE_DESKTOP__
+  if (sweep_mode & SWEEP_REMOTE) {
+    remote_region_t rd = {"fill\r\n", x, y, w, h};
+    send_region(&rd, (uint8_t *)&background_color, sizeof(pixel_t));
+  }
 #endif
-  // require 8bit dummy clock
-  spi_RxByte();
-  // receive pixel data to buffer
-#ifndef __USE_DISPLAY_DMA_RX__
-  spi_RxBuffer((uint8_t *)out, len * LCD_RX_PIXEL_SIZE);
-  // Parse received data to RGB565 format
-  uint8_t *rgbbuf = (uint8_t *)out;
-  do {
-    uint8_t r, g, b;
-    // read data is always 18bit
-    r = rgbbuf[0];
-    g = rgbbuf[1];
-    b = rgbbuf[2];
-    *out++ = RGB565(r, g, b);
-    rgbbuf += LCD_RX_PIXEL_SIZE;
-  }while(--len);
-#else
-  // Set data size for DMA read
-  len*= LCD_RX_PIXEL_SIZE;
-  // Start DMA read, and not wait completion
-  spi_DMARxBuffer((uint8_t *)out, len, false);
-  // Parse received data to RGB565 format while data receive by DMA
-  uint8_t *rgbbuf = (uint8_t *)out;
-  do {
-    uint16_t left = dmaChannelGetTransactionSize(LCD_DMA_RX)+LCD_RX_PIXEL_SIZE; // Get DMA data left
-    if (left > len) continue;     // Next pixel RGB data not ready
-    do {                          // Process completed by DMA data
-      uint8_t r = rgbbuf[0];      // read data is always 18bit in RGB888 format
-      uint8_t g = rgbbuf[1];
-      uint8_t b = rgbbuf[2];
-      *out++ = RGB565(r, g, b);
-      rgbbuf+= LCD_RX_PIXEL_SIZE;
-      len   -= LCD_RX_PIXEL_SIZE;
-    } while (left < len);
-  } while(len);
-  dmaChannelWaitCompletionRxTx(); // Wait DMA completion and stop it
-#endif
-  // restore speed if need
-#ifdef LCD_SPI_RX_SPEED
-  SPI_BR_SET(LCD_SPI, LCD_SPI_SPEED);
-#endif
-  LCD_CS_HIGH;
 }
-#endif
-
-#ifdef LCD_DRIVER_ST7796S
-// ST7796S send data in RGB565 format, not need parse it
-// Copy ST7796S screen data to buffer
-void lcd_read_memory(int x, int y, int w, int h, uint16_t *out) {
-  uint16_t len = w * h;
-  ili9341_setWindow(x, y, w, h, ILI9341_MEMORY_READ);
-  // Skip data from rx buffer
-  spi_DropRx();
-  // Set read speed (if need different)
-#ifdef LCD_SPI_RX_SPEED
-  SPI_BR_SET(LCD_SPI, LCD_SPI_RX_SPEED);
-#endif
-  // require 8bit dummy clock
-  spi_RxByte();
-  // receive pixel data to buffer
-#ifndef __USE_DISPLAY_DMA_RX__
-  spi_RxBuffer((uint8_t *)out, len * 2);
-#else
-  spi_DMARxBuffer((uint8_t *)out, len * 2, true);
-#endif
-  // restore speed if need
-#ifdef LCD_SPI_RX_SPEED
-  SPI_BR_SET(LCD_SPI, LCD_SPI_SPEED);
-#endif
-  LCD_CS_HIGH;
-}
-#endif
 
 #if 0
 static void lcd_pixel(int x, int y, uint16_t color) {
-  ili9341_setWindow(x0, y0, 1, 1, ILI9341_MEMORY_WRITE);
+  lcd_setWindow(x, y, 1, 1, LCD_RAMWR);
   while (SPI_TX_IS_NOT_EMPTY(LCD_SPI));
   SPI_WRITE_16BIT(LCD_SPI, color);
 }
@@ -800,7 +729,7 @@ void lcd_line(int x0, int y0, int x1, int y1) {
   int dy = (y1 - y0), sy = 1; if (dy < 0) {dy = -dy; sy = -1;}
   int err = -((dx + dy) < 0 ? dx : dy) / 2;
   while (1) {
-    ili9341_setWindow(x0, y0, LCD_WIDTH-x0, 1, ILI9341_MEMORY_WRITE); // prepare send Horizontal line
+    lcd_setWindow(x0, y0, LCD_WIDTH-x0, 1, LCD_RAMWR);        // prepare send Horizontal line
     while (1) {
       while (SPI_TX_IS_NOT_EMPTY(LCD_SPI));
       SPI_WRITE_16BIT(LCD_SPI, foreground_color);             // Send color
@@ -817,7 +746,6 @@ void lcd_clear_screen(void) {
   lcd_fill(0, 0, LCD_WIDTH, LCD_HEIGHT);
 }
 
-
 void lcd_set_foreground(uint16_t fg_idx) {
   foreground_color = GET_PALTETTE_COLOR(fg_idx);
 }
@@ -831,20 +759,8 @@ void lcd_set_colors(uint16_t fg_idx, uint16_t bg_idx) {
   background_color = GET_PALTETTE_COLOR(bg_idx);
 }
 
-void lcd_set_flip(bool flip) {
-  dmaChannelWaitCompletionRxTx();
-  uint8_t memAcc = flip ? DISPLAY_ROTATION_180 : DISPLAY_ROTATION_0;
-  lcd_send_command(ILI9341_MEMORY_ACCESS_CONTROL, 1, &memAcc);
-}
-
-void ili9341_set_rotation(uint8_t r) {
-  //  static const uint8_t rotation_const[]={DISPLAY_ROTATION_0, DISPLAY_ROTATION_90,
-  //  DISPLAY_ROTATION_180, DISPLAY_ROTATION_270};
-  ili9341_send_command(ILI9341_MEMORY_ACCESS_CONTROL, 1, &r);
-}
-
 void lcd_blitBitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *b) {
-#if 1 // Use this for remote desctop (in this case bulk operation send to remote)
+#if 1 // Use this for remote desktop (in this case bulk operation send to remote)
   pixel_t *buf = spi_buffer;
   uint8_t bits = 0;
   for (uint32_t c = 0; c < height; c++) {
@@ -857,7 +773,7 @@ void lcd_blitBitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, con
   lcd_bulk(x, y, width, height);
 #else
   uint8_t bits = 0;
-  ili9341_setWindow(x, y, width, height, ILI9341_MEMORY_WRITE);
+  lcd_setWindow(x, y, width, height, LCD_RAMWR);
   for (uint32_t c = 0; c < height; c++) {
     for (uint32_t r = 0; r < width; r++) {
       if ((r&7) == 0) bits = *b++;
@@ -890,10 +806,8 @@ void lcd_drawstring(int16_t x, int16_t y, const char *str)
 
 typedef struct {
   const void *vmt;
-  int16_t start_x;
-  int16_t start_y;
-  int16_t x;
-  int16_t y;
+  int16_t start_x, start_y;
+  int16_t x, y;
   uint16_t state;
 } lcdPrintStream;
 
@@ -966,19 +880,19 @@ int lcd_printfV(int16_t x, int16_t y, const char *fmt, ...) {
   lcdPrintStream ps = {&lcd_vmt, x, y, x, y, 0};
   lcd_set_foreground(LCD_FG_COLOR);
   lcd_set_background(LCD_BG_COLOR);
-  ili9341_set_rotation(DISPLAY_ROTATION_270);
+  lcd_set_rotation(DISPLAY_ROTATION_270);
   // Performing the print operation using the common code.
   va_list ap;
   va_start(ap, fmt);
   int retval = chvprintf((BaseSequentialStream *)(void *)&ps, fmt, ap);
   va_end(ap);
-  ili9341_set_rotation(DISPLAY_ROTATION_0);
+  lcd_set_rotation(DISPLAY_ROTATION_0);
   // Return number of bytes that would have been written.
   return retval;
 }
 
 void lcd_blitBitmapScale(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t size, const uint8_t *b) {
-  ili9341_setWindow(x, y, w * size, h * size, ILI9341_MEMORY_WRITE);
+  lcd_setWindow(x, y, w * size, h * size, LCD_RAMWR);
   for (int c = 0; c < h; c++) {
     const uint8_t *ptr = b; uint8_t bits = 0;
     for (int i = 0; i < size; i++) {
@@ -998,7 +912,7 @@ void lcd_blitBitmapScale(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_
 int lcd_drawchar_size(uint8_t ch, int x, int y, uint8_t size) {
   const uint8_t *char_buf = FONT_GET_DATA(ch);
   uint16_t w = FONT_GET_WIDTH(ch);
-#if 1
+#if 1 // Use this for remote desctop (in this case bulk operation send to remote)
   pixel_t *buf = spi_buffer;
   for (uint32_t c = 0; c < FONT_GET_HEIGHT; c++, char_buf++) {
     for (uint32_t i = 0; i < size; i++) {
@@ -1010,7 +924,7 @@ int lcd_drawchar_size(uint8_t ch, int x, int y, uint8_t size) {
   }
   lcd_bulk(x, y, w * size, FONT_GET_HEIGHT * size);
 #else
-  ili9341_setWindow(x, y, w * size, FONT_GET_HEIGHT * size, ILI9341_MEMORY_WRITE);
+  lcd_setWindow(x, y, w * size, FONT_GET_HEIGHT * size, LCD_RAMWR);
   for (int c = 0; c < FONT_GET_HEIGHT; c++, char_buf++) {
     for (int i = 0; i < size; i++) {
       uint8_t bits = *char_buf;
@@ -1071,7 +985,7 @@ void ili9341_test(int mode) {
       }
       break;
     case 2:
-      //ili9341_send_command(0x55, 0xff00);
+      //lcd_send_command(0x55, 0xff00);
       ili9341_pixel(64, 64, 0xaa55);
     break;
 #endif

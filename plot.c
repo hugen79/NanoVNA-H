@@ -77,15 +77,6 @@ float2int(float v)
 }
 #endif
 
-static inline int
-circle_inout(int x, int y, int r)
-{
-  int d = x*x + y*y;
-  if (d < r*r - r) return  1; // in  circle
-  if (d > r*r + r) return -1; // out circle
-  return 0;                   // on  circle
-}
-
 static bool
 polar_grid(int x, int y)
 {
@@ -387,8 +378,7 @@ static float reactance(int i, const float *v) {
 static float mod_z(int i, const float *v) {
   (void) i;
   const float z0 = PORT_Z;
-  const float l = get_l(1.0f - v[0], v[1]);
-  return z0 * vna_sqrtf(4.0f * v[0] / l + 1.0f); // always >= 0
+  return z0 * vna_sqrtf(get_l(1.0f + v[0], v[1]) / get_l(1.0f - v[0], v[1])); // always >= 0
 }
 
 static float phase_z(int i, const float *v) {
@@ -573,7 +563,7 @@ cartesian_scale(const float *v, int16_t *xp, int16_t *yp, float scale) {
 
 const trace_info_t trace_info_list[MAX_TRACE_TYPE] = {
 // Type          name      format   delta format      symbol         ref   scale  get value
-[TRC_LOGMAG] = {"LOGMAG", "%.2f%s", S_DELTA "%.2f%s", S_dB,     NGRIDY-1,  10.0f, logmag               },
+[TRC_LOGMAG] = {"LOGMAG", "%.2f%s", S_DELTA "%.3f%s", S_dB,     NGRIDY-1,  10.0f, logmag               },
 [TRC_PHASE]  = {"PHASE",  "%.2f%s", S_DELTA "%.2f%s", S_DEGREE, NGRIDY/2,  90.0f, phase                },
 [TRC_DELAY]  = {"DELAY",  "%.4F%s",         "%.4F%s", S_SECOND, NGRIDY/2,  1e-9f, groupdelay_from_array},
 [TRC_SMITH]  = {"SMITH",      NULL,             NULL, "",              0,  1.00f, NULL                 }, // Custom
@@ -836,7 +826,7 @@ static int marker_area_max(void) {
   for (i = 0; i < MARKERS_MAX; i++) if (markers[i].enabled) m_count++;
   int cnt = t_count > m_count ? t_count : m_count;
   int extra = 0;
-  if (electrical_delay != 0.0f) extra+= 2;
+  if (get_electrical_delay() != 0.0f) extra+= 2;
   if (s21_offset != 0.0f) extra+= 2;
 #ifdef __VNA_Z_RENORMALIZATION__
   if (current_props._portz != 50.0f) extra+= 2;
@@ -894,26 +884,20 @@ cell_drawline(int x0, int y0, int x1, int y1, pixel_t c)
 }
 #endif
 
-// Give a little speedup then draw rectangular plot (50 systick on all calls, all render req 700 systick)
+// Give a little speedup then draw rectangular plot
 // Write more difficult algorithm for search indexes not give speedup
-static int
-search_index_range_x(int x1, int x2, index_t *index, int *i0, int *i1)
-{
-  int i, j;
-  int head = 0;
-  int tail = sweep_points;
-  int idx_x;
-
+static int search_index_range_x(int x1, int x2, index_t *index, int *i0, int *i1) {
+  int i;
+  int head = 0, tail = sweep_points;
   // Search index point in cell
   while (1) {
-    i = (head + tail) / 2;
-    idx_x = index[i].x;
-    if (idx_x >= x2) { // index after cell
+    i = (head + tail)>>1;
+    if (index[i].x >= x2) { // index after cell
       if (tail == i)
         return false;
       tail = i;
     }
-    else if (idx_x < x1) {    // index before cell
+    else if (index[i].x < x1) {    // index before cell
       if (head == i)
         return false;
       head = i;
@@ -921,20 +905,9 @@ search_index_range_x(int x1, int x2, index_t *index, int *i0, int *i1)
     else  // index in cell (x =< idx_x < cell_end)
       break;
   }
-  j = i;
-  // Search index left from point
-  do {
-    if (j == 0) break;
-    j--;
-  } while (x1 <= index[j].x);
-  *i0 = j;
-  // Search index right from point
-  do {
-    if (i >=sweep_points-1) break;
-    i++;
-  } while (index[i].x < x2);
-  *i1 = i;
-
+  *i0 = *i1 = i;
+  while (*i0 >              0 && x1 <= index[--*i0].x); // Search index left from point
+  while (*i1 < sweep_points-1 && x2 >  index[++*i1].x); // Search index right from point
   return TRUE;
 }
 
@@ -1068,8 +1041,8 @@ static uint8_t data_update = 0;
 #define MESAURE_S21        2                            // For calculate need only S21 data
 #define MESAURE_ALL        (MESAURE_S11 | MESAURE_S21)  // For calculate need S11 and S21 data
 
-#define MEASURE_UPD_SWEEP  1                            // Recalculate on sweep done
-#define MEASURE_UPD_FREQ   2                            // Recalculate on marker change position
+#define MEASURE_UPD_SWEEP  (1<<0)                       // Recalculate on sweep done
+#define MEASURE_UPD_FREQ   (1<<1)                       // Recalculate on marker change position
 #define MEASURE_UPD_ALL    (MEASURE_UPD_SWEEP | MEASURE_UPD_FREQ)
 
 // Include measure functions
@@ -1091,6 +1064,7 @@ static const struct {
   [MEASURE_SHUNT_LC]    = {MESAURE_S21, MEASURE_UPD_SWEEP, draw_serial_result, prepare_series   },
   [MEASURE_SERIES_LC]   = {MESAURE_S21, MEASURE_UPD_SWEEP, draw_serial_result, prepare_series   },
   [MEASURE_SERIES_XTAL] = {MESAURE_S21, MEASURE_UPD_SWEEP, draw_serial_result, prepare_series   },
+  [MEASURE_FILTER]      = {MESAURE_S21, MEASURE_UPD_SWEEP, draw_filter_result, prepare_filter   },
 #endif
 #ifdef __S11_CABLE_MEASURE__
   [MEASURE_S11_CABLE]   = {MESAURE_S11, MEASURE_UPD_ALL,       draw_s11_cable, prepare_s11_cable},
@@ -1129,7 +1103,7 @@ static void cell_draw_measure(int x0, int y0){
   measure_cell_cb_t measure_draw_cb = measure[current_props._measure].measure_cell;
   if (measure_draw_cb) {
     lcd_set_colors(LCD_MEASURE_COLOR, LCD_BG_COLOR);
-    measure_draw_cb(x0, y0);
+    measure_draw_cb(STR_MEASURE_X - x0, STR_MEASURE_Y - y0);
   }
 }
 #endif
@@ -1710,6 +1684,7 @@ cell_draw_marker_info(int x0, int y0)
 
   xpos = 1 + 18 + CELLOFFSETX - x0;
   ypos = 1 + ((j+1)/2)*FONT_STR_HEIGHT - y0;
+  float electrical_delay = get_electrical_delay();
   if (electrical_delay != 0.0f) {
     // draw electrical delay
     char sel = lever_mode == LM_EDELAY ? S_SARROW[0] : ' ';
@@ -1789,7 +1764,8 @@ draw_cal_status(void)
     {'S', 0, CALSTAT_ES},
     {'T', 0, CALSTAT_ET},
     {'t', 0, CALSTAT_THRU},
-    {'X', 0, CALSTAT_EX}
+    {'X', 0, CALSTAT_EX},
+    {'E', 0, CALSTAT_ENHANCED_RESPONSE}
   };
   for (i = 0; i < ARRAY_COUNT(calibration_text); i++)
     if (cal_status & calibration_text[i].mask)

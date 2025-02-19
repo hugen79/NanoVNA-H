@@ -623,6 +623,28 @@ static const BYTE DbcTbl[] = MKCVTBL(TBL_DC, FF_CODE_PAGE);
 #define  st_dword(ptr, val) *((uint32_t*)(ptr)) = ((uint32_t)(val))
 #define  st_qword(ptr, val) *((uint64_t*)(ptr)) = ((uint64_t)(val))
 
+#elif _WORD_ACCESS == 2
+// Compiler auto detect where need byte or word access optimisation
+struct __attribute__((packed)) T_UINT16 { uint16_t v; };
+struct __attribute__((packed)) T_UINT32 { uint32_t v; };
+struct __attribute__((packed)) T_UINT64 { uint64_t v; };
+//	 Load a 2-byte little-endian word
+static WORD ld_word (const BYTE* ptr)   {return (((const struct T_UINT16 *)(const void *)(ptr))->v);}
+//   Load a 4-byte little-endian word
+static DWORD ld_dword (const BYTE* ptr) {return (((const struct T_UINT32 *)(const void *)(ptr))->v);}
+#if !FF_FS_READONLY
+//   Store a 2-byte word in little-endian
+static void st_word(BYTE* ptr, WORD val)   {(void)((((struct T_UINT16 *)(void *)(ptr))->v) = (val));}
+//   Store a 4-byte word in little-endian
+static void st_dword (BYTE* ptr, DWORD val){(void)((((struct T_UINT32 *)(void *)(ptr))->v) = (val));}
+#if FF_FS_EXFAT
+//   Load an 8-byte little-endian word
+static QWORD ld_qword (const BYTE* ptr) {return (((const struct T_UINT64 *)(const void *)(ptr))->v);}
+//   Store an 8-byte word in little-endian
+static void st_qword(BYTE* ptr, QWORD val) {(void)((((struct T_UINT64 *)(void *)(ptr))->v) = (val));}
+#endif
+#endif // FF_FS_READONLY
+
 #else
 
 static WORD ld_word (const BYTE* ptr)	/*	 Load a 2-byte little-endian word */

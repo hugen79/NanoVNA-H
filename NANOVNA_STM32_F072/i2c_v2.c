@@ -51,6 +51,7 @@ bool i2c_transfer(uint8_t addr, const uint8_t *w, size_t wn)
 // I2C TX and RX variant
 bool i2c_receive(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r, size_t rn)
 {
+  while(VNA_I2C->ISR & I2C_ISR_BUSY); // wait last transaction
   VNA_I2C->CR1|= I2C_CR1_PE;
   if (wn) {
     VNA_I2C->CR2 = (addr << I2C_CR2_SADD_7BIT_SHIFT) | (wn << I2C_CR2_NBYTES_SHIFT);

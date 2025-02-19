@@ -72,6 +72,7 @@ OSAL_IRQ_HANDLER(Vector5C) {  // EXTI[4]...EXTI[15] interrupt handler
   uint32_t pr = EXTI->PR & ((1U << 4)  | (1U << 5)  | (1U << 6)  | (1U << 7)  | (1U << 8)  |
                             (1U << 9)  | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13) |
                             (1U << 14) | (1U << 15));
+  EXTI->PR = pr;
 #ifdef EXT_CH4_HANDLER_FUNC
   if (pr & (1U << 4)) EXT_CH4_HANDLER_FUNC(4);
 #endif

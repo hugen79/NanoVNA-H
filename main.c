@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2019-2023, Dmitry (DiSlord) dislordlive@gmail.com
+ * Copyright (c) 2019-2025, zeenko.tech
+ * Copyright (c) 2019-2025, Dmitry (DiSlord) dislordlive@gmail.com
  * Based on TAKAHASHI Tomohiro (TTRFTECH) edy555@gmail.com
  * All rights reserved.
  *
@@ -117,6 +118,7 @@ static int  set_frequency(freq_t freq);
 static void set_frequencies(freq_t start, freq_t stop, uint16_t points);
 static bool sweep(bool break_on_operation, uint16_t ch_mask);
 static void transform_domain(uint16_t ch_mask);
+extern void lcd_setBrightness(uint16_t b);
 
 uint8_t sweep_mode = SWEEP_ENABLE;
 // current sweep point (used for continue sweep if user break)
@@ -125,12 +127,12 @@ static uint16_t p_sweep = 0;
 float measured[2][SWEEP_POINTS_MAX][2];
 
 #undef VERSION
-#define VERSION "1.2.27"
+#define VERSION "1.2.43"
 
 // Version text, displayed in Config->Version menu, also send by info command
 const char *info_about[]={
   "Board: " BOARD_NAME,
-  "2019-2024 Copyright NanoVNA.com",
+  "2019-2025 Copyright NanoVNA.com",
   "based on  @DiSlord @edy555 ... source",
   "Licensed under GPL.",
   "Version: " VERSION " ["\
@@ -495,38 +497,6 @@ int serial_shell_printf(const char *fmt, ...)
 }
 #endif
 
-//
-// Function used for search substring v in list
-// Example need search parameter "center" in "start|stop|center|span|cw" getStringIndex return 2
-// If not found return -1
-// Used for easy parse command arguments
-static int get_str_index(const char *v, const char *list)
-{
-  int i = 0;
-  while (1) {
-    const char *p = v;
-    while (1) {
-      char c = *list;
-      if (c == '|') c = 0;
-      if (c == *p++) {
-        // Found, return index
-        if (c == 0) return i;
-        list++;    // Compare next symbol
-        continue;
-      }
-      break;  // Not equal, break
-    }
-    // Set new substring ptr
-    while (1) {
-      // End of string, not found
-      if (*list == 0) return -1;
-      if (*list++ == '|') break;
-    }
-    i++;
-  }
-  return -1;
-}
-
 VNA_SHELL_FUNCTION(cmd_pause)
 {
   (void)argc;
@@ -552,95 +522,13 @@ VNA_SHELL_FUNCTION(cmd_reset)
   if (argc == 1) {
     if (get_str_index(argv[0], "dfu") == 0) {
       shell_printf("Performing reset to DFU mode" VNA_SHELL_NEWLINE_STR);
-      enter_dfu();
+      ui_enter_dfu();
       return;
     }
   }
 #endif
   shell_printf("Performing reset" VNA_SHELL_NEWLINE_STR);
   NVIC_SystemReset();
-}
-
-// Use macro, std isdigit more big
-#define _isdigit(c) (c >= '0' && c <= '9')
-// Rewrite universal standart str to value functions to more compact
-//
-// Convert string to int32
-int32_t my_atoi(const char *p)
-{
-  int32_t value = 0;
-  uint32_t c;
-  bool neg = false;
-
-  if (*p == '-') {neg = true; p++;}
-  if (*p == '+') p++;
-  while ((c = *p++ - '0') < 10)
-    value = value * 10 + c;
-  return neg ? -value : value;
-}
-
-// Convert string to uint32
-//  0x - for hex radix
-//  0o - for oct radix
-//  0b - for bin radix
-//  default dec radix
-uint32_t my_atoui(const char *p)
-{
-  uint32_t value = 0, radix = 10, c;
-  if (*p == '+') p++;
-  if (*p == '0') {
-    switch (p[1]) {
-      case 'x': radix = 16; break;
-      case 'o': radix =  8; break;
-      case 'b': radix =  2; break;
-      default:  goto calculate;
-    }
-    p+=2;
-  }
-calculate:
-  while (1) {
-    c = *p++ - '0';
-    // c = to_upper(*p) - 'A' + 10
-    if (c >= 'A' - '0') c = (c&(~0x20)) - ('A' - '0') + 10;
-    if (c >= radix) return value;
-    value = value * radix + c;
-  }
-}
-
-float
-my_atof(const char *p)
-{
-  int neg = FALSE;
-  if (*p == '-')
-    neg = TRUE;
-  if (*p == '-' || *p == '+')
-    p++;
-  float x = my_atoi(p);
-  while (_isdigit((int)*p))
-    p++;
-  if (*p == '.' || *p == ',') {
-    float d = 1.0f;
-    p++;
-    while (_isdigit((int)*p)) {
-      d *= 1e-1f;
-      x += d * (*p - '0');
-      p++;
-    }
-  }
-  if (*p) {
-    int exp = 0;
-    if (*p == 'e' || *p == 'E') exp = my_atoi(&p[1]);
-    else if (*p == 'G') exp =  9; // Giga
-    else if (*p == 'M') exp =  6; // Mega
-    else if (*p == 'k') exp =  3; // kilo
-    else if (*p == 'm') exp = -3; // milli
-    else if (*p == 'u') exp = -6; // micro
-    else if (*p == 'n') exp = -9; // nano
-    else if (*p == 'p') exp =-12; // pico
-    if (exp > 0) do {x*= 1e+1f;} while (--exp);
-    if (exp < 0) do {x*= 1e-1f;} while (++exp);
-  }
-  return neg ? -x : x;
 }
 
 #ifdef __USE_SMOOTH__
@@ -701,6 +589,7 @@ VNA_SHELL_FUNCTION(cmd_config) {
     "|lcshunt"   // Enable LC shunt measure option
     "|lcseries"  // Enable LC series  measure option
     "|xtal"      // Enable XTAL measure option
+    "|filter"    // Enable filter measure option
 #endif
 #ifdef __S11_CABLE_MEASURE__
     "|cable"     // Enable S11 cable measure option
@@ -769,7 +658,7 @@ VNA_SHELL_FUNCTION(cmd_time)
   dt_buf[0] = rtc_get_tr_bcd(); // TR should be read first for sync
   dt_buf[1] = rtc_get_dr_bcd(); // DR should be read second
   static const uint8_t idx_to_time[] = {6,5,4,2,  1,  0};
-  static const char       time_cmd[] = "y|m|d|h|min|sec";
+  static const char       time_cmd[] = "y|m|d|h|min|sec|ppm";
   //            0    1   2       4      5     6
   // time[] ={sec, min, hr, 0, day, month, year, 0}
   uint8_t   *time = (uint8_t*)dt_buf;
@@ -779,6 +668,10 @@ VNA_SHELL_FUNCTION(cmd_time)
   }
   if (argc!=2) goto usage;
   int idx = get_str_index(argv[0], time_cmd);
+  if(idx == 6) {
+    rtc_set_cal(my_atof(argv[1]));
+    return;
+  }
   uint32_t val = my_atoui(argv[1]);
   if (idx < 0 || val > 99)
     goto usage;
@@ -861,26 +754,52 @@ usage:
   shell_printf("usage: data [array]" VNA_SHELL_NEWLINE_STR);
 }
 
+#ifdef __CAPTURE_RLE8__
+void capture_rle8(void) {
+  static const struct {
+    uint16_t header;
+    uint16_t width, height;
+    uint8_t  bit_per_pixel, compression;
+  } screenshot_header = {
+    0x4D42,
+    LCD_WIDTH, LCD_HEIGHT,
+    8, 1
+  };
+
+  uint16_t size = sizeof(config._lcd_palette);
+  shell_write(&screenshot_header, sizeof(screenshot_header));      // write header
+  shell_write(&size, sizeof(uint16_t));                            // write palette block size
+  shell_write(config._lcd_palette, size);                          // write palette block
+  uint16_t *data  = &spi_buffer[32];                               // most bad pack situation increase on 1 byte every 128, so put not compressed data on 64 byte offset
+  for (int y = 0, idx = 0; y < LCD_HEIGHT; y++) {
+    lcd_read_memory(0, y, LCD_WIDTH, 1, data);                     // read in 16bpp format
+    for (int x = 0; x < LCD_WIDTH; x++) {                          // convert to palette mode
+      if (config._lcd_palette[idx] != data[x]) {                   // search color in palette
+        for (idx = 0; idx < MAX_PALETTE && config._lcd_palette[idx] != data[x]; idx++);
+        if (idx >= MAX_PALETTE) idx = 0;
+      }
+      ((uint8_t*)data)[x] = idx;                                   // put palette index
+    }
+    spi_buffer[0] = packbits((char *)data, (char *)&spi_buffer[1], LCD_WIDTH); // pack
+    shell_write(spi_buffer, spi_buffer[0] + sizeof(uint16_t));
+  }
+}
+#endif
+
 VNA_SHELL_FUNCTION(cmd_capture)
 {
-// read pixel count at one time (PART*2 bytes required for read buffer)
   (void)argc;
   (void)argv;
-  int y;
+#ifdef __CAPTURE_RLE8__
+  if (argc > 0) { capture_rle8(); return; }
+#endif
 // Check buffer limits, if less possible reduce rows count
 #define READ_ROWS 2
 #if (SPI_BUFFER_SIZE*LCD_PIXEL_SIZE) < (LCD_RX_PIXEL_SIZE*LCD_WIDTH*READ_ROWS)
 #error "Low size of spi_buffer for cmd_capture"
 #endif
-  // Text on screenshot
-  if (argc > 0) {
-    lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
-    for (int i = 0; i < argc; i++)
-      lcd_printf(OFFSETX + CELLOFFSETX + 2, AREA_HEIGHT_NORMAL - (argc - i) * FONT_STR_HEIGHT - 2, argv[i]);
-    request_to_redraw(REDRAW_AREA);
-  }
   // read 2 row pixel time
-  for (y = 0; y < LCD_HEIGHT; y += READ_ROWS) {
+  for (int y = 0; y < LCD_HEIGHT; y += READ_ROWS) {
     // use uint16_t spi_buffer[2048] (defined in ili9341) for read buffer
     lcd_read_memory(0, y, LCD_WIDTH, READ_ROWS, (uint16_t *)spi_buffer);
     shell_write(spi_buffer, READ_ROWS * LCD_WIDTH * sizeof(uint16_t));
@@ -934,7 +853,7 @@ config_t config = {
   ._harmonic_freq_threshold = FREQUENCY_THRESHOLD,
   ._IF_freq    = FREQUENCY_OFFSET,
   ._touch_cal  = DEFAULT_TOUCH_CONFIG,
-  ._vna_mode   = 0, // USB mode, search max
+  ._vna_mode   = 0x10, // USB mode, search max, show grid values
   ._brightness = DEFAULT_BRIGHTNESS,
   ._dac_value   = 1922,
   ._vbat_offset = 450,
@@ -947,6 +866,8 @@ config_t config = {
 
 #ifdef __MS5351__
   ._band_mode = 1,
+#elif defined __ZEETK__
+  ._band_mode = 2,
 #else
   ._band_mode = 0,
 #endif
@@ -1003,10 +924,12 @@ static void load_default_properties(void) {
   memcpy(current_props._trace, def_trace, sizeof(def_trace));
   memcpy(current_props._markers, def_markers, sizeof(def_markers));
 //=============================================
-  current_props._electrical_delay = 0.0f;
+  current_props._electrical_delay[0] = 0.0f;
+  current_props._electrical_delay[1] = 0.0f;
   current_props._var_delay = 0.0f;
   current_props._s21_offset       = 0.0f;
   current_props._portz = 50.0f;
+  current_props._cal_load_r      = 50.0f;
   current_props._velocity_factor = 70;
   current_props._current_trace   = 0;
   current_props._active_marker   = 0;
@@ -1074,9 +997,10 @@ static void load_settings(void) {
       lever_mode         = bk.leveler;
       config._vna_mode   = get_backup_data32(4) | (1<<VNA_MODE_BACKUP); // refresh backup settings
       set_bandwidth(bk.bw);
-    }
-  } else  // Try load 0 slot
-    caldata_recall(0);
+    } else
+      caldata_recall(0);   // Try load 0 slot
+  } else
+    caldata_recall(0);   // Try load 0 slot
   update_frequencies();
 #ifdef __VNA_MEASURE_MODULE__
   plot_set_measure_mode(current_props._measure);
@@ -1152,13 +1076,14 @@ extern uint16_t timings[16];
 #define DSP_WAIT         while (wait_count) {__WFI();}
 #define RESET_SWEEP      {p_sweep = 0;}
 
-#define SWEEP_CH0_MEASURE           0x01
-#define SWEEP_CH1_MEASURE           0x02
-#define SWEEP_APPLY_EDELAY          0x04
-#define SWEEP_APPLY_S21_OFFSET      0x08
-#define SWEEP_APPLY_CALIBRATION     0x10
-#define SWEEP_USE_INTERPOLATION     0x20
-#define SWEEP_USE_RENORMALIZATION   0x40
+#define SWEEP_CH0_MEASURE           (1<< 0)
+#define SWEEP_CH1_MEASURE           (1<< 1)
+#define SWEEP_APPLY_EDELAY_S11      (1<< 2)
+#define SWEEP_APPLY_EDELAY_S21      (1<< 3)
+#define SWEEP_APPLY_S21_OFFSET      (1<< 4)
+#define SWEEP_APPLY_CALIBRATION     (1<< 5)
+#define SWEEP_USE_INTERPOLATION     (1<< 6)
+#define SWEEP_USE_RENORMALIZATION   (1<< 7)
 
 static uint16_t get_sweep_mask(void){
   uint16_t ch_mask = 0;
@@ -1181,19 +1106,22 @@ static uint16_t get_sweep_mask(void){
   ch_mask|= plot_get_measure_channels();
 #endif
 #ifdef __VNA_Z_RENORMALIZATION__
-  if (current_props._portz != 50.0f)
+  if (current_props._portz != cal_load_r)
     ch_mask|= SWEEP_USE_RENORMALIZATION;
 #endif
   if (cal_status & CALSTAT_APPLY)        ch_mask|= SWEEP_APPLY_CALIBRATION;
   if (cal_status & CALSTAT_INTERPOLATED) ch_mask|= SWEEP_USE_INTERPOLATION;
-  if (electrical_delay)                  ch_mask|= SWEEP_APPLY_EDELAY;
+  if (electrical_delayS11)               ch_mask|= SWEEP_APPLY_EDELAY_S11;
+  if (electrical_delayS21)               ch_mask|= SWEEP_APPLY_EDELAY_S21;
   if (s21_offset)                        ch_mask|= SWEEP_APPLY_S21_OFFSET;
   return ch_mask;
 }
 
-static void applyEDelay(float data[2], float s, float c){
+static void applyEDelay(float w, float data[2]) {
+  float s, c;
   float real = data[0];
   float imag = data[1];
+  vna_sincosf(w, &s, &c);
   data[0] = real * c - imag * s;
   data[1] = imag * c + real * s;
 }
@@ -1213,7 +1141,6 @@ static bool sweep(bool break_on_operation, uint16_t mask)
   if (p_sweep>=sweep_points || break_on_operation == false) RESET_SWEEP;
   if (break_on_operation && mask == 0)
     return false;
-  float s, c;
   float data[4];
   float c_data[CAL_TYPE_COUNT][2];
   // Blink LED while scanning
@@ -1233,9 +1160,6 @@ static bool sweep(bool break_on_operation, uint16_t mask)
     if (mask & (SWEEP_CH0_MEASURE|SWEEP_CH1_MEASURE)) {
       delay = set_frequency(frequency);
       interpolation_idx = mask & SWEEP_USE_INTERPOLATION ? -1 : p_sweep;
-      // Edelay calibration
-      if (mask & SWEEP_APPLY_EDELAY)
-        vna_sincosf(electrical_delay * frequency, &s, &c);
     }
     // CH0:REFLECTION, reset and begin measure
     if (mask & SWEEP_CH0_MEASURE) {
@@ -1252,8 +1176,8 @@ static bool sweep(bool break_on_operation, uint16_t mask)
       (*sample_func)(&data[0]);             // calculate reflection coefficient
       if (mask & SWEEP_APPLY_CALIBRATION)   // Apply calibration
         apply_CH0_error_term(data, c_data);
-      if (mask & SWEEP_APPLY_EDELAY)        // Apply e-delay
-        applyEDelay(&data[0], s, c);
+      if (mask & SWEEP_APPLY_EDELAY_S11) // Apply e-delay
+        applyEDelay(electrical_delayS11 * frequency, &data[0]);
     }
     // CH1:TRANSMISSION, reset and begin measure
     if (mask & SWEEP_CH1_MEASURE) {
@@ -1269,8 +1193,8 @@ static bool sweep(bool break_on_operation, uint16_t mask)
       (*sample_func)(&data[2]);              // Measure transmission coefficient
       if (mask & SWEEP_APPLY_CALIBRATION)    // Apply calibration
         apply_CH1_error_term(data, c_data);
-      if (mask & SWEEP_APPLY_EDELAY)         // Apply e-delay
-        applyEDelay(&data[2], s, c);
+      if (mask & SWEEP_APPLY_EDELAY_S21)     // Apply e-delay
+        applyEDelay(electrical_delayS21 * frequency, &data[2]);
       if (mask & SWEEP_APPLY_S21_OFFSET)
         applyOffset(&data[2], offset);
     }
@@ -1493,7 +1417,8 @@ VNA_SHELL_FUNCTION(cmd_scan)
 #endif
 
   if ((cal_status & CALSTAT_APPLY) && !(mask&SCAN_MASK_NO_CALIBRATION)) sweep_ch|= SWEEP_APPLY_CALIBRATION;
-  if (electrical_delay             && !(mask&SCAN_MASK_NO_EDELAY     )) sweep_ch|= SWEEP_APPLY_EDELAY;
+  if (electrical_delayS11          && !(mask&SCAN_MASK_NO_EDELAY     )) sweep_ch|= SWEEP_APPLY_EDELAY_S11;
+  if (electrical_delayS21          && !(mask&SCAN_MASK_NO_EDELAY     )) sweep_ch|= SWEEP_APPLY_EDELAY_S21;
   if (s21_offset                   && !(mask&SCAN_MASK_NO_S21OFFS    )) sweep_ch|= SWEEP_APPLY_S21_OFFSET;
 
   if (needInterpolate(start, stop, sweep_points))
@@ -1905,12 +1830,21 @@ static void apply_CH0_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2])
 static void apply_CH1_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2])
 {
   // CAUTION: Et is inversed for efficiency
-  // S21a = (S21m - Ex) * Et
+  // S21a = (S21m - Ex) * Et`
   float s21mr = data[2] - c_data[ETERM_EX][0];
   float s21mi = data[3] - c_data[ETERM_EX][1];
   // Not made CH1 correction by CH0 data
   data[2] = s21mr * c_data[ETERM_ET][0] - s21mi * c_data[ETERM_ET][1];
   data[3] = s21mi * c_data[ETERM_ET][0] + s21mr * c_data[ETERM_ET][1];
+  if (cal_status & CALSTAT_ENHANCED_RESPONSE) {
+    // S21a*= 1 - Es * S11a
+    float esr = 1.0f - (c_data[ETERM_ES][0] * data[0] - c_data[ETERM_ES][1] * data[1]);
+    float esi = 0.0f - (c_data[ETERM_ES][1] * data[0] + c_data[ETERM_ES][0] * data[1]);
+    float re = data[2];
+    float im = data[3];
+    data[2] = esr * re - esi * im;
+    data[3] = esi * re + esr * im;
+}
 }
 
 void
@@ -1956,7 +1890,8 @@ cal_collect(uint16_t type)
 //  if (sweep_points != POINTS_COUNT)
 //    set_sweep_points(POINTS_COUNT);
   uint16_t mask = (src == 0) ? SWEEP_CH0_MEASURE : SWEEP_CH1_MEASURE;
-  if (electrical_delay) mask|= SWEEP_APPLY_EDELAY;
+//  if (electrical_delayS11) mask|= SWEEP_APPLY_EDELAY_S11;
+//  if (electrical_delayS21) mask|= SWEEP_APPLY_EDELAY_S21;
   // Measure calibration data
   sweep(false, mask);
   // Copy calibration data
@@ -2037,7 +1972,7 @@ static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]){
     idx = src_points;
     goto copy_point;
   }
-  // Search k1
+  // Calculate k for linear interpolation
   freq_t span = cal_frequency1 - cal_frequency0;
   idx = (uint64_t)(f - cal_frequency0) * (uint64_t)src_points / span;
   uint64_t v = (uint64_t)span * idx + src_points/2;
@@ -2048,7 +1983,7 @@ static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]){
   // Not need interpolate
   if (f == src_f0) goto copy_point;
 
-  float k1 = (delta == 0) ? 0.0f : (float)(f - src_f0) / delta;
+  float k = (delta == 0) ? 0.0f : (float)(f - src_f0) / delta;
   // avoid glitch between freqs in different harmonics mode
   uint32_t hf0 = si5351_get_harmonic_lvl(src_f0);
   if (hf0 != si5351_get_harmonic_lvl(src_f1)) {
@@ -2056,20 +1991,19 @@ static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]){
     if (hf0 == si5351_get_harmonic_lvl(f)){
       if (idx < 1) goto copy_point; // point limit
       idx--;
-      k1+= 1.0f;
+      k+= 1.0f;
     }
     // f in next harmonic, need extrapolate from next 2 points
     else {
       if (idx >= src_points) goto copy_point; // point limit
       idx++;
-      k1-= 1.0f;
+      k-= 1.0f;
     }
   }
-  // Interpolate by k1
-  float k0 = 1.0f - k1;
+  // Interpolate by k
   for (eterm = 0; eterm < CAL_TYPE_COUNT; eterm++) {
-    data[eterm][0] = cal_data[eterm][idx][0] * k0 + cal_data[eterm][idx+1][0] * k1;
-    data[eterm][1] = cal_data[eterm][idx][1] * k0 + cal_data[eterm][idx+1][1] * k1;
+    data[eterm][0] = cal_data[eterm][idx][0] + k * (cal_data[eterm][idx+1][0] - cal_data[eterm][idx][0]);
+    data[eterm][1] = cal_data[eterm][idx][1] + k * (cal_data[eterm][idx+1][1] - cal_data[eterm][idx][1]);
   }
   return;
   // Direct point copy
@@ -2220,12 +2154,18 @@ void set_trace_enable(int t, bool enable)
   request_to_redraw(REDRAW_AREA);
 }
 
-void set_electrical_delay(float seconds)
+void set_electrical_delay(int ch, float seconds)
 {
-  if (electrical_delay != seconds) {
-    electrical_delay = seconds;
+  if (current_props._electrical_delay[ch] == seconds) return;
+  current_props._electrical_delay[ch] = seconds;
     request_to_redraw(REDRAW_MARKER);
   }
+
+float get_electrical_delay(void)
+{
+  if (current_trace == TRACE_INVALID) return 0.0f;
+  int ch = trace[current_trace].channel;
+  return current_props._electrical_delay[ch];
 }
 
 void set_s21_offset(float offset)
@@ -2317,11 +2257,22 @@ usage:
 
 VNA_SHELL_FUNCTION(cmd_edelay)
 {
-  if (argc != 1) {
-    shell_printf("%f" VNA_SHELL_NEWLINE_STR, electrical_delay * (1.0f / 1e-12f)); // return in picoseconds
+  int ch = 0;
+  float value;
+  static const char cmd_edelay_list[] = "s11|s21";
+  if (argc >= 1) {
+    int idx = get_str_index(argv[0], cmd_edelay_list);
+    if (idx == -1) value = my_atof(argv[0]);
+    else  {
+      ch = idx;
+      if (argc != 2) goto usage;
+      value = my_atof(argv[0]);
+    }
+    set_electrical_delay(ch, value * 1e-12); // input value in seconds
     return;
   }
-  set_electrical_delay(my_atof(argv[0]) * 1e-12); // input value in seconds
+usage:
+  shell_printf("%f" VNA_SHELL_NEWLINE_STR, current_props._electrical_delay[ch] * (1.0f / 1e-12f)); // return in picoseconds
 }
 
 VNA_SHELL_FUNCTION(cmd_s21offset)
@@ -2386,7 +2337,7 @@ VNA_SHELL_FUNCTION(cmd_touchcal)
   (void)argc;
   (void)argv;
   shell_printf("first touch upper left, then lower right...");
-  touch_cal_exec();
+  ui_touch_cal_exec();
   shell_printf("done" VNA_SHELL_NEWLINE_STR \
                "touch cal params: %d %d %d %d" VNA_SHELL_NEWLINE_STR,
                config._touch_cal[0], config._touch_cal[1], config._touch_cal[2], config._touch_cal[3]);
@@ -2397,7 +2348,7 @@ VNA_SHELL_FUNCTION(cmd_touchtest)
 {
   (void)argc;
   (void)argv;
-  touch_draw_test();
+  ui_touch_draw_test();
 }
 
 VNA_SHELL_FUNCTION(cmd_frequencies)
@@ -2645,6 +2596,13 @@ VNA_SHELL_FUNCTION(cmd_si5351time)
 #ifdef ENABLE_SI5351_REG_WRITE
 VNA_SHELL_FUNCTION(cmd_si5351reg)
 {
+#if 0
+  (void) argc;
+  uint32_t reg = my_atoui(argv[0]);
+  uint8_t buf[1] = {0xAA};
+  if (si5351_bulk_read(reg, buf, 1))
+    shell_printf("si reg[%d] = 0x%02x" VNA_SHELL_NEWLINE_STR, reg, buf[0]);
+#else
   if (argc != 2) {
     shell_printf("usage: si reg data" VNA_SHELL_NEWLINE_STR);
     return;
@@ -2653,6 +2611,7 @@ VNA_SHELL_FUNCTION(cmd_si5351reg)
   uint8_t dat = my_atoui(argv[1]);
   uint8_t buf[] = { reg, dat };
   si5351_bulk_write(buf, 2);
+#endif
 }
 #endif
 
@@ -2734,7 +2693,7 @@ VNA_SHELL_FUNCTION(cmd_lcd){
   if (argc == 0) return;
   for (int i=0;i<argc;i++)
     d[i] =  my_atoui(argv[i]);
-  uint32_t ret = lcd_send_command(d[0], argc-1, &d[1]);
+  uint32_t ret = lcd_send_register(d[0], argc-1, &d[1]);
   shell_printf("ret = 0x%08X" VNA_SHELL_NEWLINE_STR, ret);
   chThdSleepMilliseconds(5);
 }
@@ -2854,25 +2813,18 @@ static FRESULT cmd_sd_card_mount(void){
 
 VNA_SHELL_FUNCTION(cmd_sd_list)
 {
-  (void)argc;
-  (void)argv;
-
   DIR dj;
   FILINFO fno;
-  FRESULT res;
   if (cmd_sd_card_mount() != FR_OK)
     return;
-  char *search;
   switch (argc){
-    case 0: search =   "*.*";break;
-    case 1: search = argv[0];break;
+    case 0: dj.pat =   "*.*";break;
+    case 1: dj.pat = argv[0];break;
     default: shell_printf("usage: sd_list {pattern}" VNA_SHELL_NEWLINE_STR); return;
   }
-  res = f_findfirst(&dj, &fno, "", search);
-  while (res == FR_OK && fno.fname[0])
-  {
+  if (f_opendir(&dj, "") == FR_OK) {
+    while (f_findnext(&dj, &fno) == FR_OK && fno.fname[0])
     shell_printf("%s %u" VNA_SHELL_NEWLINE_STR, fno.fname, fno.fsize);
-    res = f_findnext(&dj, &fno);
   }
   f_closedir(&dj);
 }
@@ -2933,7 +2885,7 @@ VNA_SHELL_FUNCTION(cmd_msg)
   char *header = 0, *text = 0;
   if (argc > 1) text = argv[1];
   if (argc > 2) header = argv[2];
-  drawMessageBox(header, text, delay);
+  ui_message_box(header, text, delay);
 }
 #endif
 
@@ -3005,7 +2957,7 @@ static const VNAShellCommand commands[] =
 #endif
     {"touchcal"    , cmd_touchcal    , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP},
     {"touchtest"   , cmd_touchtest   , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP},
-    {"pause"       , cmd_pause       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+    {"pause"       , cmd_pause       , CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
     {"resume"      , cmd_resume      , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
 #ifdef __SD_CARD_LOAD__
     {"msg"         , cmd_msg         , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_LOAD},
@@ -3205,40 +3157,6 @@ static void shell_init_connection(void){
 }
 #endif
 
-static inline char* vna_strpbrk(char *s1, const char *s2) {
-  do {
-    const char *s = s2;
-    do {
-      if (*s == *s1) return s1;
-      s++;
-    } while (*s);
-    s1++;
-  } while(*s1);
-  return s1;
-}
-
-/*
- * Split line by arguments, return arguments count
- */
-int parse_line(char *line, char* args[], int max_cnt) {
-  char *lp = line, c;
-  const char *brk;
-  uint16_t nargs = 0;
-  while ((c = *lp) != 0) {                   // While not end
-    if (c != ' ' && c != '\t') {             // Skipping white space and tabs.
-      if (c == '"') {lp++; brk = "\""; }     // string end is next quote or end
-      else          {      brk = " \t";}     // string end is tab or space or end
-      if (nargs < max_cnt) args[nargs] = lp; // Put pointer in args buffer (if possible)
-      nargs++;                               // Substring count
-      lp = vna_strpbrk(lp, brk);             // search end
-      if (*lp == 0) break;                   // Stop, end of input string
-      *lp = 0;                               // Set zero at the end of substring
-    }
-    lp++;
-  }
-  return nargs;
-}
-
 static const VNAShellCommand *VNAShell_parceLine(char *line){
   // Parse and execute line
   shell_nargs = parse_line(line, shell_args, ARRAY_COUNT(shell_args));
@@ -3297,10 +3215,11 @@ static void VNAShell_executeLine(char *line)
     uint16_t cmd_flag = scp->flags;
     // Skip wait mutex if process UI
     if ((cmd_flag & CMD_RUN_IN_UI) && (sweep_mode&SWEEP_UI_MODE)) cmd_flag&=~CMD_WAIT_MUTEX;
-    // Wait
+    // Break current sweep operation
+    if (scp->flags & CMD_BREAK_SWEEP) operation_requested|=OP_CONSOLE;
+    // Add function for run on sweep end or on break sweep
     if (cmd_flag & CMD_WAIT_MUTEX) {
       shell_function = scp->sc_function;
-      if (scp->flags & CMD_BREAK_SWEEP) operation_requested|=OP_CONSOLE;
       // Wait execute command in sweep thread
       osalThreadEnqueueTimeoutS(&shell_thread, TIME_INFINITE);
 //      do {
@@ -3457,29 +3376,40 @@ int main(void)
  * SPI bus and LCD Initialize
  */
   lcd_init();
+  lcd_set_colors(LCD_TRACE_2_COLOR, LCD_BG_COLOR);
+  lcd_drawstring_size(BOARD_NAME, 5 , 5, 3);
+  lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
+  lcd_drawstring(5, sFONT_GET_HEIGHT*4+10, "Starting...");
+  // Set LCD display brightness
+#ifdef  __LCD_BRIGHTNESS__
+  lcd_setBrightness(config._brightness);
+#endif
+  /*
+   * SD Card init (if inserted) allow fix issues
+   * Some card after insert work in SDIO mode and can corrupt SPI exchange (need switch it to SPI)
+   */
+  #ifdef __USE_SD_CARD__
+    disk_initialize(0);
+  #endif
 
 /*
  * tlv320aic Initialize (audio codec)
  */
   tlv320aic3204_init();
-  chThdSleepMilliseconds(200); // Wait for aic codec start
+  chThdSleepMilliseconds(300); // Wait for aic codec start
 /*
  * I2S Initialize
  */
   initI2S(rx_buffer, ARRAY_COUNT(rx_buffer) * sizeof(audio_sample_t) / sizeof(int16_t));
 
-/*
- * SD Card init (if inserted) allow fix issues
- * Some card after insert work in SDIO mode and can corrupt SPI exchange (need switch it to SPI)
- */
-#ifdef __USE_SD_CARD__
-  disk_initialize(0);
-#endif
+
 
 /*
  * I2C bus run on work speed
  */
   i2c_set_timings(STM32_I2C_TIMINGR);
+
+  lcd_clear_screen();
 
 /*
  * Startup sweep thread
@@ -3546,8 +3476,7 @@ void hard_fault_handler_c(uint32_t *sp)
   uint32_t psr = sp[7];
   int y = 0;
   int x = 20;
-  lcd_set_background(LCD_BG_COLOR);
-  lcd_set_foreground(LCD_FG_COLOR);
+  lcd_set_colors(LCD_FG_COLOR, LCD_BG_COLOR);
   lcd_printf(x, y+=FONT_STR_HEIGHT, "SP  0x%08x",  (uint32_t)sp);
   lcd_printf(x, y+=FONT_STR_HEIGHT, "R0  0x%08x",  r0);
   lcd_printf(x, y+=FONT_STR_HEIGHT, "R1  0x%08x",  r1);

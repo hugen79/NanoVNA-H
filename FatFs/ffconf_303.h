@@ -297,12 +297,13 @@
 /  included somewhere in the scope of ff.h. */
 
 
-#define _WORD_ACCESS	1	/* 0 or 1 */
+#define _WORD_ACCESS	1	/* 0 or 1 o 2 */
 /* The _WORD_ACCESS option is an only platform dependent option. It defines
 /  which access method is used to the word data on the FAT volume.
 /
 /   0: Byte-by-byte access. Always compatible with all platforms.
 /   1: Word access. Do not choose this unless under both the following conditions.
+/   2: Compiler auto detect where need byte or word access (use structures)
 /
 /  * Address misaligned memory access is always allowed for ALL instructions.
 /  * Byte order on the memory is little-endian.

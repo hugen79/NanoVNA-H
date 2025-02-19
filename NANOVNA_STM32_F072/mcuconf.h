@@ -59,6 +59,8 @@
 
 // Define STM32_I2C1_CLOCK as 48MHz (STM32_I2C1SW is STM32_I2C1SW_SYSCLK)
 #define STM32_I2C1_CLOCK                    48
+// Core clock in MHz
+#define STM32_CORE_CLOCK                    48
 
 /*
  * RTC driver system settings for stm32f072

@@ -27,6 +27,7 @@ uint16_t lastsaveid = 0;
 #if SAVEAREA_MAX >= 8
 #error "Increase checksum_ok type for save more cache slots"
 #endif
+
 // properties CRC check cache (max 8 slots)
 static uint8_t checksum_ok = 0;
 
@@ -115,6 +116,6 @@ void clear_all_config_prop_data(void) {
   lastsaveid = NO_SAVE_SLOT;
   checksum_ok = 0;
   // unlock and erase flash pages
-  flash_erase_pages(SAVE_CONFIG_ADDR, SAVE_FULL_AREA_SIZE);
+  flash_erase_pages(SAVE_PROP_CONFIG_ADDR, SAVE_FULL_AREA_SIZE);
 }
 

@@ -15,10 +15,17 @@
 */
 
 #include "hal.h"
+#include "nanovna.h"
 
 /* Virtual serial port over USB.*/
 SerialUSBDriver SDU1;
 
+enum {
+  STR_LANG_ID = 0,
+  STR_MANUFACTURER,
+  STR_PRODUCT,
+  STR_SERIAL
+};
 /*
  * Endpoints to be used for USBD1.
  */
@@ -38,9 +45,9 @@ static const uint8_t vcom_device_descriptor_data[18] = {
                          0x0483,        /* idVendor (ST).                   */
                          0x5740,        /* idProduct.                       */
                          0x0200,        /* bcdDevice.                       */
-                         1,             /* iManufacturer.                   */
-                         2,             /* iProduct.                        */
-                         3,             /* iSerialNumber.                   */
+                         STR_MANUFACTURER, /* iManufacturer.                   */
+                         STR_PRODUCT,      /* iProduct.                        */
+                         STR_SERIAL,       /* iSerialNumber.                   */
                          1)             /* bNumConfigurations.              */
 };
 
@@ -185,11 +192,40 @@ static const uint8_t vcom_string3[] = {
  * Strings wrappers array.
  */
 static const USBDescriptor vcom_strings[] = {
-  {sizeof vcom_string0, vcom_string0},
-  {sizeof vcom_string1, vcom_string1},
-  {sizeof vcom_string2, vcom_string2},
-  {sizeof vcom_string3, vcom_string3}
+  [STR_LANG_ID]      = {sizeof vcom_string0, vcom_string0},
+  [STR_MANUFACTURER] = {sizeof vcom_string1, vcom_string1},
+  [STR_PRODUCT]      = {sizeof vcom_string2, vcom_string2},
+  [STR_SERIAL]       = {sizeof vcom_string3, vcom_string3}
 };
+
+#ifdef __USB_UID__
+// Use unique serial string generated from MCU id
+#define UID_RADIX                5                 // Radix conversion constant (5 bit, use 0..9 and A..V)
+#define USB_SERIAL_STRING_SIZE  (64 / UID_RADIX)   // Result string size
+USBDescriptor *getSerialStringDescriptor(void) {
+  uint16_t i;
+  uint16_t *buf    = ((uint16_t *)&spi_buffer[ARRAY_COUNT(spi_buffer)]) - USB_SERIAL_STRING_SIZE - 4; // 16 byte align
+  USBDescriptor *d = ((USBDescriptor *)buf) - 1;
+  uint32_t id0 = *(uint32_t *)0x1FFFF7AC; // MCU id0 address
+  uint32_t id1 = *(uint32_t *)0x1FFFF7B0; // MCU id1 address
+  uint32_t id2 = *(uint32_t *)0x1FFFF7B4; // MCU id2 address
+  uint64_t uid = id1;
+  id0+= id2;
+  uid|= id0 | (uid<<32);                  // generate unique 64bit ID
+  // Prepare serial string descriptor from 64 bit ID
+  for(i = 1; i < USB_SERIAL_STRING_SIZE + 1; i++) {
+    uint16_t c = uid & ((1<<UID_RADIX) - 1);
+    buf[i] = c + (c < 0x0A ? '0' : 'A' - 0x0A);
+    uid>>= UID_RADIX;
+  }
+  uint16_t size = i * sizeof(uint16_t);
+  buf[0] = size | (USB_DESCRIPTOR_STRING << 8);
+  // Generate USBDescriptor structure
+  d->ud_size   = size;
+  d->ud_string = (uint8_t *)buf;
+  return d;
+}
+#endif
 
 /*
  * Handles the GET_DESCRIPTOR callback. All required descriptors must be
@@ -208,6 +244,10 @@ static const USBDescriptor *get_descriptor(USBDriver *usbp,
   case USB_DESCRIPTOR_CONFIGURATION:
     return &vcom_configuration_descriptor;
   case USB_DESCRIPTOR_STRING:
+#ifdef __USB_UID__ // send unique USB serial string if need
+    if (dindex == STR_SERIAL && VNA_MODE(VNA_MODE_USB_UID))
+      return getSerialStringDescriptor();
+#endif
     if (dindex < 4)
       return &vcom_strings[dindex];
   }
